@@ -1,0 +1,57 @@
+# CI + release for the Day VS Code extension.
+#
+# Every push/PR lints, compiles, and packages the .vsix (uploaded as an artifact so any build
+# is installable). Pushing a `v*` tag additionally publishes that .vsix to the Visual Studio
+# Marketplace (secret VSCE_PAT) and to Open VSX (secret OVSX_PAT) — the extension has its own
+# release cycle, independent of day-cli's: it talks to whatever `day` binary is on PATH.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint --if-present
+      - run: npm run compile
+      - name: Package .vsix
+        run: npx @vscode/vsce package -o day-vscode.vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: day-vscode.vsix
+          path: day-vscode.vsix
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: day-vscode.vsix
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Publish to the Visual Studio Marketplace
+        run: npx @vscode/vsce publish --packagePath day-vscode.vsix -p "$VSCE_PAT"
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Publish to Open VSX
+        run: npx ovsx publish day-vscode.vsix -p "$OVSX_PAT"
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
