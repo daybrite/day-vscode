@@ -1,4 +1,4 @@
-// Day extension entry point: discovers day.yaml projects, wires the sidebar tree, status bar, task
+// Day extension entry point: discovers Day.toml projects, wires the sidebar tree, status bar, task
 // provider, and commands, and drives build/run/stop/restart through the Runner (Tasks API).
 
 import * as vscode from "vscode";
@@ -74,7 +74,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (currentProject()) {
       return true;
     }
-    vscode.window.showWarningMessage("No Day project (day.yaml) found in this workspace.");
+    vscode.window.showWarningMessage("No Day project (Day.toml) found in this workspace.");
     return false;
   };
 
@@ -212,8 +212,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
-  // Re-scan when a day.yaml appears/changes/disappears.
-  const watcher = vscode.workspace.createFileSystemWatcher("**/day.yaml");
+  // Re-scan when a Day.toml appears/changes/disappears.
+  const watcher = vscode.workspace.createFileSystemWatcher("**/Day.toml");
   const rescan = () => guard(async () => {
     await refreshProjects();
     tree.refresh();

@@ -7,7 +7,7 @@ import * as vscode from "vscode";
 import { State } from "./config";
 import { DayProject } from "./project";
 import { Runner } from "./runner";
-import { findTarget, isBuildableHere, kindLabel, TARGETS } from "./targets";
+import { catalog, findTarget, isBuildableHere, kindLabel } from "./targets";
 
 export type Node =
   | { kind: "project" }
@@ -37,7 +37,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
   private targetNames(): string[] {
     const project = this.deps.project();
     const declared = project?.targets ?? [];
-    return declared.length > 0 ? declared : TARGETS.map((t) => t.name);
+    return declared.length > 0 ? declared : catalog().map((t) => t.name);
   }
 
   getChildren(element?: Node): Node[] {

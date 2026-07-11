@@ -78,7 +78,7 @@ export interface LaunchOptions {
 }
 
 function projectArgs(projectRoot: string): string[] {
-  // Omit --project when unknown so the CLI falls back to cwd-based day.yaml discovery.
+  // Omit --project when unknown so the CLI falls back to cwd-based Day.toml discovery.
   return projectRoot && projectRoot.length > 0 ? ["--project", projectRoot] : [];
 }
 

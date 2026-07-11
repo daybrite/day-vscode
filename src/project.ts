@@ -1,26 +1,51 @@
-// Discover and parse Day projects (folders with a `day.yaml` manifest). We read only the handful of
-// fields the extension needs (app name/id/title + the declared targets) with a tiny, dependency-free
-// parser for the known, flat manifest schema (crates/day-cli/src/meta.rs) — no YAML runtime dep.
+// Discover Day projects (folders with a `Day.toml` manifest) and load each one's metadata by
+// shelling out to `day metadata --json`. The CLI owns the manifest format AND the target
+// catalog, so the extension never parses Day.toml itself — the JSON envelope is versioned and
+// grow-only (see crates/day-cli/src/metadata.rs), which is what lets the manifest evolve
+// without breaking editors. Day.toml's presence is still used to LOCATE projects (it is the
+// project marker); everything read out of it comes from the CLI.
 
-import * as fs from "fs";
+import * as cp from "child_process";
 import * as path from "path";
 import * as vscode from "vscode";
+import { resolveCli } from "./cli";
+import { setCatalog, Target } from "./targets";
 
 export interface DayProject {
-  /** Directory containing day.yaml. */
+  /** Directory containing Day.toml. */
   root: string;
   name: string;
+  version?: string;
   id: string;
   title?: string;
-  /** Targets declared in `targets:` (may be empty). */
+  /** Targets declared in Day.toml's `[app] targets` (may be empty). */
   targets: string[];
 }
 
+/** The `day metadata --json` envelope (schema 1) — read leniently: absent keys are tolerated
+ *  so newer CLIs can add fields freely. */
+interface MetadataEnvelope {
+  schema?: number;
+  project?: {
+    root?: string;
+    name?: string;
+    version?: string;
+    id?: string;
+    title?: string;
+    targets?: string[];
+  };
+  targetCatalog?: Target[];
+}
+
 export async function findProjects(): Promise<DayProject[]> {
-  const uris = await vscode.workspace.findFiles("**/day.yaml", "**/{node_modules,target,build,out}/**", 100);
+  const uris = await vscode.workspace.findFiles(
+    "**/Day.toml",
+    "**/{node_modules,target,build,out}/**",
+    100,
+  );
   const projects: DayProject[] = [];
   for (const uri of uris) {
-    const p = parseDayYaml(uri.fsPath);
+    const p = await loadProject(path.dirname(uri.fsPath));
     if (p) {
       projects.push(p);
     }
@@ -29,74 +54,42 @@ export async function findProjects(): Promise<DayProject[]> {
   return projects;
 }
 
-function stripComment(line: string): string {
-  // Drop a trailing comment: a `#` at line start or preceded by whitespace, ignoring quoted `#`.
-  let inSingle = false;
-  let inDouble = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (c === "'" && !inDouble) {
-      inSingle = !inSingle;
-    } else if (c === '"' && !inSingle) {
-      inDouble = !inDouble;
-    } else if (c === "#" && !inSingle && !inDouble && (i === 0 || /\s/.test(line[i - 1]))) {
-      return line.slice(0, i);
-    }
-  }
-  return line;
-}
-
-function unquote(v: string): string {
-  const s = v.trim();
-  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-    return s.slice(1, -1);
-  }
-  return s;
-}
-
-export function parseDayYaml(file: string): DayProject | undefined {
-  let text: string;
-  try {
-    text = fs.readFileSync(file, "utf8");
-  } catch {
+/** Load one project's metadata through the CLI. Also feeds the CLI's target catalog to
+ *  `targets.setCatalog`, so the sidebar reflects the installed CLI's target table rather than
+ *  this extension's baked-in fallback mirror. */
+export async function loadProject(root: string): Promise<DayProject | undefined> {
+  const doc = await dayMetadata(root);
+  const p = doc?.project;
+  if (!p || p.id === undefined) {
     return undefined;
   }
-  const root = path.dirname(file);
-  let section: "app" | "targets" | "" = "";
-  const app: Record<string, string> = {};
-  const targets: string[] = [];
-
-  for (const raw of text.split(/\r?\n/)) {
-    const line = stripComment(raw);
-    if (line.trim().length === 0) {
-      continue;
-    }
-    const indent = line.length - line.trimStart().length;
-    const body = line.trim();
-
-    if (indent === 0) {
-      const m = /^([A-Za-z0-9_-]+):(.*)$/.exec(body);
-      section = m ? (m[1] === "app" ? "app" : m[1] === "targets" ? "targets" : "") : "";
-      continue;
-    }
-    if (section === "app") {
-      const m = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(body);
-      if (m && m[2].length > 0) {
-        app[m[1]] = unquote(m[2]);
-      }
-    } else if (section === "targets") {
-      const m = /^-\s*(.+)$/.exec(body);
-      if (m) {
-        targets.push(unquote(m[1]));
-      }
-    }
-  }
-
+  setCatalog(doc?.targetCatalog);
   return {
-    root,
-    name: app["name"] ?? path.basename(root),
-    id: app["id"] ?? "",
-    title: app["title"],
-    targets,
+    root: p.root ?? root,
+    name: p.name ?? path.basename(root),
+    version: p.version,
+    id: p.id,
+    title: p.title,
+    targets: p.targets ?? [],
   };
+}
+
+function dayMetadata(root: string): Promise<MetadataEnvelope | undefined> {
+  const cli = resolveCli(root);
+  const args = [...cli.baseArgs, "metadata", "--json", "--project", root];
+  return new Promise((resolve) => {
+    cp.execFile(cli.command, args, { cwd: cli.cwd ?? root, timeout: 30000 }, (err, stdout) => {
+      if (err) {
+        console.warn(`day metadata failed for ${root}:`, err.message);
+        resolve(undefined);
+        return;
+      }
+      try {
+        resolve(JSON.parse(stdout) as MetadataEnvelope);
+      } catch (e) {
+        console.warn(`day metadata: unparseable output for ${root}:`, e);
+        resolve(undefined);
+      }
+    });
+  });
 }

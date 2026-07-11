@@ -2,7 +2,7 @@
   "name": "day-vscode",
   "displayName": "Day",
   "description": "Build and run Day apps (cross-platform native UI in Rust) across one or more targets from VS Code.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "daybrite",
   "license": "MPL-2.0",
   "repository": {
@@ -28,7 +28,7 @@
   "main": "./out/extension.js",
   "activationEvents": [
     "onStartupFinished",
-    "workspaceContains:**/day.yaml"
+    "workspaceContains:**/Day.toml"
   ],
   "contributes": {
     "viewsContainers": {
@@ -53,7 +53,7 @@
     "viewsWelcome": [
       {
         "view": "dayTargets",
-        "contents": "No Day project found in this workspace.\n\nA Day project is a folder containing a [day.yaml](https://daybrite.dev) manifest.\n\n[Refresh](command:day.refresh)"
+        "contents": "No Day project found in this workspace.\n\nA Day project is a folder containing a [Day.toml](https://daybrite.dev) manifest.\n\n[Refresh](command:day.refresh)"
       }
     ],
     "commands": [
@@ -266,7 +266,7 @@
           },
           "project": {
             "type": "string",
-            "description": "Project directory (containing day.yaml)."
+            "description": "Project directory (containing Day.toml)."
           }
         }
       }

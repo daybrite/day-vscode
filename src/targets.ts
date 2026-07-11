@@ -1,5 +1,8 @@
-// The Day target catalog — mirrors crates/day-cli/src/targets.rs. Each `<os>-<toolkit>` target
-// declares the host OS that can build it, so the UI can dim/disable targets this machine can't run.
+// The Day target catalog. The AUTHORITATIVE catalog comes from the installed CLI via
+// `day metadata --json` (fed in through `setCatalog` when a project loads); the static TARGETS
+// list below is only an offline fallback (mirroring crates/day-cli/src/targets.rs) for when no
+// CLI is reachable yet. Each `<os>-<toolkit>` target declares the host OS that can build it,
+// so the UI can dim/disable targets this machine can't run.
 
 export type TargetKind = "desktop" | "iosSim" | "android" | "harmonyOs";
 export type HostOs = "macos" | "linux" | "windows" | "any";
@@ -9,6 +12,21 @@ export interface Target {
   toolkit: string;
   kind: TargetKind;
   host: HostOs;
+  /** Optional extras the CLI catalog carries (label for menus, experimental flag). */
+  label?: string;
+  experimental?: boolean;
+}
+
+let activeCatalog: Target[] | undefined;
+
+/** Install the CLI-provided catalog (undefined/empty ⇒ keep the static fallback). */
+export function setCatalog(catalog: Target[] | undefined): void {
+  activeCatalog = catalog && catalog.length > 0 ? catalog : undefined;
+}
+
+/** The catalog in effect: the CLI's when a project has loaded, else the static fallback. */
+export function catalog(): Target[] {
+  return activeCatalog ?? TARGETS;
 }
 
 export const TARGETS: Target[] = [
@@ -26,7 +44,7 @@ export const TARGETS: Target[] = [
 ];
 
 export function findTarget(name: string): Target | undefined {
-  return TARGETS.find((t) => t.name === name);
+  return catalog().find((t) => t.name === name);
 }
 
 export function hostOs(): HostOs | "other" {

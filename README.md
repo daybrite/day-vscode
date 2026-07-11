@@ -47,7 +47,7 @@ npm run compile   # or: npm run watch
 ```
 
 Press **F5** (Run → "Run Day Extension") to open an Extension Development Host. Open any Day
-project (a folder with a `day.yaml` — `day new app my-app` makes one); the **Day** sidebar
+project (a folder with a `Day.toml` — `day new app my-app` makes one); the **Day** sidebar
 lists the app and its targets — tick `macos-appkit`, click **Run**, and the app launches in a
 terminal. Tick a second target to run both at once; use the inline stop/restart buttons per
 target. `npx @vscode/vsce package` produces an installable `.vsix`.
