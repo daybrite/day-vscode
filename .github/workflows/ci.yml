@@ -20,8 +20,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -30,7 +30,7 @@ jobs:
       - run: npm run compile
       - name: Package .vsix
         run: npx @vscode/vsce package -o day-vscode.vsix
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: day-vscode.vsix
           path: day-vscode.vsix
@@ -41,7 +41,7 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: day-vscode.vsix
       - uses: actions/setup-node@v4
