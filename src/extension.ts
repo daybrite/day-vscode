@@ -1,6 +1,8 @@
 // Day extension entry point: discovers Day.toml projects, wires the sidebar tree, status bar, task
 // provider, and commands, and drives build/run/stop/restart through the Runner (Tasks API).
 
+import * as childProcess from "child_process";
+import * as path from "path";
 import * as vscode from "vscode";
 
 import { renderCommand, resolveCli } from "./cli";
@@ -303,8 +305,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         { location: vscode.ProgressLocation.Notification, title: `Scaffolding ${name}…` },
         () =>
           new Promise<void>((resolve, reject) => {
-            const cp = require("child_process") as typeof import("child_process");
-            cp.execFile(cli.command, args, { cwd: cli.cwd ?? parent, env: process.env }, (err, _out, stderr) => {
+            childProcess.execFile(cli.command, args, { cwd: cli.cwd ?? parent, env: process.env }, (err, _out, stderr) => {
               if (err) {
                 reject(new Error(stderr || err.message));
               } else {
@@ -315,7 +316,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       );
       // The cargo fallback runs in the day repo cwd; the plain CLI runs in the parent folder.
       // `day new` always creates ./<name> under its cwd.
-      const created = vscode.Uri.file(require("path").join(cli.cwd ?? parent, name));
+      const created = vscode.Uri.file(path.join(cli.cwd ?? parent, name));
       await vscode.commands.executeCommand("vscode.openFolder", created, { forceNewWindow: true });
     }),
   );

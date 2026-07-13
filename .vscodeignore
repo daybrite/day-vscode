@@ -6,3 +6,8 @@ tsconfig.json
 .gitignore
 **/*.ts
 **/*.map
+out/**
+.github/**
+scripts/**
+PLAN.md
+*.vsix
