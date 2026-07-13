@@ -74,6 +74,8 @@ export interface LaunchOptions {
   profile: "debug" | "release";
   locale?: string;
   script?: string;
+  /** Keep the app running after its dayscript completes (interactive script development). */
+  keepAlive?: boolean;
   env?: Record<string, string>;
 }
 
@@ -90,6 +92,9 @@ export function launchArgs(o: LaunchOptions): string[] {
   }
   if (o.script && o.script.length > 0) {
     args.push("--script", o.script);
+    if (o.keepAlive) {
+      args.push("--keep-alive");
+    }
   }
   for (const [k, v] of Object.entries(o.env ?? {})) {
     args.push("--env", `${k}=${v}`);

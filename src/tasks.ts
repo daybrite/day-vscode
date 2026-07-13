@@ -18,6 +18,8 @@ export interface DayTaskDefinition extends vscode.TaskDefinition {
   profile?: Profile;
   locale?: string;
   script?: string;
+  /** Keep the app running after its dayscript completes (default: day.script.keepAppRunning). */
+  keepAlive?: boolean;
   project?: string;
 }
 
@@ -73,6 +75,11 @@ export function buildDayTask(
           profile,
           locale: def.locale,
           script: def.script,
+          // Interactive script development: keep the app open when its script finishes so the
+          // script can be extended and re-driven against the live app (day.script.keepAppRunning).
+          keepAlive:
+            def.keepAlive ??
+            vscode.workspace.getConfiguration("day").get<boolean>("script.keepAppRunning", true),
           env: extraEnv(),
         })
       : buildArgs(projectRoot, def.target, profile);

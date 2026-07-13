@@ -105,6 +105,51 @@ screenshot, ui_idle, assert).
   save) triggered by the editor but owned by the CLI — hot reload proper is a runtime feature
   (Slint 1.13 / Compose HR precedent) and lands there first; the extension only sends triggers.
 
+## Phase 2.5 — Dayscript debugging: step through a script against the live app
+
+**Shipped foundation (v0.4.1 + CLI):** `day launch --script … --keep-alive` leaves the app
+running when the script completes (extension setting `day.script.keepAppRunning`, default on;
+per-task `keepAlive` override in tasks.json). Combined with the session registry and
+`day drive`, a script author can already run a draft to the end, keep the app open, and probe
+the next step interactively. The debugging story builds on exactly this.
+
+1. **`day drive --stdin` (CLI):** an interactive drive mode — one persistent engine
+   connection; read a step per line on stdin, emit its JSON result per line on stdout. This is
+   the stepping transport (per-step `day drive` invocations reconnect each time; stdin mode
+   keeps ordering, latency, and connection state).
+2. **A first-party dayscript DAP** (`day script-debug-adapter`, DAP over stdio — the Dart
+   "adapter ships in the SDK" pattern; the extension contributes `type: "dayscript"` and a
+   `DebugAdapterExecutable` pointing at the CLI):
+   - **launch config**: `{type: "dayscript", script: "scripts/walkthrough.yaml", target:
+     "macos-appkit"}`; the adapter ensures a live session (launching with `--keep-alive` when
+     none exists) and parses the script's `flow:`.
+   - **Line mapping**: flow entries are one YAML line each by convention — a line-indexed map
+     of steps gives breakpoints, current-line highlighting, and step-over for free (no YAML
+     span machinery needed to start).
+   - **Stepping semantics**: `stopOnEntry`; *step over* = execute the current step via the
+     engine and move the instruction pointer; *continue* = run until a breakpoint, a failing
+     step (`ok: false` = a "thrown exception" → stop with the error), or script end — which,
+     under keep-alive, leaves the session live rather than tearing the app down.
+   - **State panes**: Variables shows the last step's reply (assert results, screenshot path),
+     the current route, and the session (target, port); a failing screenshot/assert attaches
+     its output. Screenshots open in an editor tab on click.
+   - **Debug console = step REPL**: any line typed is parsed as a step (YAML single-key or
+     JSON) and executed immediately against the app — this is the interactive script-AUTHORING
+     loop; an "append to script" code action turns a successful REPL step into a new flow line.
+   - Note on the "no bespoke debug adapter" non-goal: that rule is about RUST debugging
+     (delegate to lldb). Dayscript is Day's own language and protocol — a first-party adapter
+     in the CLI is the Slint/Dart pattern, and every editor with DAP support inherits it.
+3. **Editor affordances on top**: "Debug Script" / "Run Script" CodeLens above `flow:` in
+   `scripts/*.yaml`; `contributes.breakpoints` for the script language; gutter run markers;
+   "Run to cursor" = continue with a temporary breakpoint.
+4. **Later — recording**: the REPL/append loop is half of it; true record-from-UI (user taps
+   in the app → steps appear in the script) needs an engine-side event tap
+   (`observe_input` protocol addition) — same protocol family as the Phase 2 inspector's
+   `dump_tree`/`highlight`.
+
+CLI asks (append to the list): `day drive --stdin`; `day script-debug-adapter` (DAP, stdio);
+engine `observe_input` (recording, later).
+
 ## Phase 3 — Editor intelligence (no LSP required; incremental forever)
 
 - **Color swatches**: `registerColorProvider` over `Color::rgb/rgba/hex(...)` in Rust files —

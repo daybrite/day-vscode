@@ -2,7 +2,7 @@
   "name": "day-vscode",
   "displayName": "Day",
   "description": "Build and run Day apps (cross-platform native UI in Rust) across one or more targets from VS Code.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "publisher": "daybrite",
   "license": "MPL-2.0",
   "repository": {
@@ -278,6 +278,11 @@
           "type": "boolean",
           "default": true,
           "description": "Expose Day to AI agents via the Model Context Protocol (`day mcp-server`): build, launch, relaunch, and drive running apps, with screenshots agents can see."
+        },
+        "day.script.keepAppRunning": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep the app running after a dayscript completes (interactive script development: extend the script and re-drive the live app). Turn off to restore terminate-on-completion, as CI does."
         }
       }
     },
@@ -320,6 +325,10 @@
           "project": {
             "type": "string",
             "description": "Project directory (containing Day.toml)."
+          },
+          "keepAlive": {
+            "type": "boolean",
+            "description": "Keep the app running after its dayscript completes (default: the day.script.keepAppRunning setting)."
           }
         }
       }

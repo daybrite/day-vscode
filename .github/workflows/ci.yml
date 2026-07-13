@@ -1,9 +1,43 @@
-# CI + release for the Day VS Code extension.
+# CI + release + (gated) Marketplace publication for the Day VS Code extension.
 #
-# Every push/PR lints, compiles, and packages the .vsix (uploaded as an artifact so any build
-# is installable). Pushing a `v*` tag additionally publishes that .vsix to the Visual Studio
-# Marketplace (secret VSCE_PAT) and to Open VSX (secret OVSX_PAT) — the extension has its own
-# release cycle, independent of day-cli's: it talks to whatever `day` binary is on PATH.
+# Structure follows microsoft/vscode-platform-specific-sample (build → artifact → publish-on-tag);
+# this extension is pure JS, so the sample's 9-target matrix collapses to one universal .vsix —
+# if we ever bundle per-platform helper binaries, reintroduce the matrix here and package with
+# `vsce package --target <target>` per entry.
+#
+# Every push/PR validates PUBLISHABILITY (strict `vsce package` — the same manifest validation
+# the Marketplace runs — plus a checklist of the documented requirements). Pushing a `v*` tag
+# attaches the .vsix to a GitHub Release (today's distribution channel; the website's install
+# instructions curl it). ACTUAL Marketplace/Open VSX publication is fully wired but OFF until
+# you flip the repository variables below — the release cycle is independent of day-cli's.
+#
+# ── Turning publication on ───────────────────────────────────────────────────────────────────
+# Marketplace auth is TOKENLESS (PATs retire Dec 1 2026): Entra ID workload-identity federation
+# per the "secure automated publishing" section of the VS Code publishing docs, adapted to
+# GitHub Actions OIDC (the doc's own YAML targets Azure Pipelines; azure/login is the GitHub
+# equivalent). One-time setup:
+#
+#   1. Azure: create a USER-ASSIGNED MANAGED IDENTITY (any subscription/resource group; give it
+#      the Reader role on the subscription). Record its Client ID, Tenant ID, Subscription ID.
+#   2. On that identity, add a FEDERATED CREDENTIAL for GitHub Actions:
+#        issuer   https://token.actions.githubusercontent.com
+#        subject  repo:daybrite/day-vscode:environment:marketplace   (matches this job's
+#                 `environment:`; tighten/loosen as desired)
+#        audience api://AzureADTokenExchange
+#   3. Marketplace: at https://marketplace.visualstudio.com/manage, add the identity (by its
+#      resource ID) as a MEMBER of the `daybrite` publisher with the Contributor role.
+#   4. Repo Settings → Secrets and variables → Actions → VARIABLES (none of these are secrets —
+#      OIDC federation means there is nothing to leak):
+#        MARKETPLACE_PUBLISH   = true
+#        AZURE_CLIENT_ID       = <identity client id>
+#        AZURE_TENANT_ID       = <tenant id>
+#        AZURE_SUBSCRIPTION_ID = <subscription id>
+#      Open VSX (optional; unaffected by the Microsoft PAT retirement — it has its own tokens):
+#        OPENVSX_PUBLISH = true   + secret OVSX_PAT (namespace `daybrite` at open-vsx.org).
+#
+# First flight without a tag: Actions → ci → "Run workflow" with dry-run = true exercises the
+# whole publish path (OIDC login + federation verification included) without uploading.
+
 name: ci
 
 on:
@@ -12,46 +46,162 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      dry-run-publish:
+        description: "Exercise the publish job without uploading (verifies OIDC federation + package)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
+  # ── Build + publishability validation (every push/PR) ──────────────────────────────────────
   build:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run lint --if-present
-      - run: npm run compile
-      - name: Package .vsix
+      - name: Typecheck
+        run: npx tsc -p ./ --noEmit
+      - name: Bundle
+        run: npm run bundle
+
+      # Pre-release channel convention (see PLAN.md): odd minor = pre-release train. The
+      # Marketplace has no semver pre-release tags, so the flag must ride the publish command.
+      - name: Version / channel
+        id: meta
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          MINOR=$(node -p "require('./package.json').version.split('.')[1]")
+          PRERELEASE=$([ $((MINOR % 2)) -eq 1 ] && echo true || echo false)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "▸ $VERSION (pre-release channel: $PRERELEASE)"
+
+      # THE publishability gate: `vsce package` runs the same manifest validation `vsce publish`
+      # does (publisher, engines, icon format, activation events, …) with NO --allow-* escapes,
+      # and fails the build on anything the Marketplace would reject.
+      - name: Validate publishability (vsce package, strict)
         run: npx @vscode/vsce package -o day-vscode.vsix
+
+      - name: Validate publishability (Marketplace checklist)
+        run: |
+          node - <<'EOF'
+          const fs = require("fs");
+          const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          const fail = (m) => { console.error("✗ " + m); process.exitCode = 1; };
+          const ok = (m) => console.log("✓ " + m);
+          // Requirements per code.visualstudio.com/api/working-with-extensions/publishing-extension
+          pkg.publisher ? ok(`publisher: ${pkg.publisher}`) : fail("publisher missing");
+          pkg.engines?.vscode ? ok(`engines.vscode: ${pkg.engines.vscode}`) : fail("engines.vscode missing");
+          pkg.repository?.url ? ok(`repository: ${pkg.repository.url}`) : fail("repository missing (relative README links won't resolve)");
+          if (!pkg.icon) fail("icon missing");
+          else if (pkg.icon.endsWith(".svg")) fail("icon must not be SVG");
+          else if (!fs.existsSync(pkg.icon)) fail(`icon file ${pkg.icon} missing`);
+          else ok(`icon: ${pkg.icon}`);
+          (pkg.keywords ?? []).length <= 30 ? ok(`keywords: ${(pkg.keywords ?? []).length}/30`) : fail("more than 30 keywords");
+          for (const f of ["README.md", "LICENSE", "CHANGELOG.md"]) {
+            fs.existsSync(f) ? ok(f) : fail(`${f} missing`);
+          }
+          EOF
+
+      - name: List packaged contents
+        run: npx @vscode/vsce ls
+
       - uses: actions/upload-artifact@v7
         with:
           name: day-vscode.vsix
           path: day-vscode.vsix
           if-no-files-found: error
 
-  publish:
+  # ── GitHub Release (tags): today's install channel ─────────────────────────────────────────
+  # The website's Getting Started curls .../releases/latest/download/day-vscode.vsix — keep the
+  # asset name STABLE.
+  release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v8
         with:
           name: day-vscode.vsix
-      - uses: actions/setup-node@v4
+      - uses: softprops/action-gh-release@v2
         with:
-          node-version: 20
-      - name: Publish to the Visual Studio Marketplace
-        run: npx @vscode/vsce publish --packagePath day-vscode.vsix -p "$VSCE_PAT"
+          files: day-vscode.vsix
+          generate_release_notes: true
+          prerelease: ${{ needs.build.outputs.prerelease == 'true' }}
+
+  # ── Marketplace + Open VSX publication (tags; OFF until the repo variables flip) ───────────
+  # Tokenless Marketplace auth: GitHub OIDC → Entra workload-identity federation → the managed
+  # identity that is a Contributor on the `daybrite` publisher → `vsce publish
+  # --azure-credential` (vsce ≥ 2.26.1 picks the credential up from the azure/login session).
+  publish:
+    if: >-
+      (startsWith(github.ref, 'refs/tags/v') && vars.MARKETPLACE_PUBLISH == 'true') ||
+      (github.event_name == 'workflow_dispatch' && inputs.dry-run-publish)
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment: marketplace   # the federated credential's subject names this environment
+    permissions:
+      contents: read
+      id-token: write          # mint the GitHub OIDC token azure/login exchanges — no secrets
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: day-vscode.vsix
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      # Fail fast with a clear message before attempting the OIDC exchange.
+      - name: Check federation configuration
+        run: |
+          for v in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            if [ -z "${!v}" ]; then
+              echo "::error::repository variable $v is not set (see the workflow header for the Entra federation setup)"; exit 1
+            fi
+          done
         env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure login (OIDC workload-identity federation)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # The dry-run stops here: a successful login proves the federated credential, subject,
+      # and identity are all wired correctly — the only parts that can't be checked locally.
+      - name: Verify federated identity (dry run stops after this)
+        run: az account show --output table
+
+      - name: Publish to the Visual Studio Marketplace (vsce --azure-credential)
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry-run-publish) }}
+        run: |
+          FLAGS=""
+          if [ "${{ needs.build.outputs.prerelease }}" = "true" ]; then FLAGS="--pre-release"; fi
+          npx @vscode/vsce@latest publish --azure-credential --packagePath day-vscode.vsix $FLAGS
+
+      # Open VSX keeps its own token scheme (unaffected by the Microsoft PAT retirement).
       - name: Publish to Open VSX
-        run: npx ovsx publish day-vscode.vsix -p "$OVSX_PAT"
+        if: ${{ vars.OPENVSX_PUBLISH == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry-run-publish) }}
+        run: |
+          FLAGS=""
+          if [ "${{ needs.build.outputs.prerelease }}" = "true" ]; then FLAGS="--pre-release"; fi
+          npx ovsx publish day-vscode.vsix -p "$OVSX_PAT" $FLAGS
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
