@@ -2,7 +2,7 @@
   "name": "day-vscode",
   "displayName": "Day",
   "description": "Build and run Day apps (cross-platform native UI in Rust) across one or more targets from VS Code.",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "publisher": "daybrite",
   "license": "MPL-2.0",
   "repository": {
@@ -10,7 +10,7 @@
     "url": "https://github.com/daybrite/day-vscode"
   },
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.101.0"
   },
   "categories": [
     "Other"
@@ -25,9 +25,8 @@
     "qt"
   ],
   "icon": "media/day-icon.png",
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "activationEvents": [
-    "onStartupFinished",
     "workspaceContains:**/Day.toml"
   ],
   "contributes": {
@@ -124,6 +123,39 @@
         "title": "Refresh",
         "category": "Day",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "day.selectTargets",
+        "title": "Select Targets",
+        "category": "Day",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "day.buildTarget",
+        "title": "Build Target",
+        "category": "Day",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "day.setMode",
+        "title": "Set Build Mode",
+        "category": "Day"
+      },
+      {
+        "command": "day.setLocale",
+        "title": "Set Locale",
+        "category": "Day"
+      },
+      {
+        "command": "day.setScript",
+        "title": "Set Dayscript",
+        "category": "Day"
+      },
+      {
+        "command": "day.newProject",
+        "title": "New Project…",
+        "category": "Day",
+        "icon": "$(new-folder)"
       }
     ],
     "menus": {
@@ -188,6 +220,22 @@
         {
           "command": "day.restart",
           "when": "false"
+        },
+        {
+          "command": "day.setMode",
+          "when": "false"
+        },
+        {
+          "command": "day.setLocale",
+          "when": "false"
+        },
+        {
+          "command": "day.setScript",
+          "when": "false"
+        },
+        {
+          "command": "day.buildTarget",
+          "when": "false"
         }
       ]
     },
@@ -225,6 +273,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Path to the OpenHarmony NDK `native` directory (e.g. `~/ohos-sdk/native`), exported as `OHOS_NDK_HOME` when building/launching the `ohos-arkui` target. Leave empty to auto-detect: the existing `OHOS_NDK_HOME`, then `~/ohos/ndk-extract/native`, then `~/ohos-sdk/native`. The SDK's sibling `toolchains/` directory (which carries `hdc`) is added to the task `PATH` as well."
+        },
+        "day.mcp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Expose Day to AI agents via the Model Context Protocol (`day mcp-server`): build, launch, relaunch, and drive running apps, with screenshots agents can see."
         }
       }
     },
@@ -270,10 +323,70 @@
           }
         }
       }
+    ],
+    "problemPatterns": [
+      {
+        "name": "day-rustc-diagnostic",
+        "patterns": [
+          {
+            "regexp": "^(warning|warn|error)(?:\\[(.*?)\\])?: (.*)$",
+            "severity": 1,
+            "code": 2,
+            "message": 3
+          },
+          {
+            "regexp": "^[\\s->=]*(.*?):([1-9]\\d*):([1-9]\\d*)\\s*$",
+            "file": 1,
+            "line": 2,
+            "column": 3
+          }
+        ]
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "day-rustc",
+        "label": "Rust compiler diagnostics from the day CLI",
+        "owner": "day",
+        "source": "rustc",
+        "fileLocation": [
+          "autoDetect",
+          "${workspaceFolder}"
+        ],
+        "pattern": "$day-rustc-diagnostic"
+      },
+      {
+        "name": "day-rustc-watch",
+        "label": "Rust diagnostics from a long-running day task",
+        "owner": "day",
+        "source": "rustc",
+        "fileLocation": [
+          "autoDetect",
+          "${workspaceFolder}"
+        ],
+        "pattern": "$day-rustc-diagnostic",
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^\\s*(Building|Compiling)\\b",
+          "endsPattern": "^\\s*(Built|Launching|Finished|error(\\[|:))"
+        }
+      }
+    ],
+    "configurationDefaults": {
+      "evenBetterToml.schema.associations": {
+        ".*/Day\\.toml$": "https://daybrite.dev/schema/day.toml.json"
+      }
+    },
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "day",
+        "label": "Day — build, run, and drive Day apps"
+      }
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run bundle",
+    "bundle": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts"
@@ -283,11 +396,26 @@
     "@types/vscode": "^1.90.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.1",
     "eslint": "^8.57.0",
     "typescript": "^5.4.0"
   },
   "bugs": {
     "url": "https://github.com/daybrite/day-vscode/issues"
   },
-  "homepage": "https://daybrite.dev"
+  "homepage": "https://daybrite.dev",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Day builds and runs project code via the day CLI, which must not happen in Restricted Mode."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "The day CLI needs the project on a real filesystem."
+    }
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  }
 }

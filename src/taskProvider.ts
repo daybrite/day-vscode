@@ -44,8 +44,9 @@ export class DayTaskProvider implements vscode.TaskProvider {
     if (def.type !== "day" || !def.target || (def.command !== "build" && def.command !== "launch")) {
       return undefined;
     }
-    // Default the project to the current one if the hand-written task omitted it.
-    const project = def.project ?? this.currentProject()?.root;
-    return buildDayTask({ ...def, project });
+    // HARD API RULE: the resolved Task must reuse the EXACT TaskDefinition object it was
+    // given — a copy makes VS Code fail to match the task and silently ignore it. The project
+    // default is applied to the ARGS only, inside buildDayTask.
+    return buildDayTask(def, { projectFallback: this.currentProject()?.root });
   }
 }

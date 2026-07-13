@@ -57,8 +57,11 @@ export function taskEnv(target: string): Record<string, string> {
   return env;
 }
 
-export function buildDayTask(def: DayTaskDefinition): vscode.Task {
-  const projectRoot = def.project ?? "";
+export function buildDayTask(
+  def: DayTaskDefinition,
+  opts?: { projectFallback?: string },
+): vscode.Task {
+  const projectRoot = def.project ?? opts?.projectFallback ?? "";
   const cli = resolveCli(projectRoot || undefined);
   const profile: Profile = def.profile ?? "debug";
 
@@ -80,7 +83,10 @@ export function buildDayTask(def: DayTaskDefinition): vscode.Task {
     ...(Object.keys(env).length ? { env } : {}),
   });
   const name = def.command === "launch" ? `run ${def.target}` : `build ${def.target}`;
-  const matchers = def.command === "build" ? ["$rustc"] : [];
+  // $day-rustc is contributed by THIS extension (a $rustc it can rely on: the stock name only
+  // exists when rust-analyzer is installed, and an unknown matcher name is silently ignored).
+  // Launches compile first, so they get the matcher too.
+  const matchers = ["$day-rustc"];
 
   const task = new vscode.Task(def, vscode.TaskScope.Workspace, name, "day", exec, matchers);
   task.presentationOptions = {

@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import { renderCommand, resolveCli } from "./cli";
 import { State } from "./config";
 import { DayProject, findProjects } from "./project";
-import { pickLocale, pickMode, pickProject, pickScript } from "./quickpicks";
+import { pickLocale, pickMode, pickProject, pickScript, pickTargets } from "./quickpicks";
 import { Runner } from "./runner";
 import { StatusBar } from "./statusbar";
 import { DayTaskProvider } from "./taskProvider";
@@ -52,7 +52,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
-  const statusBar = new StatusBar(state, runner, () => currentProject() !== undefined);
+  const statusBar = new StatusBar(state, runner, currentProject);
   context.subscriptions.push(statusBar);
 
   context.subscriptions.push(
@@ -78,8 +78,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return false;
   };
 
-  const targetOf = (node?: Node): string | undefined =>
-    node && node.kind === "target" ? node.name : undefined;
+  // Tree context menus pass a Node; the status-bar tooltip links pass a plain target name.
+  const targetOf = (node?: Node | string): string | undefined =>
+    typeof node === "string" ? node : node && node.kind === "target" ? node.name : undefined;
 
   const guard = async (fn: () => Promise<void>): Promise<void> => {
     try {
@@ -121,7 +122,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
-  register("day.runTarget", (node?: Node) =>
+  register("day.runTarget", (node?: Node | string) =>
     guard(async () => {
       const name = targetOf(node);
       if (name) {
@@ -130,7 +131,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
-  register("day.stop", (node?: Node) =>
+  register("day.stop", (node?: Node | string) =>
     guard(async () => {
       const name = targetOf(node);
       if (name) {
@@ -139,7 +140,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
-  register("day.restart", (node?: Node) =>
+  register("day.restart", (node?: Node | string) =>
     guard(async () => {
       const name = targetOf(node);
       if (name) {
@@ -150,11 +151,53 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   register("day.stopAll", () => guard(() => runner.stopAll()));
 
-  register("day.toggleTarget", (node?: Node) =>
+  register("day.toggleTarget", (node?: Node | string) =>
     guard(async () => {
       const name = targetOf(node);
       if (name) {
         await state.toggleTarget(name);
+      }
+    }),
+  );
+
+  register("day.selectTargets", () =>
+    guard(async () => {
+      if (!requireProject()) {
+        return;
+      }
+      const chosen = await pickTargets(currentProject(), state.selection.targets);
+      if (chosen) {
+        await state.update({ targets: chosen });
+        tree.refresh();
+      }
+    }),
+  );
+
+  register("day.setMode", (mode?: string) =>
+    guard(async () => {
+      if (mode === "debug" || mode === "release") {
+        await state.update({ profile: mode });
+      }
+    }),
+  );
+
+  register("day.setLocale", (locale?: string) =>
+    guard(async () => {
+      await state.update({ locale: locale ?? "" });
+    }),
+  );
+
+  register("day.setScript", (script?: string) =>
+    guard(async () => {
+      await state.update({ script: script ?? "" });
+    }),
+  );
+
+  register("day.buildTarget", (node?: Node | string) =>
+    guard(async () => {
+      const name = targetOf(node);
+      if (name) {
+        await runner.buildTargets([name]);
       }
     }),
   );
@@ -211,6 +254,105 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       tree.refresh();
     }),
   );
+
+  register("day.newProject", () =>
+    guard(async () => {
+      const name = await vscode.window.showInputBox({
+        title: "Day: New Project (1/3) — name",
+        prompt: "Crate name for the new app",
+        placeHolder: "my-app",
+        validateInput: (v) => (/^[a-z][a-z0-9_-]*$/.test(v) ? undefined : "lowercase letters, digits, - or _"),
+      });
+      if (!name) {
+        return;
+      }
+      const toolkits = await vscode.window.showQuickPick(
+        [
+          { label: "macos-appkit", description: "macOS · AppKit" },
+          { label: "ios-uikit", description: "iOS · UIKit" },
+          { label: "android-widget", description: "Android · native widgets" },
+          { label: "linux-gtk", description: "Linux · GTK 4" },
+          { label: "linux-qt", description: "Linux · Qt 6" },
+          { label: "windows-winui", description: "Windows · WinUI" },
+          { label: "ohos-arkui", description: "HarmonyOS · ArkUI" },
+        ],
+        { title: "Day: New Project (2/3) — targets", canPickMany: true, placeHolder: "Pick the platform-toolkits to scaffold" },
+      );
+      if (!toolkits || toolkits.length === 0) {
+        return;
+      }
+      const dir = await vscode.window.showOpenDialog({
+        title: "Day: New Project (3/3) — parent folder",
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+        openLabel: "Create Here",
+      });
+      if (!dir?.[0]) {
+        return;
+      }
+      const parent = dir[0].fsPath;
+      const cli = resolveCli();
+      const args = [
+        ...cli.baseArgs,
+        "new", "app", name,
+        "--toolkit", toolkits.map((t) => t.label).join(","),
+        "--no-input",
+      ];
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `Scaffolding ${name}…` },
+        () =>
+          new Promise<void>((resolve, reject) => {
+            const cp = require("child_process") as typeof import("child_process");
+            cp.execFile(cli.command, args, { cwd: cli.cwd ?? parent, env: process.env }, (err, _out, stderr) => {
+              if (err) {
+                reject(new Error(stderr || err.message));
+              } else {
+                resolve();
+              }
+            });
+          }),
+      );
+      // The cargo fallback runs in the day repo cwd; the plain CLI runs in the parent folder.
+      // `day new` always creates ./<name> under its cwd.
+      const created = vscode.Uri.file(require("path").join(cli.cwd ?? parent, name));
+      await vscode.commands.executeCommand("vscode.openFolder", created, { forceNewWindow: true });
+    }),
+  );
+
+  // Expose Day to agents over MCP (VS Code 1.101+): the server is the day CLI itself, so any
+  // MCP client gets the same tools. Guarded — older VS Code simply skips it.
+  const lmAny = (vscode as any).lm;
+  if (typeof lmAny?.registerMcpServerDefinitionProvider === "function") {
+    context.subscriptions.push(
+      lmAny.registerMcpServerDefinitionProvider("day", {
+        provideMcpServerDefinitions: async () => {
+          if (!vscode.workspace.getConfiguration("day").get<boolean>("mcp.enabled", true)) {
+            return [];
+          }
+          const project = currentProject();
+          if (!project) {
+            return [];
+          }
+          const cli = resolveCli(project.root);
+          const DefCtor = (vscode as any).McpStdioServerDefinition;
+          if (typeof DefCtor !== "function") {
+            return [];
+          }
+          const def = new DefCtor(
+            "Day",
+            cli.command,
+            [...cli.baseArgs, "--project", project.root, "mcp-server"],
+            {},
+          );
+          if (cli.cwd) {
+            def.cwd = vscode.Uri.file(cli.cwd);
+          }
+          return [def];
+        },
+      }),
+    );
+  }
 
   // Re-scan when a Day.toml appears/changes/disappears.
   const watcher = vscode.workspace.createFileSystemWatcher("**/Day.toml");

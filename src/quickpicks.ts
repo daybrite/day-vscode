@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 
 import { Profile } from "./config";
 import { DayProject } from "./project";
+import { catalog, findTarget, isBuildableHere } from "./targets";
 
 export async function pickMode(current: Profile): Promise<Profile | undefined> {
   const items: (vscode.QuickPickItem & { value: Profile })[] = [
@@ -115,4 +116,53 @@ export async function pickProject(projects: DayProject[], current?: string): Pro
   }));
   const chosen = await vscode.window.showQuickPick(items, { title: "Day: Select Project" });
   return chosen?.project;
+}
+
+/**
+ * Multi-select the run/build targets. Buildable targets of the project lead the list (declared
+ * order), the rest of the host-buildable catalog follows under a separator, and targets this
+ * host cannot build appear last, disabled-looking and stripped from the result.
+ * Returns the chosen names, or undefined if cancelled.
+ */
+export async function pickTargets(
+  project: DayProject | undefined,
+  current: string[],
+): Promise<string[] | undefined> {
+  type Item = vscode.QuickPickItem & { name?: string };
+  const declared = project?.targets ?? [];
+  const items: Item[] = [];
+
+  const push = (name: string): void => {
+    const t = findTarget(name);
+    const buildable = t ? isBuildableHere(t) : true;
+    items.push({
+      name: buildable ? name : undefined,
+      label: buildable ? `$(vm) ${name}` : `$(circle-slash) ${name}`,
+      description: buildable ? t?.label : "not buildable on this host",
+      picked: buildable && current.includes(name),
+    });
+  };
+
+  for (const name of declared) {
+    push(name);
+  }
+  const extras = catalog()
+    .map((t) => t.name)
+    .filter((n) => !declared.includes(n) && isBuildableHere(findTarget(n)!));
+  if (extras.length > 0) {
+    items.push({ label: "also buildable here", kind: vscode.QuickPickItemKind.Separator });
+    for (const name of extras) {
+      push(name);
+    }
+  }
+
+  const chosen = await vscode.window.showQuickPick(items, {
+    title: "Day: Targets",
+    placeHolder: "Select the targets Run and Build act on",
+    canPickMany: true,
+  });
+  if (!chosen) {
+    return undefined;
+  }
+  return chosen.map((i) => i.name).filter((n): n is string => typeof n === "string");
 }

@@ -59,3 +59,26 @@ and Open VSX (see `.github/workflows/ci.yml`). The extension's release cycle is 
 ## License
 
 [MPL-2.0](LICENSE), like Day itself.
+
+
+## AI agents
+
+In a Day workspace the extension registers the **Day MCP server** (`day mcp-server`) with VS
+Code's agent mode automatically (`day.mcp.enabled`, default on). Agents get tools to inspect the
+project (`day_metadata`, `day_doctor`, `day_lint`), build and run it (`day_build`, `day_launch`,
+`day_relaunch`, `day_stop`, `day_running`), and — through the dayscript engine inside every
+launch — **drive the running app and see screenshots** (`day_drive`, `day_screenshot`) on every
+platform the app targets. Try, in agent mode:
+
+> Add a new "configuration" page to the app and re-launch it on all targets, then show me
+> screenshots.
+
+Scaffolded projects include an `AGENTS.md` teaching agents the project's conventions
+(pages, localization keys, stable ids, and the relaunch→drive→screenshot verification loop).
+
+## Install (from GitHub)
+
+Not on the Marketplace yet — grab the `.vsix` from the
+[releases page](https://github.com/daybrite/day-vscode/releases) and run
+`code --install-extension day-vscode-<version>.vsix`, or build it yourself:
+`npm install && npx vsce package`.

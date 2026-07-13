@@ -1,3 +1,25 @@
+## 0.4.0
+
+- Agentic development: registers `day mcp-server` with VS Code (1.101+) for every Day
+  workspace (`day.mcp.enabled`, default on) — agent mode gets ten `day_*` tools to build,
+  launch, relaunch, stop, and DRIVE running apps, with screenshots returned as images.
+- `Day: New Project…` — name → target multi-pick → folder, scaffolds with `day new` and opens
+  the app (which now ships `AGENTS.md` + `.vscode/extensions.json`).
+
+## 0.3.0
+
+- Status-bar cockpit: run/stop toggle, a target item (short names + live spinner) opening a
+  multi-select target picker, build mode, and a locale/dayscript context item — each with a
+  rich hover that can run/stop/build any target directly.
+- Vendored `$day-rustc` / `$day-rustc-watch` problem matchers (the stock `$rustc` name only
+  exists when rust-analyzer is installed); attached to all day tasks, launches included.
+- `resolveTask` reuses the incoming task definition verbatim, so hand-written `day` tasks in
+  tasks.json (and `preLaunchTask` references) resolve correctly and fast.
+- Day.toml validation: associates https://daybrite.dev/schema/day.toml.json (emitted by
+  `day metadata --schema`) through Even Better TOML's schema associations.
+- Hygiene: esbuild bundling, `engines.vscode ^1.101`, Restricted Mode / virtual workspace
+  capability declarations, activation trimmed to `workspaceContains:**/Day.toml`.
+
 # Changelog
 
 ## 0.2.0
