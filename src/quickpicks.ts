@@ -20,9 +20,9 @@ export async function pickMode(current: Profile): Promise<Profile | undefined> {
 /** Returns "" for the default locale, a BCP-47 string, or undefined if cancelled. */
 export async function pickLocale(project: DayProject | undefined, current: string): Promise<string | undefined> {
   const known = new Set<string>(["en", "fr", "en-XA", "fr-XA"]);
-  // Add any locales the project ships (folders under <root>/locales).
+  // Add any locales the project ships (folders under <root>/resource/locales).
   if (project) {
-    const dir = path.join(project.root, "locales");
+    const dir = path.join(project.root, "resource", "locales");
     try {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         if (e.isDirectory()) {
@@ -30,7 +30,7 @@ export async function pickLocale(project: DayProject | undefined, current: strin
         }
       }
     } catch {
-      /* no locales dir */
+      /* no resource/locales dir */
     }
   }
   const CUSTOM = "$(edit) Custom…";
@@ -64,7 +64,7 @@ export async function pickLocale(project: DayProject | undefined, current: strin
 export async function pickScript(project: DayProject | undefined, current: string): Promise<string | undefined> {
   const scripts: string[] = [];
   if (project) {
-    const dir = path.join(project.root, "scripts");
+    const dir = path.join(project.root, "dayscript");
     try {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         if (e.isFile() && /\.(ya?ml|day)$/.test(e.name)) {

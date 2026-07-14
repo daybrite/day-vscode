@@ -2,7 +2,7 @@
   "name": "day-vscode",
   "displayName": "Day",
   "description": "Build and run Day apps (cross-platform native UI in Rust) across one or more targets from VS Code.",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "publisher": "daybrite",
   "license": "MPL-2.0",
   "repository": {
@@ -156,6 +156,17 @@
         "title": "New Project…",
         "category": "Day",
         "icon": "$(new-folder)"
+      },
+      {
+        "command": "day.openSettings",
+        "title": "Open Settings",
+        "category": "Day",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "day.toggleScriptKeepAlive",
+        "title": "Toggle Keep App Running After Script",
+        "category": "Day"
       }
     ],
     "menus": {
@@ -189,6 +200,11 @@
           "command": "day.selectProject",
           "when": "view == dayTargets",
           "group": "2_tools@2"
+        },
+        {
+          "command": "day.openSettings",
+          "when": "view == dayTargets",
+          "group": "navigation@9"
         }
       ],
       "view/item/context": [
@@ -239,53 +255,68 @@
         }
       ]
     },
-    "configuration": {
-      "title": "Day",
-      "properties": {
-        "day.cliPath": {
-          "type": "string",
-          "default": "day",
-          "markdownDescription": "Path to the `day` CLI binary. If it is not found on `PATH` and the workspace is the Day repository (a Cargo workspace with a `day-cli` member), the extension falls back to `cargo run -q -p day-cli --`."
-        },
-        "day.defaultProfile": {
-          "type": "string",
-          "enum": [
-            "debug",
-            "release"
-          ],
-          "default": "debug",
-          "description": "Default build mode for new workspaces."
-        },
-        "day.defaultLocale": {
-          "type": "string",
-          "default": "",
-          "description": "Default BCP-47 locale passed to `--locale` (empty = the app/system default)."
-        },
-        "day.extraEnv": {
-          "type": "object",
-          "default": {},
-          "additionalProperties": {
-            "type": "string"
+    "configuration": [
+      {
+        "title": "Day",
+        "order": 1,
+        "properties": {
+          "day.cliPath": {
+            "type": "string",
+            "default": "day",
+            "markdownDescription": "Path to the `day` CLI binary. If it is not found on `PATH` and the workspace is the Day repository (a Cargo workspace with a `day-cli` member), the extension falls back to `cargo run -q -p day-cli --`."
           },
-          "description": "Extra environment variables passed to every launch as `--env KEY=VALUE`."
-        },
-        "day.ohosNdkHome": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Path to the OpenHarmony NDK `native` directory (e.g. `~/ohos-sdk/native`), exported as `OHOS_NDK_HOME` when building/launching the `ohos-arkui` target. Leave empty to auto-detect: the existing `OHOS_NDK_HOME`, then `~/ohos/ndk-extract/native`, then `~/ohos-sdk/native`. The SDK's sibling `toolchains/` directory (which carries `hdc`) is added to the task `PATH` as well."
-        },
-        "day.mcp.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Expose Day to AI agents via the Model Context Protocol (`day mcp-server`): build, launch, relaunch, and drive running apps, with screenshots agents can see."
-        },
-        "day.script.keepAppRunning": {
-          "type": "boolean",
-          "default": true,
-          "description": "Keep the app running after a dayscript completes (interactive script development: extend the script and re-drive the live app). Turn off to restore terminate-on-completion, as CI does."
+          "day.defaultProfile": {
+            "type": "string",
+            "enum": [
+              "debug",
+              "release"
+            ],
+            "default": "debug",
+            "description": "Default build mode for new workspaces."
+          },
+          "day.defaultLocale": {
+            "type": "string",
+            "default": "",
+            "description": "Default BCP-47 locale passed to `--locale` (empty = the app/system default)."
+          },
+          "day.extraEnv": {
+            "type": "object",
+            "default": {},
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Extra environment variables passed to every launch as `--env KEY=VALUE`."
+          },
+          "day.ohosNdkHome": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Path to the OpenHarmony NDK `native` directory (e.g. `~/ohos-sdk/native`), exported as `OHOS_NDK_HOME` when building/launching the `ohos-arkui` target. Leave empty to auto-detect: the existing `OHOS_NDK_HOME`, then `~/ohos/ndk-extract/native`, then `~/ohos-sdk/native`. The SDK's sibling `toolchains/` directory (which carries `hdc`) is added to the task `PATH` as well."
+          }
+        }
+      },
+      {
+        "title": "Scripts",
+        "order": 2,
+        "properties": {
+          "day.script.keepAppRunning": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Keep the app **running** after a dayscript completes, so you can extend the script and re-drive the live app (`day drive`). Turn off to terminate the app when its script ends, as CI does. Per-task override: the `keepAlive` property on a `day` task in `tasks.json`. Toggle quickly with **Day: Toggle Keep App Running After Script**."
+          }
+        }
+      },
+      {
+        "title": "AI · Agents",
+        "order": 3,
+        "properties": {
+          "day.mcp.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Expose Day to AI agents via the Model Context Protocol (`day mcp-server`): build, launch, relaunch, and drive running apps, with screenshots agents can see."
+          }
         }
       }
-    },
+    ],
     "taskDefinitions": [
       {
         "type": "day",

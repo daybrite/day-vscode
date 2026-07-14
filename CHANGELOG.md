@@ -1,3 +1,13 @@
+## 0.4.2
+
+- Fixed: desktop apps launched with `--keep-alive` died when the VS Code task's terminal was
+  disposed (pty SIGHUP to the process group) — detached launches now run in their own process
+  group on every OS, so they survive like the mobile targets always did.
+- Settings panel: Day's preferences are grouped into titled sections (Day / Scripts /
+  AI · Agents) in the native Settings UI; a gear in the Day view title opens them filtered.
+- `Day: Toggle Keep App Running After Script` command; the cockpit's script item shows a pin
+  when keep-alive is on, and its hover toggles it in place.
+
 ## 0.4.0
 
 - Agentic development: registers `day mcp-server` with VS Code (1.101+) for every Day

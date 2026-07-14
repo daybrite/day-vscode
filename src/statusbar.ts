@@ -110,12 +110,16 @@ export class StatusBar implements vscode.Disposable {
     this.mode.show();
 
     // ---- run context (locale + script) — only when it changes behavior ------
+    const keepAlive = vscode.workspace
+      .getConfiguration("day")
+      .get<boolean>("script.keepAppRunning", true);
     const bits: string[] = [];
     if (sel.locale) {
       bits.push(`$(globe) ${sel.locale}`);
     }
     if (sel.script) {
-      bits.push(`$(beaker) ${sel.script.split("/").pop()}`);
+      // The pin marks keep-alive: the app stays open when the script completes.
+      bits.push(`$(beaker) ${sel.script.split("/").pop()}${keepAlive ? " $(pinned)" : ""}`);
     }
     if (bits.length > 0) {
       this.context.text = bits.join("  ");
@@ -130,6 +134,11 @@ export class StatusBar implements vscode.Disposable {
       if (sel.script) {
         md.appendMarkdown(
           `$(beaker) Dayscript \`${sel.script}\` — [change](${cmd("day.selectScript")}) · [clear](${cmd("day.setScript", "")})\n\n`,
+        );
+        md.appendMarkdown(
+          keepAlive
+            ? `$(pinned) App **stays running** after the script — [toggle](${cmd("day.toggleScriptKeepAlive")}) · [settings](${cmd("day.openSettings")})\n\n`
+            : `$(close) App **terminates** after the script — [toggle](${cmd("day.toggleScriptKeepAlive")}) · [settings](${cmd("day.openSettings")})\n\n`,
         );
       }
       this.context.tooltip = md;

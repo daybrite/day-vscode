@@ -56,6 +56,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const statusBar = new StatusBar(state, runner, currentProject);
   context.subscriptions.push(statusBar);
+  // Settings edited through the Settings UI must reflect in the cockpit immediately
+  // (e.g. the keep-alive pin on the script item).
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("day")) {
+        statusBar.update();
+      }
+    }),
+  );
 
   context.subscriptions.push(
     vscode.tasks.registerTaskProvider(DayTaskProvider.type, new DayTaskProvider(state, currentProject)),
@@ -254,6 +263,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     guard(async () => {
       await refreshProjects();
       tree.refresh();
+    }),
+  );
+
+  register("day.openSettings", () =>
+    vscode.commands.executeCommand("workbench.action.openSettings", "@ext:daybrite.day-vscode"),
+  );
+
+  register("day.toggleScriptKeepAlive", () =>
+    guard(async () => {
+      const cfg = vscode.workspace.getConfiguration("day");
+      const current = cfg.get<boolean>("script.keepAppRunning", true);
+      // Flip at the scope that currently supplies the value, so a workspace override stays a
+      // workspace override and everything else lands in user settings.
+      const info = cfg.inspect<boolean>("script.keepAppRunning");
+      const target =
+        info?.workspaceValue !== undefined
+          ? vscode.ConfigurationTarget.Workspace
+          : vscode.ConfigurationTarget.Global;
+      await cfg.update("script.keepAppRunning", !current, target);
+      statusBar.update();
+      vscode.window.setStatusBarMessage(
+        !current
+          ? "Day: apps will stay running after a dayscript completes"
+          : "Day: apps will terminate when their dayscript completes",
+        4000,
+      );
     }),
   );
 
