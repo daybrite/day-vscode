@@ -15,6 +15,9 @@ interface Running {
 
 export class Runner implements vscode.Disposable {
   private running = new Map<string, Running>();
+  // Targets launched through the native Run and Debug UI (F5 / Run menu). Tracked alongside
+  // task-launched targets so the cockpit's "running" view, Stop, and restart cover both paths.
+  private debug = new Map<string, vscode.DebugSession>();
   private emitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.emitter.event;
   private subs: vscode.Disposable[] = [];
@@ -38,7 +41,29 @@ export class Runner implements vscode.Disposable {
           this.emitter.fire();
         }
       }),
+      vscode.debug.onDidStartDebugSession((s) => {
+        const target = this.debugTarget(s);
+        if (target) {
+          this.debug.set(target, s);
+          this.emitter.fire();
+        }
+      }),
+      vscode.debug.onDidTerminateDebugSession((s) => {
+        const target = this.debugTarget(s);
+        if (target && this.debug.delete(target)) {
+          this.emitter.fire();
+        }
+      }),
     );
+  }
+
+  /** The Day target a debug session launches, if it is one of ours. */
+  private debugTarget(s: vscode.DebugSession): string | undefined {
+    if (s.type !== "day") {
+      return undefined;
+    }
+    const target = (s.configuration as { target?: unknown }).target;
+    return typeof target === "string" && target.length > 0 ? target : undefined;
   }
 
   private isTrackedLaunch(def: DayTaskDefinition): boolean {
@@ -46,11 +71,11 @@ export class Runner implements vscode.Disposable {
   }
 
   isRunning(target: string): boolean {
-    return this.running.has(target);
+    return this.running.has(target) || this.debug.has(target);
   }
 
   runningTargets(): string[] {
-    return [...this.running.keys()];
+    return [...new Set([...this.running.keys(), ...this.debug.keys()])];
   }
 
   private definition(command: "build" | "launch", target: string): DayTaskDefinition {
@@ -74,8 +99,9 @@ export class Runner implements vscode.Disposable {
       throw new Error("No targets selected. Tick one or more targets in the Day view.");
     }
     for (const target of targets) {
-      // Re-running a live target restarts it rather than stacking a second instance.
-      if (this.running.has(target)) {
+      // Re-running a live target restarts it rather than stacking a second instance — whether it
+      // was launched from the cockpit (a task) or the native Run UI (a debug session).
+      if (this.isRunning(target)) {
         await this.stop(target);
       }
       const exec = await vscode.tasks.executeTask(buildDayTask(this.definition("launch", target)));
@@ -103,10 +129,16 @@ export class Runner implements vscode.Disposable {
       this.running.delete(target);
       this.emitter.fire();
     }
+    const d = this.debug.get(target);
+    if (d) {
+      await vscode.debug.stopDebugging(d);
+      this.debug.delete(target);
+      this.emitter.fire();
+    }
   }
 
   async stopAll(): Promise<void> {
-    for (const target of [...this.running.keys()]) {
+    for (const target of this.runningTargets()) {
       await this.stop(target);
     }
   }

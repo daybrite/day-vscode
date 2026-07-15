@@ -27,7 +27,9 @@
   "icon": "media/day-icon.png",
   "main": "./dist/extension.js",
   "activationEvents": [
-    "workspaceContains:**/Day.toml"
+    "workspaceContains:**/Day.toml",
+    "onDebugResolve:day",
+    "onDebugDynamicConfigurations:day"
   ],
   "contributes": {
     "viewsContainers": {
@@ -315,6 +317,66 @@
             "description": "Expose Day to AI agents via the Model Context Protocol (`day mcp-server`): build, launch, relaunch, and drive running apps, with screenshots agents can see."
           }
         }
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "day",
+        "label": "Day",
+        "configurationAttributes": {
+          "launch": {
+            "properties": {
+              "target": {
+                "type": "string",
+                "description": "The <os>-<toolkit> target to launch (e.g. macos-appkit). Omit to use the targets ticked in the Day view."
+              },
+              "profile": {
+                "type": "string",
+                "enum": [
+                  "debug",
+                  "release"
+                ],
+                "description": "Build profile. Defaults to the Day cockpit's current mode."
+              },
+              "locale": {
+                "type": "string",
+                "description": "BCP-47 locale override for this run; empty = the app/system default."
+              },
+              "script": {
+                "type": "string",
+                "description": "Dayscript to drive after launch (path relative to the project root)."
+              },
+              "keepAlive": {
+                "type": "boolean",
+                "description": "Keep the app running after its dayscript completes (defaults to day.script.keepAppRunning)."
+              },
+              "project": {
+                "type": "string",
+                "description": "Path to the Day project root (the folder holding Day.toml). Defaults to the selected project."
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "day",
+            "request": "launch",
+            "name": "Day: Run",
+            "target": ""
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Day: Run a target",
+            "description": "Launch a Day app target (the same launch the Day cockpit's Run button performs).",
+            "body": {
+              "type": "day",
+              "request": "launch",
+              "name": "Day: Run ${1:macos-appkit}",
+              "target": "${1:macos-appkit}"
+            }
+          }
+        ]
       }
     ],
     "taskDefinitions": [

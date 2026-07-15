@@ -7,6 +7,7 @@ import * as vscode from "vscode";
 
 import { renderCommand, resolveCli } from "./cli";
 import { State } from "./config";
+import { DayConfigProvider, DayDebugAdapterFactory } from "./debug";
 import { DayProject, findProjects } from "./project";
 import { pickLocale, pickMode, pickProject, pickScript, pickTargets } from "./quickpicks";
 import { Runner } from "./runner";
@@ -389,6 +390,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }),
     );
   }
+
+  // Native Run and Debug (View → Run, F5): the `day` debug type launches through the SAME
+  // `day launch` path as the cockpit Run button. No debugger — a launch-only inline adapter streams
+  // the app's console into the Debug Console; sessions show in the cockpit's running view too.
+  const debugProvider = new DayConfigProvider({
+    project: currentProject,
+    selection: () => state.selection,
+    runnableTargets: selectedRunnable,
+    keepAliveDefault: () =>
+      vscode.workspace.getConfiguration("day").get<boolean>("script.keepAppRunning", true),
+    stopIfRunning: async (target) => {
+      if (runner.isRunning(target)) {
+        await runner.stop(target);
+      }
+    },
+  });
+  context.subscriptions.push(
+    vscode.debug.registerDebugConfigurationProvider("day", debugProvider),
+    vscode.debug.registerDebugConfigurationProvider(
+      "day",
+      debugProvider,
+      vscode.DebugConfigurationProviderTriggerKind.Dynamic,
+    ),
+    vscode.debug.registerDebugAdapterDescriptorFactory("day", new DayDebugAdapterFactory()),
+  );
 
   // Re-scan when a Day.toml appears/changes/disappears.
   const watcher = vscode.workspace.createFileSystemWatcher("**/Day.toml");
