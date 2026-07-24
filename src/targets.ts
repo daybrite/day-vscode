@@ -39,7 +39,7 @@ export const TARGETS: Target[] = [
   { name: "windows-gtk", toolkit: "gtk", kind: "desktop", host: "windows" },
   { name: "linux-qt", toolkit: "qt", kind: "desktop", host: "linux" },
   { name: "ios-uikit", toolkit: "uikit", kind: "iosSim", host: "macos" },
-  { name: "android-widget", toolkit: "widget", kind: "android", host: "any" },
+  { name: "android-mdc", toolkit: "mdc", kind: "android", host: "any" },
   { name: "ohos-arkui", toolkit: "arkui", kind: "harmonyOs", host: "any" },
 ];
 
