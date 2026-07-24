@@ -25,15 +25,17 @@ The `day` CLI:
 cargo install day-cli
 ```
 
-Set `day.cliPath` to your `day` binary. If it's not on `PATH` **and** the workspace is
-the Day repository (a Cargo workspace with a `day-cli` member), the extension automatically falls back
-to `cargo run -q -p day-cli --`, so it works in-repo with no installed binary.
+Set `day.cliPath` to your `day` binary. If it's left as `day` and isn't on `PATH`, the extension
+falls back to `cargo run` against a local `day-cli` — so it works with no installed binary in two
+layouts: when the **workspace is inside the Day repository**, and when a **`day/` checkout sits
+beside this extension's own `day-vscode/` source** (the dev-host case, resolved via
+`--manifest-path`, so a sibling project like `Day-Games/` loads too).
 
 ## Settings
 
 | Setting | Default | Description |
 |---|---|---|
-| `day.cliPath` | `day` | Path to the `day` CLI (falls back to `cargo run -p day-cli --` in the Day repo). |
+| `day.cliPath` | `day` | Path to the `day` CLI (falls back to `cargo run` in the Day repo, or a `day/` checkout beside the extension source). |
 | `day.defaultProfile` | `debug` | Default build mode. |
 | `day.defaultLocale` | `""` | Default `--locale` (empty = app/system default). |
 | `day.extraEnv` | `{}` | Extra `KEY=VALUE` env passed to every launch via `--env`. |

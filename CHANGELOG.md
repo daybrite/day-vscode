@@ -1,3 +1,13 @@
+## Unreleased
+
+- CLI resolution: when the extension runs from a `day-vscode/` source checkout that sits beside a
+  `day/` repo, it now builds the CLI from that peer repo via `cargo run --manifest-path`, so a
+  project opened from anywhere (e.g. a sibling `Day-Games/`) loads without an installed `day` on
+  PATH — not only projects opened from inside the Day repo.
+- A Day.toml found but unloadable no longer masquerades as "No Day project found": the sidebar
+  shows a distinct message, a notification names the cause (e.g. the `day` CLI couldn't run), and
+  the full attempted command and error go to a new **Day** output channel (`Day: Show Log`).
+
 ## 0.4.2
 
 - Fixed: desktop apps launched with `--keep-alive` died when the VS Code task's terminal was

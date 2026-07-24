@@ -10,6 +10,16 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 
+// Where this extension is loaded from, captured once at activation. When it runs from source
+// beside a `day/` checkout (an `--extensionDevelopmentPath` dev host in the daybrite monorepo),
+// `resolveCli` can build the CLI straight from that peer repo — see `findPeerDayRepo`.
+let extensionRoot: string | undefined;
+
+/** Record the extension's own directory (call once from `activate`). */
+export function setExtensionRoot(dir: string): void {
+  extensionRoot = dir;
+}
+
 export interface DayCli {
   /** The executable to spawn (e.g. "day" or "cargo"). */
   command: string;
@@ -47,6 +57,20 @@ export function findDayRepoRoot(start?: string): string | undefined {
   return undefined;
 }
 
+/** If this extension sits beside a local `day/` repo checkout (…/day-vscode next to …/day),
+ *  return that repo's root. Matches only a real checkout — a Cargo workspace carrying the
+ *  `day-cli` member — so an installed extension under `~/.vscode/extensions` never trips it. */
+export function findPeerDayRepo(): string | undefined {
+  if (!extensionRoot) {
+    return undefined;
+  }
+  const peer = path.join(path.dirname(extensionRoot), "day");
+  const looksLikeDayRepo =
+    fs.existsSync(path.join(peer, "Cargo.toml")) &&
+    fs.existsSync(path.join(peer, "crates", "day-cli", "Cargo.toml"));
+  return looksLikeDayRepo ? peer : undefined;
+}
+
 export function resolveCli(projectDir?: string): DayCli {
   const cfg = vscode.workspace.getConfiguration("day");
   const cliPath = (cfg.get<string>("cliPath") ?? "day").trim();
@@ -62,6 +86,22 @@ export function resolveCli(projectDir?: string): DayCli {
       baseArgs: ["run", "-q", "-p", "day-cli", "--"],
       cwd: repo,
       display: "cargo run -q -p day-cli --",
+    };
+  }
+
+  // Dev-host convenience: the extension runs from a `day-vscode/` checkout beside a `day/` repo,
+  // but the open project lives outside that repo (e.g. a sibling `Day-Games/`). Build the CLI
+  // from the peer repo via `--manifest-path` so its projects load with no installed `day` on
+  // PATH. cwd is the repo root, so cargo reads that workspace's `.cargo/config`, not the target
+  // project's.
+  const peer = findPeerDayRepo();
+  if (peer) {
+    const manifest = path.join(peer, "Cargo.toml");
+    return {
+      command: "cargo",
+      baseArgs: ["run", "--manifest-path", manifest, "-q", "-p", "day-cli", "--"],
+      cwd: peer,
+      display: `cargo run --manifest-path ${manifest} -q -p day-cli --`,
     };
   }
 

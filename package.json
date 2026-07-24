@@ -54,7 +54,13 @@
     "viewsWelcome": [
       {
         "view": "dayTargets",
+        "when": "!day.loadError",
         "contents": "No Day project found in this workspace.\n\nA Day project is a folder containing a [Day.toml](https://daybrite.dev) manifest.\n\n[Refresh](command:day.refresh)"
+      },
+      {
+        "view": "dayTargets",
+        "when": "day.loadError",
+        "contents": "A Day project was found, but the `day` CLI couldn't load it.\n\nSet `day.cliPath` to your `day` binary, or install it with `cargo install day-cli`.\n\n[Open Settings](command:day.openSettings)\n[Show Log](command:day.showLog)\n[Retry](command:day.refresh)"
       }
     ],
     "commands": [
@@ -166,6 +172,12 @@
         "icon": "$(gear)"
       },
       {
+        "command": "day.showLog",
+        "title": "Show Log",
+        "category": "Day",
+        "icon": "$(output)"
+      },
+      {
         "command": "day.toggleScriptKeepAlive",
         "title": "Toggle Keep App Running After Script",
         "category": "Day"
@@ -265,7 +277,7 @@
           "day.cliPath": {
             "type": "string",
             "default": "day",
-            "markdownDescription": "Path to the `day` CLI binary. If it is not found on `PATH` and the workspace is the Day repository (a Cargo workspace with a `day-cli` member), the extension falls back to `cargo run -q -p day-cli --`."
+            "markdownDescription": "Path to the `day` CLI binary. If it is left as `day` and not found on `PATH`, the extension falls back to `cargo run` against a local `day-cli`: the Day repository itself when the workspace is inside one, otherwise a `day/` checkout sitting beside this extension's own `day-vscode/` source (via `--manifest-path`)."
           },
           "day.defaultProfile": {
             "type": "string",
