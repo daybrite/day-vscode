@@ -34,7 +34,7 @@ function expandHome(p: string): string {
 
 /**
  * Process environment for the task itself (NOT the launched app — that's `extraEnv`/`--env`).
- * The `ohos-arkui` target needs `OHOS_NDK_HOME` at BUILD time (day-arkui-sys compiles its C++ shim
+ * The `harmony-arkui` target needs `OHOS_NDK_HOME` at BUILD time (day-arkui-sys compiles its C++ shim
  * with the NDK clang), and a GUI-launched VS Code usually doesn't carry it. Resolve it from the
  * `day.ohosNdkHome` setting or the common install locations, and put the SDK's sibling
  * `toolchains/` (hdc) on the task PATH. Returns {} for non-OHOS targets, deferring to the parent

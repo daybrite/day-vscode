@@ -13,7 +13,7 @@ metadata --json` project discovery, a `day` task type, doctor in a terminal. Tha
 to earn adoption (Tauri: 500k installs at 518 LOC) — but it leaves Day's two crown jewels
 unexploited: **the dayscript engine** (a TCP automation/introspection channel already inside
 every running app on all 7 toolkits) and **the 7-toolkit matrix itself** (no other framework can
-put AppKit, UIKit, Android, GTK, Qt, WinUI, and ArkUI behind one picker).
+put AppKit, UIKit, Android, GTK, Qt, XAML, and ArkUI behind one picker).
 
 ## Lessons that shape every choice below
 

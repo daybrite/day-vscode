@@ -34,13 +34,13 @@ export const TARGETS: Target[] = [
   { name: "macos-gtk", toolkit: "gtk", kind: "desktop", host: "macos" },
   { name: "macos-qt", toolkit: "qt", kind: "desktop", host: "macos" },
   { name: "linux-gtk", toolkit: "gtk", kind: "desktop", host: "linux" },
-  { name: "windows-winui", toolkit: "winui", kind: "desktop", host: "windows" },
+  { name: "windows-xaml", toolkit: "xaml", kind: "desktop", host: "windows" },
   { name: "windows-qt", toolkit: "qt", kind: "desktop", host: "windows" },
   { name: "windows-gtk", toolkit: "gtk", kind: "desktop", host: "windows" },
   { name: "linux-qt", toolkit: "qt", kind: "desktop", host: "linux" },
   { name: "ios-uikit", toolkit: "uikit", kind: "iosSim", host: "macos" },
   { name: "android-mdc", toolkit: "mdc", kind: "android", host: "any" },
-  { name: "ohos-arkui", toolkit: "arkui", kind: "harmonyOs", host: "any" },
+  { name: "harmony-arkui", toolkit: "arkui", kind: "harmonyOs", host: "any" },
 ];
 
 export function findTarget(name: string): Target | undefined {
