@@ -45,6 +45,10 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  # The e2e legs install the day CLI from day's main branch and a pinned VS Code; neither pushes
+  # here, so a weekly run is what notices when either moves out from under the extension.
+  schedule:
+    - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
       dry-run-publish:
@@ -122,6 +126,127 @@ jobs:
           name: day-vscode.vsix
           path: day-vscode.vsix
           if-no-files-found: error
+
+  # ── End to end on every desktop host (push to main / dispatch / weekly) ────────────────────
+  # Installs the .vsix this run packaged into a real VS Code, opens a project `day new app`
+  # scaffolded on the runner, and drives the extension the way a user does: tick the host's own
+  # combo, hit Run, watch the app build and launch. Each leg photographs its own platform, and
+  # the screenshots are the artifact — CI evidence first, README and Marketplace images second.
+  #
+  # Not on pull requests. A leg is 15–30 minutes (a cargo build of the Day framework from git
+  # dominates it) and UI automation flakes; neither belongs in front of a merge. `build` above
+  # stays the PR gate.
+  #
+  # Prerequisites per host mirror the day repository's own combo jobs (day/.github/workflows/
+  # ci.yml): macOS and Windows need nothing beyond Rust, Linux needs the GTK 4 development
+  # libraries. The whole Linux leg runs under one xvfb, which is what puts VS Code and the app
+  # it launches on the same display — `day launch` skips its own xvfb wrapper when DISPLAY is
+  # already set, so the app renders where the screenshot can see it.
+  e2e:
+    name: e2e ${{ matrix.combo }}
+    if: github.event_name != 'pull_request'
+    needs: [build]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-26, combo: macos-appkit }
+          - { os: ubuntu-24.04, combo: linux-gtk }
+          - { os: windows-latest, combo: windows-xaml }
+    env:
+      DAY_E2E_COMBO: ${{ matrix.combo }}
+      # Inside the workspace, so the rust-cache entry below can restore the fixture's target/.
+      DAY_E2E_FIXTURE_PARENT: ${{ github.workspace }}/e2e-fixture
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      # Not Swatinem/rust-cache: `day build` points CARGO_TARGET_DIR at
+      # `<project>/build/day/cargo/<target>/<profile>`, so a cache watching `target/` would store
+      # an empty directory. Cache that path directly, plus the registry and the git checkout of
+      # the day repository the fixture depends on.
+      #
+      # The key carries the run id and restores by prefix, so every run writes a fresh entry and
+      # picks up the newest previous one. A fixed key would be worse than useless: a cache entry
+      # is immutable, so an exact hit never re-saves and the cache freezes at whatever the first
+      # run happened to produce.
+      - name: Cache the fixture's Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            e2e-fixture/day-fixture/build/day/cargo
+          key: day-fixture-${{ runner.os }}-${{ matrix.combo }}-${{ github.run_id }}
+          restore-keys: |
+            day-fixture-${{ runner.os }}-${{ matrix.combo }}-
+
+      - name: Install the GTK 4 toolchain (linux-gtk)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          # Same set the day repository's linux-gtk leg installs. imagemagick supplies `import`,
+          # which is how a whole-desktop screenshot is taken under X.
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev pkg-config \
+            xvfb imagemagick fonts-noto-cjk
+
+      - name: Install the day CLI
+        uses: daybrite/actions/.github/actions/setup-day-cli@main
+        with:
+          # main, not latest: the CLI is not on crates.io yet (day DESIGN.md §1), so a release
+          # install has nothing to fetch.
+          version: main
+
+      - run: npm ci
+      - name: Bundle + compile
+        # The integration host loads package.json `main` (dist/extension.js), so the bundle has to
+        # exist even though the suite itself compiles to out/.
+        run: |
+          npm run bundle
+          npm run compile
+      - uses: actions/download-artifact@v8
+        with:
+          name: day-vscode.vsix
+
+      # Fast half: a real extension host, no UI automation. Fails the leg on its own.
+      - name: Integration suite (${{ matrix.combo }})
+        shell: bash
+        run: |
+          set -euo pipefail
+          run() { if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a "$@"; else "$@"; fi; }
+          run node test/run-integration.mjs
+
+      # Slow half: install the packaged extension, drive it, build and run the app, photograph it.
+      - name: Drive the extension and capture (${{ matrix.combo }})
+        shell: bash
+        env:
+          DAY_E2E_BUILD_TIMEOUT_MS: "1800000"
+        run: |
+          set -euo pipefail
+          # A screen big enough for the editor and the app window side by side; the Linux leg has
+          # no display of its own, and this is the one both processes share.
+          run() {
+            if [ "$RUNNER_OS" = Linux ]; then
+              xvfb-run -a --server-args="-screen 0 1920x1200x24" "$@"
+            else
+              "$@"
+            fi
+          }
+          run node test/e2e/drive.mjs --vsix day-vscode.vsix
+
+      - name: Upload the screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots-${{ matrix.combo }}
+          path: build/screenshots/
+          if-no-files-found: warn
 
   # ── GitHub Release (tags): today's install channel ─────────────────────────────────────────
   # The website's Getting Started curls .../releases/latest/download/day-vscode.vsix — keep the

@@ -58,6 +58,23 @@ Releases: pushing a `v*` tag builds, packages, and publishes to the Visual Studi
 and Open VSX (see `.github/workflows/ci.yml`). The extension's release cycle is independent of
 [day](https://github.com/daybrite/day)'s — it drives whatever `day` CLI is installed.
 
+### Tests
+
+Both suites scaffold their own project with `day new app`, so they need a `day` CLI: either on
+`PATH` or named by `DAY_BIN`.
+
+```bash
+npm run test:integration   # ~1 min: a real extension host, no UI automation
+npm run test:e2e           # drives the packaged .vsix and writes build/screenshots/
+npm run test:e2e -- --no-run   # …skipping the app build, which is most of the time
+```
+
+`test:integration` checks activation, the command registrations, and the task list, which is the
+CLI seam: tasks exist only if `day metadata --json` ran and parsed. `test:e2e` installs the
+`.vsix` into a pinned VS Code, opens the scaffold, ticks this host's own combo, runs it, and
+photographs each step. CI runs both per host — macOS builds `macos-appkit`, Windows
+`windows-xaml`, Linux `linux-gtk` — and uploads the screenshots.
+
 ## License
 
 [MPL-2.0](LICENSE), like Day itself.
