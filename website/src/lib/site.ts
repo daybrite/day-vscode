@@ -1,8 +1,12 @@
 // Base-path-aware URLs and the one place that knows where the Day docs live.
 //
-// This site is a GitHub project page, so it is served from /day-vscode/, not from the root: every
-// internal link and asset goes through `url()`. Framework documentation is NOT duplicated here —
-// `dayDocs()` builds links into daybrite.dev, and the docs pages lean on it heavily.
+// The site is served from the root of vscode.daybrite.dev, so `url()` is currently a no-op — it
+// stays because a base path is one `astro.config.mjs` line away and the alternative is hunting
+// down every template again. Framework documentation is NOT duplicated here: `dayDocs()` builds
+// links into daybrite.dev, and the docs pages lean on it heavily.
+
+/** Where this site lives. Kept beside `url()` so a move touches one file. */
+export const HOST = 'https://vscode.daybrite.dev';
 
 export const BASE: string = import.meta.env.BASE_URL;
 

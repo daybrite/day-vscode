@@ -253,7 +253,7 @@ jobs:
           path: build/screenshots/
           if-no-files-found: warn
 
-  # ── Documentation site → https://daybrite.github.io/day-vscode/ ───────────────────────────
+  # ── Documentation site → https://vscode.daybrite.dev ──────────────────────────────────────
   # Builds on every event so a broken site fails the PR that broke it; deploys only from main.
   #
   # The gallery's images come from the `screenshots-<combo>` artifacts the e2e job uploads. It

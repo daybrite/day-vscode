@@ -2,12 +2,12 @@
 import { defineConfig } from 'astro/config';
 import screenshots from './integrations/screenshots.mjs';
 
-// Deployed to GitHub Pages under the repository name, so every internal link and asset has to go
-// through `src/lib/site.ts`'s `url()` — a project page is served from /day-vscode/, not from the
-// root the way daybrite.dev is.
+// Deployed to GitHub Pages on the custom domain https://vscode.daybrite.dev (public/CNAME pins
+// it), which serves from the root — so there is no base path. Internal links still go through
+// `src/lib/site.ts`'s `url()`: it costs nothing at the root and means moving the site again is one
+// line here rather than an edit in every template.
 export default defineConfig({
-  site: 'https://daybrite.github.io',
-  base: '/day-vscode',
+  site: 'https://vscode.daybrite.dev',
   trailingSlash: 'ignore',
   // Same reason as the day website: lightningcss mishandles `background-clip: text`, which the
   // gradient headline depends on.

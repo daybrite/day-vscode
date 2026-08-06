@@ -1,6 +1,6 @@
 # Day for VS Code
 
-**Documentation: [daybrite.github.io/day-vscode](https://daybrite.github.io/day-vscode/)** —
+**Documentation: [vscode.daybrite.dev](https://vscode.daybrite.dev)** —
 install and update, getting started, troubleshooting, and screenshots from the latest CI run.
 
 Build and run [Day](https://daybrite.dev) apps — cross-platform native UI in Rust — across one or more
@@ -63,7 +63,7 @@ and Open VSX (see `.github/workflows/ci.yml`). The extension's release cycle is 
 
 ### The documentation site
 
-`website/` is an Astro site deployed to <https://daybrite.github.io/day-vscode/> by the `website`
+`website/` is an Astro site deployed to <https://vscode.daybrite.dev> by the `website`
 job. Its screenshot gallery is assembled from the `screenshots-<combo>` artifacts the e2e job
 uploads, newest first, so a docs-only change still ships the last captures.
 
