@@ -14,3 +14,4 @@ PLAN.md
 test/**
 .vscode-test/**
 build/**
+website/**

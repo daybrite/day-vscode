@@ -1,0 +1,57 @@
+---
+import '../styles/global.css';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+import { site, url } from '../lib/site';
+
+interface Props {
+  title?: string;
+  description?: string;
+  active?: string;
+}
+const { title, description = site.description, active } = Astro.props;
+const fullTitle = title ? `${title} — Day for VS Code` : `${site.name} — ${site.tagline}`;
+const canonical = Astro.site ? new URL(url(Astro.url.pathname.replace(/^\/day-vscode/, '')), Astro.site).href : undefined;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script is:inline>
+      // Resolve the theme before first paint so the page never flashes the wrong one.
+      (() => {
+        try {
+          const p = localStorage.getItem('day-theme') || 'system';
+          const dark = p === 'dark' || (p === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        } catch (e) {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      })();
+    </script>
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href={url('favicon.svg')} />
+    {canonical && <link rel="canonical" href={canonical} />}
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#090c15" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <Nav active={active} />
+    <main id="main"><slot /></main>
+    <Footer />
+    <style is:global>
+      .skip-link {
+        position: absolute; left: -9999px; top: 0; z-index: 50;
+        background: var(--surface); color: var(--text);
+        padding: 10px 16px; border-radius: 0 0 10px 0; border: 1px solid var(--border);
+      }
+      .skip-link:focus { left: 0; }
+      :focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 4px; }
+    </style>
+  </body>
+</html>

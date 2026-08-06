@@ -1,0 +1,48 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import { getCollection } from 'astro:content';
+import { url, dayDocs } from '../lib/site';
+
+interface Props {
+  title: string;
+  description: string;
+  slug: string;
+}
+const { title, description, slug } = Astro.props;
+
+const pages = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.order);
+const sections: Record<string, typeof pages> = {};
+for (const p of pages) (sections[p.data.section] ??= []).push(p);
+
+// The framework's own documentation sits in the sidebar beside this extension's, so the line
+// between them is visible instead of something a reader discovers by clicking.
+const dayLinks: [string, string][] = [
+  ['Install the CLI', 'getting-started'],
+  ['CLI reference', 'cli'],
+  ['Platforms and targets', 'platforms'],
+  ['dayscript', 'dayscript'],
+  ['Project structure', 'project-structure'],
+  ['Day for agents', 'for-agents'],
+];
+---
+<BaseLayout title={title} description={description} active={slug}>
+  <div class="container docs">
+    <nav class="docs-nav" aria-label="Documentation">
+      {Object.entries(sections).map(([name, items]) => (
+        <>
+          <h2>{name}</h2>
+          {items.map((p) => (
+            <a href={url(`docs/${p.id}`)} aria-current={p.id === slug ? 'page' : undefined}>
+              {p.data.title}
+            </a>
+          ))}
+        </>
+      ))}
+      <h2>Day framework</h2>
+      {dayLinks.map(([label, s]) => (
+        <a class="ext" href={dayDocs(s)}>{label}</a>
+      ))}
+    </nav>
+    <article class="prose"><slot /></article>
+  </div>
+</BaseLayout>

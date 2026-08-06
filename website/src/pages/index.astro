@@ -1,0 +1,112 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ScreenshotGallery from '../components/ScreenshotGallery.astro';
+import screenshots from '../data/screenshots.json';
+import { site, url, dayDocs } from '../lib/site';
+
+// The hero image is the first capture of the first platform the last CI run produced — the Day
+// view with a project loaded. No captures yet (a local build, or a run that failed) simply drops
+// the image rather than shipping a placeholder that pretends to be one.
+const hero = (screenshots as any).platforms?.[0]?.shots?.find((s: any) => s.slug === 'cockpit');
+const heroPlatform = (screenshots as any).platforms?.[0];
+
+const features = [
+  {
+    title: 'Every target in one list',
+    body: 'The Day view reads your Day.toml and lists each target. The ones this host cannot build are disabled with the reason, so you never start a build that was never going to work.',
+  },
+  {
+    title: 'Run several at once',
+    body: 'Tick two targets and both launch, each in its own terminal, each with its own stop and restart. Comparing AppKit against GTK is two clicks.',
+  },
+  {
+    title: 'Real tasks, real problems',
+    body: 'Every run is a VS Code task, so output keeps its colors and Rust errors land in the Problems panel through the $day-rustc matcher.',
+  },
+  {
+    title: 'Mode, locale, and script',
+    body: 'Debug or release, a --locale to test translations, and a dayscript to drive the app after launch — all from the sidebar, no launch.json required.',
+  },
+  {
+    title: 'Toolchains, checked',
+    body: 'Day: Doctor runs day doctor and reports what each toolkit needs and what is missing, which is the answer to most "it will not build" questions.',
+  },
+  {
+    title: 'Open to agents',
+    body: 'The extension registers Day’s MCP server with VS Code’s agent mode, so an agent can build, launch, drive the running app, and read screenshots back.',
+  },
+];
+---
+<BaseLayout>
+  <section class="container hero">
+    <p class="eyebrow">VS Code extension</p>
+    <h1><span class="grad-text">Build and run Day apps</span><br />without leaving the editor</h1>
+    <p class="lead">
+      Pick your targets, press Run, and watch native apps start on every platform your machine can
+      build for. The extension is a thin wrapper over the <code>day</code> CLI: it adds a cockpit
+      and gets out of the way.
+    </p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href={site.vsix}>Download the .vsix</a>
+      <a class="btn btn-ghost" href={url('docs/install')}>How to install</a>
+      <a class="btn btn-ghost" href={url('docs/getting-started')}>Getting started</a>
+      <a class="btn btn-ghost" href={site.repo}>Source</a>
+    </div>
+
+    {hero && (
+      <figure class="hero-shot">
+        <img
+          src={url(hero.file)}
+          width={hero.width}
+          height={hero.height}
+          alt={`The Day view in VS Code on ${heroPlatform.os}`}
+          fetchpriority="high"
+        />
+      </figure>
+    )}
+  </section>
+
+  <section class="container section" id="what">
+    <h2>What it adds</h2>
+    <p class="lead">
+      One sidebar, a status bar, a task type, and a debug type. Everything it does, it does by
+      running the CLI you already have.
+    </p>
+    <div class="feature-grid" style="margin-top: 32px">
+      {features.map((f) => (
+        <div class="card">
+          <h3>{f.title}</h3>
+          <p>{f.body}</p>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <section class="container section" id="screenshots">
+    <h2>On every desktop it supports</h2>
+    <p class="lead">
+      These are not staged. Each push to <code>main</code> installs the packaged extension into a
+      real VS Code on macOS, Windows, and Linux, scaffolds a project, builds and runs it, and
+      photographs the result. <a href={url('screenshots')}>See the full set.</a>
+    </p>
+    <div style="margin-top: 32px">
+      <ScreenshotGallery only={['cockpit', 'app']} compact />
+    </div>
+  </section>
+
+  <section class="container section" id="next">
+    <h2>Where to go next</h2>
+    <p class="lead">
+      The extension's own documentation is short by design. Everything about the framework — the
+      CLI, targets, project layout, scripting — lives on daybrite.dev.
+    </p>
+    <div class="next-grid" style="margin-top: 28px">
+      <a href={url('docs/install')}>Install and update<span>The release .vsix, or from source</span></a>
+      <a href={url('docs/getting-started')}>Getting started<span>Open a project, run targets, wire tasks</span></a>
+      <a href={url('docs/troubleshooting')}>Troubleshooting<span>Empty view, missing CLI, stalled build</span></a>
+      <a href={url('docs/reference')}>Commands and settings<span>The whole contributed surface</span></a>
+      <a href={dayDocs('getting-started')}>Install the day CLI ↗<span>daybrite.dev</span></a>
+      <a href={dayDocs('platforms')}>Targets and toolkits ↗<span>daybrite.dev</span></a>
+    </div>
+  </section>
+</BaseLayout>

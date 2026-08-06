@@ -1,0 +1,62 @@
+---
+import Logo from './Logo.astro';
+import ThemeToggle from './ThemeToggle.astro';
+import { site, url } from '../lib/site';
+
+interface Props { active?: string }
+const { active } = Astro.props;
+const links = [
+  { href: url('docs/install'), label: 'Install', key: 'install' },
+  { href: url('docs/getting-started'), label: 'Get started', key: 'getting-started' },
+  { href: url('docs/troubleshooting'), label: 'Troubleshooting', key: 'troubleshooting' },
+  { href: url('screenshots'), label: 'Screenshots', key: 'screenshots' },
+];
+---
+<header>
+  <nav class="container" aria-label="Main">
+    <a class="brand" href={url()} aria-label="Day for VS Code — home">
+      <Logo size={26} />
+      <span>Day <em>for VS Code</em></span>
+    </a>
+    <div class="links">
+      {links.map((l) => (
+        <a href={l.href} aria-current={active === l.key ? 'page' : undefined}>{l.label}</a>
+      ))}
+      <a class="ext" href={site.day + '/docs/'}>Day docs</a>
+    </div>
+    <div class="right">
+      <ThemeToggle />
+      <a class="btn btn-ghost gh" href={site.repo} aria-label="Source on GitHub">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.2.8-.6v-2c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.2-3.2-.1-.4-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11 11 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.8.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.7-2.8 5.7-5.5 6 .4.4.8 1.1.8 2.2v3.3c0 .4.2.7.8.6A12 12 0 0 0 12 .5z"/></svg>
+      </a>
+    </div>
+  </nav>
+</header>
+
+<style>
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  nav { display: flex; align-items: center; gap: 20px; height: 62px; }
+  .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text); font-weight: 750; white-space: nowrap; }
+  .brand em { font-style: normal; font-weight: 500; color: var(--muted); }
+  .links { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+  .links a {
+    padding: 7px 12px; border-radius: 8px; color: var(--muted);
+    font-size: 0.94rem; font-weight: 550;
+  }
+  .links a:hover { background: var(--hover); color: var(--text); }
+  .links a[aria-current='page'] { color: var(--text); background: var(--hover); }
+  .links .ext::after { content: '↗'; font-size: 0.78em; margin-left: 4px; color: var(--faint); }
+  .right { display: flex; align-items: center; gap: 10px; }
+  .gh { padding: 8px 10px; }
+  @media (max-width: 860px) {
+    nav { height: auto; flex-wrap: wrap; padding-block: 10px; gap: 10px; }
+    .links { margin-left: 0; order: 3; width: 100%; }
+    .right { margin-left: auto; }
+    .brand em { display: none; }
+  }
+</style>

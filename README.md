@@ -1,5 +1,8 @@
 # Day for VS Code
 
+**Documentation: [daybrite.github.io/day-vscode](https://daybrite.github.io/day-vscode/)** —
+install and update, getting started, troubleshooting, and screenshots from the latest CI run.
+
 Build and run [Day](https://daybrite.dev) apps — cross-platform native UI in Rust — across one or more
 targets, straight from VS Code. It's a thin, conventional wrapper over the `day` CLI: each launch runs
 as a VS Code **Task** in its own integrated terminal, so output is native (ANSI colors intact) and
@@ -57,6 +60,18 @@ target. `npx @vscode/vsce package` produces an installable `.vsix`.
 Releases: pushing a `v*` tag builds, packages, and publishes to the Visual Studio Marketplace
 and Open VSX (see `.github/workflows/ci.yml`). The extension's release cycle is independent of
 [day](https://github.com/daybrite/day)'s — it drives whatever `day` CLI is installed.
+
+### The documentation site
+
+`website/` is an Astro site deployed to <https://daybrite.github.io/day-vscode/> by the `website`
+job. Its screenshot gallery is assembled from the `screenshots-<combo>` artifacts the e2e job
+uploads, newest first, so a docs-only change still ships the last captures.
+
+```bash
+cd website
+npm install
+npm run dev      # picks up ../build/screenshots/ from a local test:e2e run
+```
 
 ### Tests
 

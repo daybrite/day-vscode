@@ -253,6 +253,80 @@ jobs:
           path: build/screenshots/
           if-no-files-found: warn
 
+  # ── Documentation site → https://daybrite.github.io/day-vscode/ ───────────────────────────
+  # Builds on every event so a broken site fails the PR that broke it; deploys only from main.
+  #
+  # The gallery's images come from the `screenshots-<combo>` artifacts the e2e job uploads. It
+  # reads them from the REPOSITORY's artifact list rather than from this run, newest first, which
+  # gets the right answer in all three cases: a run that just captured them (its uploads are the
+  # newest entries), a docs-only push with e2e skipped (the previous run's captures), and a run
+  # where one leg failed (that platform keeps its last good set instead of vanishing).
+  website:
+    name: website
+    needs: [build, e2e]
+    # `!cancelled()` rather than `success()`: e2e is skipped on pull requests and may fail on one
+    # host, and neither should stop the documentation from building.
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # list and download artifacts from earlier runs
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: day-vscode-pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Fetch the newest screenshots
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p website/screenshot-artifacts
+          # Newest first; `sort -u -k1,1` keeps the first row per artifact name, i.e. the latest
+          # capture set for each platform. An expired artifact is skipped rather than 404ing.
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.name | startswith("screenshots-")) | select(.expired == false) | "\(.name) \(.id)"' \
+            | sort -u -k1,1 > artifacts.txt || true
+          if [ ! -s artifacts.txt ]; then
+            echo "::notice::no screenshot artifacts available — the gallery will say so"
+            exit 0
+          fi
+          while read -r name id; do
+            echo "▸ $name (#$id)"
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$name.zip"
+            unzip -q -o "$name.zip" -d "website/screenshot-artifacts/$name"
+            rm "$name.zip"
+          done < artifacts.txt
+          find website/screenshot-artifacts -name '*.png' | wc -l | xargs echo "captures:"
+
+      - name: Build the site
+        working-directory: website
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload the Pages artifact
+        if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/dist
+
+      - name: Deploy to GitHub Pages
+        if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+        id: deploy
+        uses: actions/deploy-pages@v5
+
   # ── GitHub Release (tags): today's install channel ─────────────────────────────────────────
   # The website's Getting Started curls .../releases/latest/download/day-vscode.vsix — keep the
   # asset name STABLE.

@@ -1,0 +1,93 @@
+---
+// The gallery of captures the e2e workflow produced. Data comes from src/data/screenshots.json,
+// which scripts/assemble-screenshots.mjs writes from the `screenshots-<combo>` artifacts before
+// Astro reads a single module.
+//
+// Filtering is a few lines of inline JS toggling [hidden] on figures already in the DOM: every
+// platform's images ship in the page, so switching tabs never waits on a request, and with
+// JavaScript off the reader sees all of them rather than none.
+import data from '../data/screenshots.json';
+import { url } from '../lib/site';
+
+interface Props {
+  /** Show only these capture slugs, in this order (the landing page wants a curated few). */
+  only?: string[];
+  /** Drop the provenance note, for embedding under a section that already explains itself. */
+  compact?: boolean;
+}
+const { only, compact = false } = Astro.props;
+const platforms = (data as any).platforms ?? [];
+const captured = platforms[0]?.captured;
+const when = captured
+  ? new Date(captured).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  : null;
+
+const shotsFor = (p: any) => (only ? p.shots.filter((s: any) => only.includes(s.slug)) : p.shots);
+---
+
+{platforms.length === 0 ? (
+  <p class="empty card">
+    No captures yet. The <a href="https://github.com/daybrite/day-vscode/actions">e2e workflow</a>
+    photographs the extension on macOS, Windows, and Linux on every push to <code>main</code>, and
+    this gallery shows whatever it produced last.
+  </p>
+) : (
+  <div class="gallery" data-gallery>
+    <div class="shot-tabs" role="group" aria-label="Filter by platform">
+      <button type="button" data-combo="all" aria-pressed="true">All platforms</button>
+      {platforms.map((p: any) => (
+        <button type="button" data-combo={p.combo} data-pf={p.combo} aria-pressed="false">
+          {p.os} · {p.toolkit}
+        </button>
+      ))}
+    </div>
+
+    <div class="shot-grid">
+      {platforms.flatMap((p: any) =>
+        shotsFor(p).map((s: any) => (
+          <figure class="shot" data-combo={p.combo}>
+            <img
+              src={url(s.file)}
+              width={s.width}
+              height={s.height}
+              loading="lazy"
+              decoding="async"
+              alt={`${s.caption} — ${p.os}, ${p.toolkit}`}
+            />
+            <figcaption>
+              <b>{p.os} · {p.toolkit}</b>
+              {s.caption}
+            </figcaption>
+          </figure>
+        )),
+      )}
+    </div>
+
+    {when && !compact && (
+      <p class="when">
+        Captured {when} by the extension's own end-to-end run: a project scaffolded on the runner,
+        the packaged <code>.vsix</code> installed into a real VS Code, and the app built and
+        launched through the extension.
+      </p>
+    )}
+  </div>
+)}
+
+<style>
+  .empty { color: var(--muted); }
+  .when { color: var(--faint); font-size: 0.9rem; margin-top: 24px; max-width: 70ch; }
+</style>
+
+<script is:inline>
+  for (const root of document.querySelectorAll('[data-gallery]')) {
+    const buttons = root.querySelectorAll('.shot-tabs button');
+    const figures = root.querySelectorAll('.shot');
+    for (const b of buttons) {
+      b.addEventListener('click', () => {
+        const want = b.dataset.combo;
+        for (const other of buttons) other.setAttribute('aria-pressed', String(other === b));
+        for (const f of figures) f.hidden = want !== 'all' && f.dataset.combo !== want;
+      });
+    }
+  }
+</script>

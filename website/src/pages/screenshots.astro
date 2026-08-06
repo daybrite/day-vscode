@@ -1,0 +1,55 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ScreenshotGallery from '../components/ScreenshotGallery.astro';
+import screenshots from '../data/screenshots.json';
+import { site } from '../lib/site';
+
+const platforms = (screenshots as any).platforms ?? [];
+const total = platforms.reduce((n: number, p: any) => n + p.shots.length, 0);
+---
+<BaseLayout
+  title="Screenshots"
+  description="The Day extension on macOS, Windows, and Linux, captured by CI on every push."
+  active="screenshots"
+>
+  <div class="container section">
+    <p class="eyebrow">From the last CI run</p>
+    <h1>Screenshots</h1>
+    <p class="lead">
+      {total > 0
+        ? `${total} captures across ${platforms.length} platform${platforms.length === 1 ? '' : 's'}, taken by the extension's own end-to-end run.`
+        : 'The gallery fills in from CI artifacts; this build had none.'}
+      Every one of them was produced by a script, on a clean runner, against the same
+      <code>.vsix</code> the release publishes.
+    </p>
+
+    <div style="margin-top: 36px">
+      <ScreenshotGallery />
+    </div>
+
+    <div class="card how">
+      <h2>How these are made</h2>
+      <p>
+        The <a href={site.repo + '/blob/main/test/e2e/drive.mjs'}>e2e driver</a> downloads a pinned
+        VS Code, installs the packaged extension into it, scaffolds a Day project on the runner with
+        <code>day new app</code>, then drives the UI: open the Day view, tick the host's own target,
+        run it, wait for the app to launch, photograph each step. macOS builds
+        <code>macos-appkit</code>, Windows builds <code>windows-xaml</code>, and Linux builds
+        <code>linux-gtk</code> under a virtual display that holds both the editor and the app it
+        launched.
+      </p>
+      <p>
+        Because the same script produces the pictures and the assertions, a screenshot that looks
+        right is also a test that passed. Anything the extension stops doing shows up here as a
+        missing image rather than as stale marketing.
+      </p>
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  .how { margin-top: 52px; max-width: 78ch; }
+  .how h2 { margin: 0 0 12px; font-size: 1.2rem; }
+  .how p { color: var(--muted); margin: 0 0 12px; }
+  .how p:last-child { margin-bottom: 0; }
+</style>

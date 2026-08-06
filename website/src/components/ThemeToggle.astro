@@ -1,0 +1,45 @@
+---
+// Light / system / dark, remembered in localStorage under the same key daybrite.dev uses, so a
+// reader who set a preference on one site keeps it on the other (same origin only for
+// github.io, but the key stays consistent either way).
+---
+<div class="theme" role="group" aria-label="Color theme">
+  <button data-theme-set="light" title="Light" aria-label="Light">☀</button>
+  <button data-theme-set="system" title="Match system" aria-label="Match system">◐</button>
+  <button data-theme-set="dark" title="Dark" aria-label="Dark">☾</button>
+</div>
+
+<style>
+  .theme { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--hover); border: 1px solid var(--border); }
+  .theme button {
+    font: inherit; font-size: 0.86rem; line-height: 1; cursor: pointer;
+    width: 28px; height: 24px; border: 0; border-radius: 999px;
+    background: transparent; color: var(--faint);
+  }
+  .theme button:hover { color: var(--text); }
+  .theme button[aria-pressed='true'] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+</style>
+
+<script is:inline>
+  (() => {
+    const KEY = 'day-theme';
+    const apply = (pref) => {
+      const dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      for (const b of document.querySelectorAll('[data-theme-set]')) {
+        b.setAttribute('aria-pressed', String(b.dataset.themeSet === pref));
+      }
+    };
+    let pref = 'system';
+    try { pref = localStorage.getItem(KEY) || 'system'; } catch {}
+    apply(pref);
+    for (const b of document.querySelectorAll('[data-theme-set]')) {
+      b.addEventListener('click', () => {
+        pref = b.dataset.themeSet;
+        try { localStorage.setItem(KEY, pref); } catch {}
+        apply(pref);
+      });
+    }
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => apply(pref));
+  })();
+</script>

@@ -6,3 +6,11 @@ day-vscode.vsix
 # @vscode/test-electron downloads VS Code here; the e2e run writes screenshots to build/.
 .vscode-test/
 build/
+
+# The docs site: build output, npm deps, and the screenshot data CI assembles.
+website/dist/
+website/node_modules/
+website/.astro/
+website/screenshot-artifacts/
+website/public/screenshots/
+website/src/data/screenshots.json

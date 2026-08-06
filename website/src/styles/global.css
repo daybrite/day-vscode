@@ -1,0 +1,480 @@
+/* Day for VS Code — design system.
+
+   Deliberately the same file as daybrite.dev's (day/website/src/styles/global.css): the extension
+   site is part of the same product, and two hand-maintained palettes would drift within a release.
+   Copy changes across when you touch either. Everything below the "extension site" heading is
+   local to this site — the docs layout and the screenshot gallery, which daybrite.dev has no need
+   for. No external fonts or CSS dependencies: a system stack plus spacing and colour do the work.
+*/
+
+:root {
+  --bg: #090c15;
+  --bg-2: #0c1020;
+  --surface: #121829;
+  --surface-2: #172038;
+  --border: #232c46;
+  --border-soft: #1b2338;
+
+  --text: #eef2ff;
+  --muted: #aab3cf;
+  --faint: #737d9c;
+
+  --brand: #6aa4ff;
+  --brand-strong: #3b82f6;
+  --sun: #ffc24b;
+  --sun-2: #ff8f5e;
+
+  /* theme-adaptive overlays (used for hover/segment fills instead of hardcoded white) */
+  --hover: rgba(255, 255, 255, 0.05);
+  --hover-strong: rgba(255, 255, 255, 0.09);
+
+  --grad-day: linear-gradient(115deg, #ffc861 0%, #ff8f5e 38%, #6aa4ff 100%);
+  --grad-text: linear-gradient(115deg, #ffd07a 0%, #ff9e73 42%, #7fb2ff 100%);
+
+  /* Per-target platform accents, used wherever the site names a platform (landing grid,
+     gallery captions, hero carousel, docs prose). The palette is the iOS system palette
+     (HIG "Color" specifications): DARK variants here, light variants in the light theme
+     below, so both modes get the shade Apple tuned for that background. Assignments lean
+     on each platform's own associations — iOS keeps the system Blue, macOS the Apple-family
+     Indigo, Android the robot's Green, GTK the Linux-Mint Mint, Qt the KDE-Plasma Cyan,
+     Windows the classic-desktop Teal, HarmonyOS the Huawei Red, the web HTML's Orange. */
+  --pf-macos-appkit: #5e5ce6;  /* indigo */
+  --pf-ios-uikit: #0a84ff;     /* blue */
+  --pf-android-mdc: #30d158;   /* green */
+  --pf-linux-gtk: #63e6e2;     /* mint */
+  --pf-linux-qt: #64d2ff;      /* cyan */
+  --pf-windows-xaml: #40c8e0; /* teal */
+  --pf-harmony-arkui: #ff453a;    /* red */
+  --pf-web-dom: #ff9f0a;       /* orange */
+
+  /* OS-level aliases (the hero carousel is keyed by OS) resolve to the canonical target. */
+  --pf-macos: var(--pf-macos-appkit);
+  --pf-ios: var(--pf-ios-uikit);
+  --pf-android: var(--pf-android-mdc);
+  --pf-linux: var(--pf-linux-gtk);
+  --pf-windows: var(--pf-windows-xaml);
+  --pf-harmony: var(--pf-harmony-arkui);
+  --pf-web: var(--pf-web-dom);
+
+  --radius: 14px;
+  --radius-lg: 22px;
+  --maxw: 1080px;
+  --shadow: 0 18px 50px -20px rgba(0, 0, 0, 0.7);
+
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', Menlo, monospace;
+
+  color-scheme: dark;
+}
+
+/* Light palette. The applied theme (light/dark) is set on <html data-theme> before paint by the
+   inline script in BaseLayout; the footer's three-way selector chooses light / system / dark and
+   remembers it in localStorage. "system" resolves to light or dark at runtime. */
+:root[data-theme='light'] {
+  --bg: #ffffff;
+  --bg-2: #f5f7fc;
+  --surface: #ffffff;
+  --surface-2: #eef2f9;
+  --border: #dce3ef;
+  --border-soft: #e8edf5;
+
+  --text: #0d1526;
+  --muted: #47546d;
+  --faint: #74809b;
+
+  --brand: #2f6fde;
+  --brand-strong: #2563eb;
+  --sun: #c17512; /* deeper amber, readable on white */
+  --sun-2: #ff8f5e;
+
+  --hover: rgba(15, 25, 48, 0.05);
+  --hover-strong: rgba(15, 25, 48, 0.09);
+
+  --grad-text: linear-gradient(115deg, #e08a00 0%, #f9703e 42%, #2f6fde 100%);
+  --shadow: 0 18px 46px -22px rgba(20, 33, 66, 0.26);
+
+  /* The iOS palette's LIGHT variants — the shades Apple tuned for white backgrounds. */
+  --pf-macos-appkit: #5856d6;  /* indigo */
+  --pf-ios-uikit: #007aff;     /* blue */
+  --pf-android-mdc: #34c759;   /* green */
+  --pf-linux-gtk: #00c7be;     /* mint */
+  --pf-linux-qt: #32ade6;      /* cyan */
+  --pf-windows-xaml: #30b0c7; /* teal */
+  --pf-harmony-arkui: #ff3b30;    /* red */
+  --pf-web-dom: #ff9500;       /* orange */
+
+  color-scheme: light;
+}
+
+/* Platform-reference hook: any element carrying data-pf="<target>" gets its accent as
+   `--pf`. The secondary desktop combos take their toolkit family's color. */
+[data-pf='macos-appkit'] { --pf: var(--pf-macos-appkit); }
+[data-pf='ios-uikit'] { --pf: var(--pf-ios-uikit); }
+[data-pf='android-mdc'] { --pf: var(--pf-android-mdc); }
+[data-pf='linux-gtk'], [data-pf='macos-gtk'], [data-pf='windows-gtk'] { --pf: var(--pf-linux-gtk); }
+[data-pf='linux-qt'], [data-pf='macos-qt'], [data-pf='windows-qt'] { --pf: var(--pf-linux-qt); }
+[data-pf='windows-xaml'] { --pf: var(--pf-windows-xaml); }
+[data-pf='harmony-arkui'] { --pf: var(--pf-harmony-arkui); }
+[data-pf='web-dom'] { --pf: var(--pf-web-dom); }
+
+* { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  font-size: 17px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+a { color: var(--brand); text-decoration: none; }
+a:hover { color: #9cc2ff; }
+
+h1, h2, h3, h4 { line-height: 1.15; letter-spacing: -0.02em; font-weight: 700; }
+
+img { max-width: 100%; display: block; }
+
+code, pre { font-family: var(--mono); }
+
+::selection { background: rgba(106, 164, 255, 0.28); }
+
+/* ---- layout primitives ---- */
+.container { width: 100%; max-width: var(--maxw); margin-inline: auto; padding-inline: 24px; }
+.section { padding-block: 84px; }
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--sun);
+  margin: 0 0 14px;
+}
+.lead { color: var(--muted); font-size: 1.12rem; max-width: 62ch; }
+
+/* Gradient text. Guarded with @supports so engines that can't clip a background to the glyphs
+   (some older Chromium-based WebView / QtWebEngine builds) fall back to a solid, readable colour
+   instead of painting the gradient as a filled rectangle over now-invisible text. The gradient
+   background and the transparent fill are applied ONLY inside the @supports block, so a
+   non-supporting engine never receives a background to mis-paint. */
+.grad-text {
+  color: var(--brand-strong);
+}
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .grad-text {
+    background-image: var(--grad-text);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+}
+
+/* ---- buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: 999px;
+  font-weight: 650;
+  font-size: 0.98rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.2s ease, background 0.2s ease;
+  white-space: nowrap;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn-primary {
+  background: var(--grad-day);
+  color: #14120c;
+  box-shadow: 0 12px 30px -12px rgba(255, 160, 90, 0.6);
+}
+.btn-primary:hover { color: #14120c; box-shadow: 0 16px 40px -12px rgba(255, 160, 90, 0.75); }
+.btn-ghost {
+  background: var(--hover);
+  border-color: var(--border);
+  color: var(--text);
+}
+.btn-ghost:hover { background: var(--hover-strong); color: var(--text); }
+
+/* ---- cards ---- */
+.card {
+  background: linear-gradient(180deg, var(--surface), var(--bg-2));
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--hover);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+/* ---- code blocks ---- */
+pre.code {
+  background: #0b1020;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  overflow-x: auto;
+  font-size: 0.86rem;
+  line-height: 1.65;
+  color: #d7e0f5;
+  box-shadow: var(--shadow);
+}
+pre.code code { color: inherit; background: none; padding: 0; }
+:not(pre) > code {
+  background: color-mix(in srgb, var(--brand) 14%, transparent);
+  color: var(--brand-strong);
+  padding: 0.12em 0.4em;
+  border-radius: 6px;
+  font-size: 0.88em;
+}
+/* Target names in prose (`macos-appkit`, `web-dom`, …) wear their platform accent — the
+   accent-target-code rehype plugin stamps data-pf on matching inline code at build time. */
+:not(pre) > code[data-pf] {
+  color: color-mix(in srgb, var(--pf) 78%, var(--text));
+  background: color-mix(in srgb, var(--pf) 13%, transparent);
+}
+
+/* very light syntax tint (token classes emitted by the CodeSample component) */
+.tok-kw { color: #ff9e73; }
+.tok-fn { color: #7fb2ff; }
+.tok-str { color: #9fe0a6; }
+.tok-com { color: var(--faint); font-style: italic; }
+.tok-punct { color: #93a0c2; }
+.tok-num { color: #ffce7a; }
+
+/* ---- misc ---- */
+.hr { height: 1px; background: var(--border-soft); border: 0; margin: 0; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+@media (max-width: 720px) {
+  body { font-size: 16px; }
+  .section { padding-block: 60px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { transition: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   Extension site — everything below is local to daybrite.github.io/day-vscode
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ---- docs shell ---- */
+.docs {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+  padding-block: 44px 84px;
+}
+/* Grid items default to `min-width: auto`, so one unbreakable line — a long `curl` URL in a code
+   block — sets the track's minimum and pushes the whole page sideways on a phone. The `pre` and
+   the table already scroll on their own; this is what lets them. */
+.docs > * { min-width: 0; }
+.docs-nav {
+  position: sticky;
+  top: 84px;
+  font-size: 0.94rem;
+}
+.docs-nav h2 {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--faint);
+  margin: 22px 0 8px;
+  font-weight: 700;
+}
+.docs-nav h2:first-child { margin-top: 0; }
+.docs-nav a {
+  display: block;
+  padding: 6px 12px;
+  border-radius: 8px;
+  color: var(--muted);
+  border-left: 2px solid transparent;
+}
+.docs-nav a:hover { background: var(--hover); color: var(--text); }
+.docs-nav a[aria-current='page'] {
+  color: var(--text);
+  background: var(--hover);
+  border-left-color: var(--sun);
+  font-weight: 650;
+}
+.docs-nav .ext::after {
+  content: '↗';
+  font-size: 0.78em;
+  color: var(--faint);
+  margin-left: 5px;
+}
+
+/* ---- docs prose ---- */
+.prose { max-width: 74ch; }
+.prose > h1 { font-size: clamp(2rem, 4vw, 2.6rem); margin: 0 0 10px; }
+.prose > h2 {
+  font-size: 1.42rem;
+  margin: 46px 0 12px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border-soft);
+}
+.prose > h3 { font-size: 1.1rem; margin: 30px 0 8px; }
+.prose p, .prose li { color: var(--muted); }
+.prose li { margin: 6px 0; }
+.prose strong { color: var(--text); font-weight: 650; }
+.prose pre {
+  background: #0b1020;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  overflow-x: auto;
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 18px 0;
+  font-size: 0.94rem;
+  display: block;
+  overflow-x: auto;
+}
+.prose th, .prose td {
+  text-align: left;
+  padding: 9px 14px 9px 0;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--muted);
+  vertical-align: top;
+}
+.prose th { color: var(--text); font-weight: 650; white-space: nowrap; }
+.prose blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 3px solid var(--sun);
+  background: var(--hover);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.prose blockquote p:last-child { margin-bottom: 0; }
+.prose kbd {
+  font-family: var(--mono);
+  font-size: 0.82em;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  background: var(--surface-2);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* ---- screenshot gallery ---- */
+.shot-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; }
+.shot-tabs button {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--hover);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+.shot-tabs button:hover { background: var(--hover-strong); color: var(--text); }
+.shot-tabs button[aria-pressed='true'] {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--pf, var(--brand)) 60%, var(--border));
+  background: color-mix(in srgb, var(--pf, var(--brand)) 16%, transparent);
+}
+.shot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 26px;
+}
+.shot {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.shot img {
+  width: 100%;
+  height: auto;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-2);
+}
+.shot figcaption { padding: 12px 16px 14px; font-size: 0.88rem; color: var(--muted); }
+.shot figcaption b { display: block; color: var(--text); font-weight: 650; margin-bottom: 2px; }
+.shot[hidden] { display: none; }
+
+/* ---- landing ---- */
+.hero { padding-block: 76px 56px; text-align: center; }
+.hero h1 { font-size: clamp(2.4rem, 6vw, 3.6rem); margin: 0 0 16px; }
+.hero .lead { margin-inline: auto; font-size: 1.18rem; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 30px; }
+.hero-shot {
+  margin: 52px auto 0;
+  max-width: 940px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+}
+.feature-grid h3 { margin: 0 0 8px; font-size: 1.05rem; }
+.feature-grid p { margin: 0; color: var(--muted); font-size: 0.96rem; }
+.next-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+}
+.next-grid a {
+  display: block;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 650;
+}
+.next-grid a:hover { border-color: var(--brand); color: var(--text); }
+.next-grid span { display: block; font-weight: 400; color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+
+@media (max-width: 900px) {
+  .docs { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .docs-nav {
+    position: static;
+    border-bottom: 1px solid var(--border-soft);
+    padding-bottom: 18px;
+    margin-bottom: 28px;
+  }
+  .docs-nav h2 { margin-top: 14px; }
+  .shot-grid { grid-template-columns: 1fr; }
+}
