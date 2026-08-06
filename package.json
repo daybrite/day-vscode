@@ -60,7 +60,7 @@
       {
         "view": "dayTargets",
         "when": "day.loadError",
-        "contents": "A Day project was found, but the `day` CLI couldn't load it.\n\nSet `day.cliPath` to your `day` binary, or install it with `cargo install day-cli`.\n\n[Open Settings](command:day.openSettings)\n[Show Log](command:day.showLog)\n[Retry](command:day.refresh)"
+        "contents": "A Day project was found, but the `day` CLI couldn't run.\n\nThe extension drives the CLI for every build and launch, so one has to be installed.\n\n[Install the day CLI](command:day.installCli)\n[Set day.cliPath](command:day.openSettings)\n[Show Log](command:day.showLog)\n[Retry](command:day.refresh)"
       }
     ],
     "commands": [
@@ -161,7 +161,7 @@
       },
       {
         "command": "day.newProject",
-        "title": "New Project…",
+        "title": "New Project\u2026",
         "category": "Day",
         "icon": "$(new-folder)"
       },
@@ -181,6 +181,12 @@
         "command": "day.toggleScriptKeepAlive",
         "title": "Toggle Keep App Running After Script",
         "category": "Day"
+      },
+      {
+        "command": "day.installCli",
+        "title": "Install the day CLI\u2026",
+        "category": "Day",
+        "icon": "$(cloud-download)"
       }
     ],
     "menus": {
@@ -320,7 +326,7 @@
         }
       },
       {
-        "title": "AI · Agents",
+        "title": "AI \u00b7 Agents",
         "order": 3,
         "properties": {
           "day.mcp.enabled": {
@@ -494,7 +500,7 @@
     "mcpServerDefinitionProviders": [
       {
         "id": "day",
-        "label": "Day — build, run, and drive Day apps"
+        "label": "Day \u2014 build, run, and drive Day apps"
       }
     ]
   },
@@ -504,7 +510,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
-    "test:integration": "npm run compile && node test/run-integration.mjs",
+    "test:integration": "npm run bundle && npm run compile && node test/run-integration.mjs",
     "test:e2e": "node test/e2e/drive.mjs"
   },
   "devDependencies": {

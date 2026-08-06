@@ -14,6 +14,8 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
 
+import { installRoutes } from "../install";
+
 type Check = [name: string, fn: () => Promise<void> | void];
 
 /** The combo the CI leg scaffolded for (macos-appkit / windows-xaml / linux-gtk). */
@@ -68,6 +70,30 @@ const checks: Check[] = [
       // The view id is what `views.day[0].id` contributes; focusing it is the same command the
       // activity-bar icon runs, and it throws if the view was never registered.
       await vscode.commands.executeCommand("dayTargets.focus");
+    },
+  ],
+  [
+    "the install routes put a Rust-free option first on every platform",
+    () => {
+      // The ordering is the whole point of the table: someone without the CLI usually has no Rust
+      // toolchain either, so `cargo install` must never be the first thing offered.
+      for (const platform of ["darwin", "linux", "win32"] as NodeJS.Platform[]) {
+        const routes = installRoutes(platform);
+        assert.ok(routes.length >= 2, `${platform}: expected more than one route`);
+        assert.match(
+          routes[0].command,
+          /curl|irm/,
+          `${platform}: the first route should download a prebuilt binary, got ${routes[0].command}`,
+        );
+        assert.strictEqual(
+          routes[routes.length - 1].command,
+          "cargo install day-cli",
+          `${platform}: cargo should be the last resort`,
+        );
+      }
+      // Homebrew is macOS-only here; offering it on Linux would be a guess about the host.
+      assert.ok(installRoutes("darwin").some((r) => r.command.includes("brew")));
+      assert.ok(!installRoutes("win32").some((r) => r.command.includes("brew")));
     },
   ],
   [

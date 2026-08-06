@@ -12,7 +12,11 @@
 # you flip the repository variables below — the release cycle is independent of day-cli's.
 #
 # ── Turning publication on ───────────────────────────────────────────────────────────────────
-# Marketplace auth is TOKENLESS (PATs retire Dec 1 2026): Entra ID workload-identity federation
+# Marketplace auth is TOKENLESS. Azure DevOps global PATs retire **December 1, 2026** (stated in
+# code.visualstudio.com/api/working-with-extensions/publishing-extension), and the same page now
+# recommends Entra ID auth outright: "We recommend that extension publishing use Microsoft Entra
+# ID-based authentication with workload identity federation and managed identities." That is Entra
+# ID workload-identity federation
 # per the "secure automated publishing" section of the VS Code publishing docs, adapted to
 # GitHub Actions OIDC (the doc's own YAML targets Azure Pipelines; azure/login is the GitHub
 # equivalent). One-time setup:
@@ -32,8 +36,16 @@
 #        AZURE_CLIENT_ID       = <identity client id>
 #        AZURE_TENANT_ID       = <tenant id>
 #        AZURE_SUBSCRIPTION_ID = <subscription id>
+#      AZURE_SUBSCRIPTION_ID is OPTIONAL — publishing authenticates against the Azure DevOps
+#      resource, not a subscription (the login passes `allow-no-subscriptions`).
 #      Open VSX (optional; unaffected by the Microsoft PAT retirement — it has its own tokens):
 #        OPENVSX_PUBLISH = true   + secret OVSX_PAT (namespace `daybrite` at open-vsx.org).
+#        Open VSX additionally requires an eclipse.org account and a signed Eclipse Foundation
+#        Publisher Agreement, plus `ovsx create-namespace daybrite` once.
+#
+# Note on `vsce publish --oidc`: a true trusted-publishing path (no Azure at all) exists in the
+# vsce source but is NOT in the released npm `latest`, and is hidden from `--help` as
+# unannounced. Worth revisiting before December; not something to wait on.
 #
 # First flight without a tag: Actions → ci → "Run workflow" with dry-run = true exercises the
 # whole publish path (OIDC login + federation verification included) without uploading.
@@ -43,7 +55,9 @@ name: ci
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    # Semantic versions only, like the day repository. A stray `v-experiment` tag should not
+    # reach the Marketplace, where a published version can never be replaced.
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
   pull_request:
   # The e2e legs install the day CLI from day's main branch and a pinned VS Code; neither pushes
   # here, so a weekly run is what notices when either moves out from under the extension.
@@ -369,9 +383,27 @@ jobs:
           node-version: 22
 
       # Fail fast with a clear message before attempting the OIDC exchange.
+      # A tag that disagrees with package.json publishes the wrong version under the right name,
+      # and the Marketplace will not let you replace a published version — so check before the
+      # upload, not after. The `build` job already computed the manifest version.
+      - name: The tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="${{ needs.build.outputs.version }}"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $PKG"
+            exit 1
+          fi
+          echo "▸ publishing $PKG (pre-release: ${{ needs.build.outputs.prerelease }})"
+
+      # Only the client and tenant are required. Publishing talks to the Azure DevOps resource,
+      # not to a subscription, so an Entra tenant with the federated identity is enough — see
+      # `allow-no-subscriptions` below. Set AZURE_SUBSCRIPTION_ID only if you have one to scope to.
       - name: Check federation configuration
         run: |
-          for v in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+          for v in AZURE_CLIENT_ID AZURE_TENANT_ID; do
             if [ -z "${!v}" ]; then
               echo "::error::repository variable $v is not set (see the workflow header for the Entra federation setup)"; exit 1
             fi
@@ -379,19 +411,26 @@ jobs:
         env:
           AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      # `vsce --azure-credential` is a plain @azure/identity ChainedTokenCredential; the
+      # AzureCliCredential link picks up the session azure/login leaves behind, and asks for a
+      # token scoped to the Azure DevOps resource. Microsoft documents this flow for Azure
+      # Pipelines only, but the same two steps are what github/vscode-codeql publishes with.
       - name: Azure login (OIDC workload-identity federation)
         uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          # Empty when unset, which is fine alongside allow-no-subscriptions.
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
 
       # The dry-run stops here: a successful login proves the federated credential, subject,
       # and identity are all wired correctly — the only parts that can't be checked locally.
       - name: Verify federated identity (dry run stops after this)
-        run: az account show --output table
+        # `az account show` has nothing to show without a subscription; the signed-in identity is
+        # what this step exists to prove.
+        run: az ad signed-in-user show --output table 2>/dev/null || az account show --output table
 
       - name: Publish to the Visual Studio Marketplace (vsce --azure-credential)
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry-run-publish) }}
