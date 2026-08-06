@@ -15,21 +15,27 @@
 # Marketplace auth is TOKENLESS. Azure DevOps global PATs retire **December 1, 2026** (stated in
 # code.visualstudio.com/api/working-with-extensions/publishing-extension), and the same page now
 # recommends Entra ID auth outright: "We recommend that extension publishing use Microsoft Entra
-# ID-based authentication with workload identity federation and managed identities." That is Entra
-# ID workload-identity federation
-# per the "secure automated publishing" section of the VS Code publishing docs, adapted to
-# GitHub Actions OIDC (the doc's own YAML targets Azure Pipelines; azure/login is the GitHub
-# equivalent). One-time setup:
+# ID-based authentication with workload identity federation and managed identities."
 #
-#   1. Azure: create a USER-ASSIGNED MANAGED IDENTITY (any subscription/resource group; give it
-#      the Reader role on the subscription). Record its Client ID, Tenant ID, Subscription ID.
+# That is the "secure automated publishing" section of those docs, adapted to GitHub Actions OIDC:
+# the doc's own YAML targets Azure Pipelines, and azure/login is the GitHub equivalent (the same
+# pairing github/vscode-codeql publishes with). One-time setup:
+#
+#   1. Azure: create a USER-ASSIGNED MANAGED IDENTITY (any subscription/resource group). Record
+#      its Client ID and Tenant ID; the Subscription ID is optional (see step 4).
 #   2. On that identity, add a FEDERATED CREDENTIAL for GitHub Actions:
 #        issuer   https://token.actions.githubusercontent.com
 #        subject  repo:daybrite/day-vscode:environment:marketplace   (matches this job's
 #                 `environment:`; tighten/loosen as desired)
 #        audience api://AzureADTokenExchange
-#   3. Marketplace: at https://marketplace.visualstudio.com/manage, add the identity (by its
-#      resource ID) as a MEMBER of the `daybrite` publisher with the Contributor role.
+#   3. Marketplace: add the identity as a MEMBER of the `daybrite` publisher, Contributor role.
+#      The Members tab wants the identity's AZURE DEVOPS PROFILE ID — NOT the federated subject
+#      from step 2, which it rejects with "Not a valid User Id". You cannot look that id up from
+#      a laptop, because it belongs to the identity and only the identity can read it. Get it by
+#      running this workflow first: Actions → ci → Run workflow → dry-run = true. The step
+#      "Verify federated identity…" prints it and posts it as a job notice. Steps 2 and 3 are
+#      therefore done in that order: federate, dry-run to learn the id, then add the member.
+#      (Microsoft documents this same `az rest … profiles/me` call as an Azure Pipelines task.)
 #   4. Repo Settings → Secrets and variables → Actions → VARIABLES (none of these are secrets —
 #      OIDC federation means there is nothing to leak):
 #        MARKETPLACE_PUBLISH   = true
@@ -427,10 +433,35 @@ jobs:
 
       # The dry-run stops here: a successful login proves the federated credential, subject,
       # and identity are all wired correctly — the only parts that can't be checked locally.
-      - name: Verify federated identity (dry run stops after this)
-        # `az account show` has nothing to show without a subscription; the signed-in identity is
-        # what this step exists to prove.
-        run: az ad signed-in-user show --output table 2>/dev/null || az account show --output table
+      # Proves the federated credential works AND prints the one value the Marketplace Members tab
+      # will accept. The two identifiers are different things and are easy to confuse:
+      #
+      #   repo:daybrite/day-vscode:environment:marketplace
+      #       the federated credential SUBJECT. Lives in Azure, on the identity. It tells Entra
+      #       which workflow may assume the identity. The Marketplace rejects it as "Not a valid
+      #       User Id" because it is not a user id.
+      #
+      #   the `id` printed below
+      #       the identity's AZURE DEVOPS PROFILE ID. This is what you add as a publisher member.
+      #
+      # Microsoft documents this call only as an Azure Pipelines `AzureCLI@2` task; the same call
+      # works here because azure/login has already signed this job in as the identity. 499b84ac-…
+      # is the Azure DevOps resource id (the same one vsce asks for a token against).
+      - name: Verify federated identity, and print the id to add as a publisher member
+        run: |
+          set -euo pipefail
+          echo "▸ federated login succeeded as:"
+          az ad signed-in-user show --output table 2>/dev/null \
+            || az account show --output table 2>/dev/null \
+            || echo "  (no subscription context — expected with allow-no-subscriptions)"
+          echo
+          echo "▸ Azure DevOps profile for this identity:"
+          PROFILE="$(az rest -u https://app.vssps.visualstudio.com/_apis/profile/profiles/me --resource 499b84ac-1321-427f-aa17-267ca6975798)"
+          echo "$PROFILE"
+          ID="$(printf '%s' "$PROFILE" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).id??"")}catch{console.log("")}})')"
+          echo
+          echo "::notice title=Add this as a publisher member::$ID — marketplace.visualstudio.com/manage/publishers/daybrite → Members → Add → paste this id → role Contributor"
+          echo "▸ member id: $ID"
 
       - name: Publish to the Visual Studio Marketplace (vsce --azure-credential)
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry-run-publish) }}
