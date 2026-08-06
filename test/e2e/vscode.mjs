@@ -91,7 +91,10 @@ export function installVsix(exe, vsix, extensionsDir, userDataDir) {
       vsix,
       "--force",
     ].map(quote),
-    { encoding: "utf8", stdio: "pipe", shell: windows },
+    // A deadline, because `code --install-extension` talks to a marketplace and a keychain and
+    // has no timeout of its own. SIGKILL, not SIGTERM: the point is that nothing here can wedge
+    // the job.
+    { encoding: "utf8", stdio: "pipe", shell: windows, timeout: 180_000, killSignal: "SIGKILL" },
   );
   const out = `${res.stdout ?? ""}${res.stderr ?? ""}`;
   if (res.status !== 0) {
@@ -164,7 +167,17 @@ export async function launchVSCode({
  * build/screenshots/ — fine for checking the harness, not something to publish unread.
  */
 export function captureDesktop(path) {
-  const run = (cmd, args) => spawnSync(cmd, args, { encoding: "utf8", stdio: "pipe" });
+  // 30 seconds is far more than any of these need, and the timeout is the entire point: macOS
+  // `screencapture` blocks forever on a runner that has no Screen Recording grant to give,
+  // waiting on a TCC prompt no one will ever answer. A screenshot is evidence; evidence must not
+  // be able to wedge the job that produces it.
+  const run = (cmd, args) =>
+    spawnSync(cmd, args, {
+      encoding: "utf8",
+      stdio: "pipe",
+      timeout: 30_000,
+      killSignal: "SIGKILL",
+    });
   let res;
   if (process.platform === "darwin") {
     // -x no shutter sound, -m main display only (a second monitor is not part of the story).
@@ -181,6 +194,10 @@ $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
 $bmp.Save('${path.replace(/'/g, "''")}', [System.Drawing.Imaging.ImageFormat]::Png)
 `;
     res = run("powershell", ["-NoProfile", "-NonInteractive", "-Command", ps]);
+  }
+  if (res.error?.code === "ETIMEDOUT" || res.signal === "SIGKILL") {
+    console.warn(`  ! desktop capture timed out after 30s (${process.platform}) — skipping`);
+    return false;
   }
   if (res.status !== 0) {
     console.warn(`  ! desktop capture failed: ${(res.stderr || res.stdout || "").trim()}`);

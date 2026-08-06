@@ -41,6 +41,28 @@ const BUILD_TIMEOUT_MS = Number(process.env.DAY_E2E_BUILD_TIMEOUT_MS || 20 * 60 
 mkdirSync(OUT, { recursive: true });
 const shots = [];
 
+// ── Phase tracking + watchdog ────────────────────────────────────────────────────────────────
+// A hung UI run is otherwise invisible: GitHub shows a step "in progress" for six hours and the
+// logs only arrive once the job is killed, by which point nobody can tell which call stopped
+// answering. Every phase announces itself with an elapsed time, and a timer force-exits the run
+// with the current phase named — a failing run that says where it stopped beats a silent one.
+const started = Date.now();
+let phase = "startup";
+const since = () => `${((Date.now() - started) / 1000).toFixed(0)}s`;
+function enter(name) {
+  phase = name;
+  console.log(`[${since()}] ${name}`);
+}
+const WATCHDOG_MS = Number(process.env.DAY_E2E_WATCHDOG_MS || 45 * 60 * 1000);
+const watchdog = setTimeout(() => {
+  console.error(
+    `\n✗ watchdog: still in "${phase}" after ${since()}. Nothing in this harness should take ` +
+      `that long, so something external stopped answering. Screenshots so far: ${shots.length}.`,
+  );
+  process.exit(1);
+}, WATCHDOG_MS);
+watchdog.unref();
+
 /** Save a screenshot of the VS Code window under a stable, descriptive name. */
 async function shot(win, name, caption) {
   const file = join(OUT, `${COMBO}-${name}.png`);
@@ -147,6 +169,7 @@ async function terminalText(win) {
 }
 
 const t0 = Date.now();
+enter("resolving VS Code");
 const exe = await resolveVSCode();
 console.log(`VS Code ${VSCODE_VERSION}: ${exe}`);
 
@@ -154,15 +177,19 @@ const work = shortTmp("day-vsc-e2e");
 const extensionsDir = join(work, "e");
 const userDataDir = join(work, "u");
 mkdirSync(extensionsDir, { recursive: true });
+enter("installing the .vsix");
 console.log(installVsix(exe, VSIX, extensionsDir, userDataDir));
 
+enter("scaffolding the fixture");
 const workspace = scaffold({ dayBin: DAY_BIN, parent: fixtureParent(work) });
 console.log(`fixture: ${workspace}`);
 
 const openFiles = [join(workspace, "src", "pages", "home.rs")].filter((f) => existsSync(f));
+enter("launching VS Code");
 const { app, win } = await launchVSCode({ exe, workspace, extensionsDir, userDataDir, openFiles });
 
 try {
+  enter("capturing the UI surfaces");
   // ── The cockpit ────────────────────────────────────────────────────────────────────────────
   await command(win, "Day: Focus on Build & Run View");
   await win.waitForFunction(
@@ -208,8 +235,8 @@ try {
     await tickTarget(win, COMBO);
     await shot(win, "06-target-ticked", `${COMBO} ticked for Run`);
 
+    enter(`building and running ${COMBO} (build timeout ${Math.round(BUILD_TIMEOUT_MS / 60000)}m)`);
     await command(win, "Day: Run Selected Targets");
-    console.log(`  building ${COMBO} (timeout ${Math.round(BUILD_TIMEOUT_MS / 60000)}m)…`);
 
     // "It is running" is a question the extension already answers: a running target's row swaps
     // its inline Run action for Stop and Restart (contextValue dayTargetRunning). Watch for that
@@ -242,6 +269,7 @@ try {
     // The app is a separate native window, so the editor screenshot cannot show it.
     await win.waitForTimeout(12_000);
     await shot(win, "08-running", `${COMBO} running: the cockpit tracks the live process`);
+    enter("capturing the desktop");
     desktopShot("09-app", `The Day app running beside the editor that launched it (${COMBO})`);
 
     await command(win, "Day: Stop All");
@@ -249,6 +277,8 @@ try {
     await shot(win, "10-stopped", "Back to idle after Stop All");
   }
 } finally {
+  enter("writing the manifest and closing");
+  clearTimeout(watchdog);
   writeFileSync(
     join(OUT, "manifest.json"),
     `${JSON.stringify(
@@ -257,7 +287,12 @@ try {
       2,
     )}\n`,
   );
-  await app.close().catch(() => {});
+  // Bounded like everything else: Electron shutdown is the one remaining call that could sit
+  // there forever, and the run's results are already on disk by this point.
+  await Promise.race([
+    app.close().catch(() => {}),
+    new Promise((r) => setTimeout(r, 30_000)),
+  ]);
 }
 
 console.log(`${shots.length} screenshot(s) → ${OUT} in ${((Date.now() - t0) / 1000).toFixed(0)}s`);

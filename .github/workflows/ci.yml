@@ -147,6 +147,11 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: [build]
     runs-on: ${{ matrix.os }}
+    # The default is 360 minutes. A UI run that stops answering would sit there for six hours,
+    # and macOS bills at ten times the rate — one wedged `screencapture` cost 2h22m of macos-26
+    # before anyone noticed. The harness has its own watchdog (DAY_E2E_WATCHDOG_MS); this is the
+    # backstop for the case where the watchdog is what breaks.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

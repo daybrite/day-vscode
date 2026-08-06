@@ -57,7 +57,7 @@ export function scaffold({ dayBin, parent, name = "day-fixture", targets = FIXTU
     const res = spawnSync(
       dayBin,
       ["new", "app", name, "--toolkit", targets.join(","), "--no-input"],
-      { cwd: parent, encoding: "utf8", stdio: "pipe" },
+      { cwd: parent, encoding: "utf8", stdio: "pipe", timeout: 300_000, killSignal: "SIGKILL" },
     );
     if (res.status !== 0 || !existsSync(join(dir, "Day.toml"))) {
       throw new Error(
