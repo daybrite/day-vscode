@@ -6,8 +6,11 @@
 // Filtering is a few lines of inline JS toggling [hidden] on figures already in the DOM: every
 // platform's images ship in the page, so switching tabs never waits on a request, and with
 // JavaScript off the reader sees all of them rather than none.
+//
+// Each figure is a <Shot>, which carries the light and dark capture of the same surface and lets
+// CSS pick. Those stay lazy, so the variant the reader's theme is not using costs nothing.
 import data from '../data/screenshots.json';
-import { url } from '../lib/site';
+import Shot from './Shot.astro';
 
 interface Props {
   /** Show only these capture slugs, in this order (the landing page wants a curated few). */
@@ -46,14 +49,7 @@ const shotsFor = (p: any) => (only ? p.shots.filter((s: any) => only.includes(s.
       {platforms.flatMap((p: any) =>
         shotsFor(p).map((s: any) => (
           <figure class="shot" data-combo={p.combo}>
-            <img
-              src={url(s.file)}
-              width={s.width}
-              height={s.height}
-              loading="lazy"
-              decoding="async"
-              alt={`${s.caption} — ${p.os}, ${p.toolkit}`}
-            />
+            <Shot shot={s} alt={`${s.caption} — ${p.os}, ${p.toolkit}`} />
             <figcaption>
               <b>{p.os} · {p.toolkit}</b>
               {s.caption}

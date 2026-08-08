@@ -3,14 +3,20 @@
 //     node scripts/assemble-screenshots.mjs [--from DIR]
 //
 // The captures come from `test/e2e/drive.mjs`, which drives the packaged extension on each desktop
-// host and writes `<combo>/<combo>-NN-name.png` plus a `manifest.json` of captions. CI downloads
-// those artifacts; a developer who has run the driver locally already has them under
+// host and writes `<combo>/<combo>-NN-name-<theme>.png` plus a `manifest.json` of captions. CI
+// downloads those artifacts; a developer who has run the driver locally already has them under
 // `../build/screenshots/`. Both layouts are accepted, so `npm run dev` shows real screenshots when
 // they exist and says so plainly when they don't.
 //
 // Output:
 //   public/screenshots/<combo>/<file>.png   served images
 //   src/data/screenshots.json               captions, dimensions, and provenance
+//
+// Editor surfaces arrive as a `-dark.png`/`-light.png` pair and become ONE entry carrying both, so
+// the site can show whichever matches the reader's colour scheme. A capture with no theme in its
+// name — the whole-desktop shots, or anything a driver from before this wrote — is one entry whose
+// `light` and `dark` both point at the single file it has, which is what makes the gallery's
+// swapping logic a comparison rather than a special case.
 //
 // Dimensions are read out of the PNG header rather than guessed, so every tile can reserve its
 // exact aspect ratio and the gallery doesn't reflow as images load.
@@ -66,6 +72,21 @@ function findComboDirs(dir, depth = 0, found = new Map()) {
   return found;
 }
 
+/**
+ * `macos-appkit-01-cockpit-dark.png` → step 1, slug "cockpit", theme "dark".
+ *
+ * The slug is lazy so that the optional theme suffix wins the tail of the name: greedy, the slug
+ * of `03-select-targets-light.png` would swallow `-light` and the pair would never group.
+ */
+const SHOT_NAME = /-(\d+)-([a-z0-9-]+?)(?:-(dark|light))?\.png$/;
+
+/**
+ * A capture's identity WITHOUT its theme — the key captions are stored and looked up under.
+ * The manifest names one variant per shot; which one is not this script's business.
+ */
+const captionKey = (path) =>
+  path.replace(/^.*[\\/]/, '').replace(/-(?:dark|light)\.png$/, '.png');
+
 /** Human labels for the three hosts the e2e matrix covers. */
 const COMBOS = {
   'macos-appkit': { os: 'macOS', toolkit: 'AppKit', order: 1 },
@@ -101,7 +122,7 @@ export function assembleScreenshots({ quiet = false, from } = {}) {
     try {
       const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
       for (const shot of manifest.shots ?? []) {
-        captions[shot.file.replace(/^.*[\\/]/, '')] = shot.caption;
+        captions[captionKey(shot.file)] = shot.caption;
       }
     } catch {
       captions = {};
@@ -109,18 +130,41 @@ export function assembleScreenshots({ quiet = false, from } = {}) {
 
     cpSync(dir, join(OUT_IMAGES, combo), { recursive: true, filter: (s) => !s.endsWith('.json') });
 
-    const shots = readdirSync(join(OUT_IMAGES, combo))
-      .filter((f) => f.endsWith('.png'))
-      .sort()
-      .map((file) => {
-        const size = pngSize(join(OUT_IMAGES, combo, file)) ?? { width: 1440, height: 900 };
-        // `macos-appkit-01-cockpit.png` → step 01, slug "cockpit".
-        const m = /-(\d+)-([a-z0-9-]+)\.png$/.exec(file);
+    // One entry per surface, gathering that surface's theme variants as they are met.
+    const byShot = new Map();
+    for (const file of readdirSync(join(OUT_IMAGES, combo)).filter((f) => f.endsWith('.png')).sort()) {
+      const m = SHOT_NAME.exec(file);
+      const step = m ? Number(m[1]) : 99;
+      const slug = m ? m[2] : file.replace(/\.png$/, '');
+      const key = `${step}-${slug}`;
+      if (!byShot.has(key)) {
+        byShot.set(key, {
+          step,
+          slug,
+          caption: captions[captionKey(file)] ?? slug.replace(/-/g, ' '),
+          themed: {},
+          plain: null,
+        });
+      }
+      const entry = byShot.get(key);
+      const rel = `screenshots/${combo}/${file}`;
+      if (m?.[3]) entry.themed[m[3]] = rel;
+      else entry.plain = rel;
+    }
+
+    const shots = [...byShot.values()]
+      .map(({ step, slug, caption, themed, plain }) => {
+        // Dark is the site's own default, so it is the one an unthemed reader gets and the one
+        // whose header supplies the dimensions.
+        const file = themed.dark ?? plain ?? themed.light;
+        const size = pngSize(join(ROOT, 'public', file)) ?? { width: 1440, height: 900 };
         return {
-          file: `screenshots/${combo}/${file}`,
-          step: m ? Number(m[1]) : 99,
-          slug: m ? m[2] : file.replace(/\.png$/, ''),
-          caption: captions[file] ?? (m ? m[2].replace(/-/g, ' ') : file),
+          file,
+          dark: themed.dark ?? file,
+          light: themed.light ?? file,
+          step,
+          slug,
+          caption,
           ...size,
         };
       })

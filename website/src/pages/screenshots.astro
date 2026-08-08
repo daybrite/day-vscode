@@ -18,7 +18,7 @@ const total = platforms.reduce((n: number, p: any) => n + p.shots.length, 0);
     <p class="lead">
       {total > 0
         ? `${total} captures across ${platforms.length} platform${platforms.length === 1 ? '' : 's'}, taken by the extension's own end-to-end run.`
-        : 'The gallery fills in from CI artifacts; this build had none.'}
+        : 'The gallery fills in from CI artifacts; this build had none.'}{' '}
       Every one of them was produced by a script, on a clean runner, against the same
       <code>.vsix</code> the release publishes.
     </p>
@@ -27,8 +27,8 @@ const total = platforms.reduce((n: number, p: any) => n + p.shots.length, 0);
       <ScreenshotGallery />
     </div>
 
-    <div class="card how">
-      <h2>How these are made</h2>
+    <details class="card how">
+      <summary><h2>How these are made</h2></summary>
       <p>
         The <a href={site.repo + '/blob/main/test/e2e/drive.mjs'}>e2e driver</a> downloads a pinned
         VS Code, installs the packaged extension into it, scaffolds a Day project on the runner with
@@ -39,17 +39,48 @@ const total = platforms.reduce((n: number, p: any) => n + p.shots.length, 0);
         launched.
       </p>
       <p>
+        Each editor surface is photographed twice, once in each of VS Code's default themes, and
+        the gallery shows whichever one matches the theme you are reading in.
+      </p>
+      <p>
         Because the same script produces the pictures and the assertions, a screenshot that looks
         right is also a test that passed. Anything the extension stops doing shows up here as a
         missing image rather than as stale marketing.
       </p>
-    </div>
+    </details>
   </div>
 </BaseLayout>
 
 <style>
+  /* Provenance, folded away. The gallery is what the page is for; how the pictures got here is
+     worth having and not worth spending the reader's screen on until they ask. <details> because
+     it is the element for exactly this and costs no script — it opens with JavaScript off, it is
+     keyboard-operable, and a browser's in-page find expands it to reach a match inside. */
   .how { margin-top: 52px; max-width: 78ch; }
-  .how h2 { margin: 0 0 12px; font-size: 1.2rem; }
+  .how summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--muted);
+  }
+  .how summary::-webkit-details-marker { display: none; }
+  /* The disclosure triangle, drawn rather than inherited: the native marker sits on the baseline
+     of a heading it is not part of, and cannot be coloured with the rest of the row. */
+  .how summary::before {
+    content: '';
+    width: 0;
+    height: 0;
+    border-left: 6px solid currentColor;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    transition: transform 0.18s ease;
+  }
+  .how[open] summary::before { transform: rotate(90deg); }
+  .how summary:hover { color: var(--text); }
+  .how summary h2 { margin: 0; font-size: 1.2rem; color: var(--text); display: inline; }
+  .how[open] summary { margin-bottom: 16px; }
   .how p { color: var(--muted); margin: 0 0 12px; }
   .how p:last-child { margin-bottom: 0; }
 </style>

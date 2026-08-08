@@ -141,7 +141,12 @@ a:hover { color: #9cc2ff; }
 
 h1, h2, h3, h4 { line-height: 1.15; letter-spacing: -0.02em; font-weight: 700; }
 
-img { max-width: 100%; display: block; }
+/* `height: auto` is not optional next to `max-width`. Every capture carries width/height
+   attributes so the layout can reserve its box, and those attributes are presentational hints:
+   cap the width alone and the height stays at its attribute value, which renders a 1440×900
+   screenshot as 940×900 — vertically stretched. `auto` hands the height back to the intrinsic
+   ratio, which is the whole point of declaring the attributes. */
+img { max-width: 100%; height: auto; display: block; }
 
 code, pre { font-family: var(--mono); }
 
@@ -443,6 +448,9 @@ pre.code code { color: inherit; background: none; padding: 0; }
   overflow: hidden;
   box-shadow: var(--shadow);
 }
+/* Fill the frame edge to edge — the capture is wider than 940px, and both theme variants have to
+   land on exactly the same box or switching themes would nudge the page. */
+.hero-shot img { width: 100%; }
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

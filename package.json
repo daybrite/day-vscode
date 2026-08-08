@@ -4,7 +4,6 @@
   "description": "Build and run Day apps (cross-platform native UI in Rust) across one or more targets from VS Code.",
   "version": "0.4.2",
   "publisher": "daybrite",
-  "license": "MPL-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/daybrite/day-vscode"

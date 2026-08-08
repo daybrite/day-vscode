@@ -4,9 +4,12 @@
 //
 // The run ends with a set of PNGs under `--out` (default build/screenshots/<combo>/), named for
 // what they show, and a manifest.json describing them. They are evidence for CI and the source of
-// the extension's README and Marketplace images, which is why the harness fixes the theme, the
+// the extension's README and Marketplace images, which is why the harness fixes the themes, the
 // window size, and the fixture: the same command on the same VS Code build should produce the
 // same picture.
+//
+// Every editor surface is photographed twice, `<combo>-NN-name-dark.png` and `-light.png`, so the
+// website can show whichever matches the reader's own colour scheme. See `shot`.
 //
 // `--no-run` stops after the UI captures and skips building the app, which takes minutes.
 
@@ -21,6 +24,7 @@ import {
   launchVSCode,
   resolveVSCode,
   shortTmp,
+  THEMES,
   VSCODE_VERSION,
 } from "./vscode.mjs";
 
@@ -40,6 +44,8 @@ const BUILD_TIMEOUT_MS = Number(process.env.DAY_E2E_BUILD_TIMEOUT_MS || 20 * 60 
 
 mkdirSync(OUT, { recursive: true });
 const shots = [];
+/** Assigned once VS Code is up; see `shot`. */
+let setTheme;
 
 // ── Phase tracking + watchdog ────────────────────────────────────────────────────────────────
 // A hung UI run is otherwise invisible: GitHub shows a step "in progress" for six hours and the
@@ -63,15 +69,38 @@ const watchdog = setTimeout(() => {
 }, WATCHDOG_MS);
 watchdog.unref();
 
-/** Save a screenshot of the VS Code window under a stable, descriptive name. */
+/**
+ * Save a screenshot of the VS Code window under a stable, descriptive name — once per theme.
+ *
+ * The site swaps captures with the reader's own light/dark preference, so each surface is
+ * photographed in both without being set up twice: the theme changes underneath a screen that is
+ * already in the state the caption describes. Whatever ran to reach that state ran once.
+ *
+ * The session is left in the first theme, so anything that reads the screen afterwards sees the
+ * same colours it would have without this.
+ */
 async function shot(win, name, caption) {
-  const file = join(OUT, `${COMBO}-${name}.png`);
-  await win.screenshot({ path: file });
-  shots.push({ file, caption, kind: "window" });
-  console.log(`  · ${name} — ${caption}`);
+  const themes = {};
+  for (const theme of THEMES) {
+    if (!(await setTheme(theme))) continue;
+    const file = join(OUT, `${COMBO}-${name}-${theme.id}.png`);
+    await win.screenshot({ path: file });
+    themes[theme.id] = file;
+  }
+  const taken = Object.keys(themes);
+  if (!taken.length) throw new Error(`no theme could be applied for ${name}`);
+  if (taken.length > 1) await setTheme(THEMES[0]);
+  shots.push({ file: themes[taken[0]], caption, kind: "window", themes });
+  console.log(`  · ${name} — ${caption} (${taken.join(", ")})`);
 }
 
-/** Save a whole-desktop capture, which is the only way to get the app's own window in frame. */
+/**
+ * Save a whole-desktop capture, which is the only way to get the app's own window in frame.
+ *
+ * One theme only, unlike `shot`. The frame holds a native Day app whose appearance follows the
+ * OS, not VS Code's setting, so restyling the editor alone would photograph a light editor beside
+ * a dark app — a pairing no reader's machine would ever produce.
+ */
 function desktopShot(name, caption) {
   const file = join(OUT, `${COMBO}-${name}.png`);
   if (captureDesktop(file)) {
@@ -186,7 +215,9 @@ console.log(`fixture: ${workspace}`);
 
 const openFiles = [join(workspace, "src", "pages", "home.rs")].filter((f) => existsSync(f));
 enter("launching VS Code");
-const { app, win } = await launchVSCode({ exe, workspace, extensionsDir, userDataDir, openFiles });
+const session = await launchVSCode({ exe, workspace, extensionsDir, userDataDir, openFiles });
+const { app, win } = session;
+setTheme = session.setTheme;
 
 try {
   enter("capturing the UI surfaces");

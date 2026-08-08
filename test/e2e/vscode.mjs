@@ -31,9 +31,23 @@ import { _electron as electron } from "playwright";
  */
 export const VSCODE_VERSION = process.env.DAY_E2E_VSCODE_VERSION || "1.132.0";
 
+/**
+ * The themes every window capture is taken in, first one first.
+ *
+ * The site shows whichever matches the reader's own light/dark preference, so a dark-mode reader
+ * never gets a page of white rectangles. Both are VS Code's built-in defaults, present in every
+ * build with no extension to install — `workbenchClass` is the class VS Code puts on
+ * `.monaco-workbench` once the theme has actually been applied, which is what the harness waits
+ * for instead of sleeping.
+ */
+export const THEMES = [
+  { id: "dark", setting: "Default Dark Modern", workbenchClass: "vs-dark" },
+  { id: "light", setting: "Default Light Modern", workbenchClass: "vs" },
+];
+
 /** Settings that make a capture reproducible and keep other products out of the frame. */
 const QUIET_SETTINGS = {
-  "workbench.colorTheme": "Default Dark Modern",
+  "workbench.colorTheme": THEMES[0].setting,
   "workbench.startupEditor": "none",
   // The chat view opens in the secondary side bar on a fresh profile and eats a third of the
   // frame; nothing here is about it.
@@ -108,6 +122,12 @@ export function installVsix(exe, vsix, extensionsDir, userDataDir) {
  *
  * `userDataDir` must be SHORT: VS Code opens a Unix domain socket under it, and the 103-character
  * sun_path limit shows up as `listen EINVAL` and an immediate exit, not as a path error.
+ *
+ * Returns `setTheme` alongside the window, so a caller can photograph the same screen in both
+ * themes. It works by rewriting the settings file VS Code is already watching, which is the one
+ * lever that changes nothing else on screen: the palette route (`Preferences: Color Theme`) would
+ * have to open a quick pick over the very surface being captured, and steal the focus that put it
+ * there. Nothing is dismissed, nothing is re-navigated, only the colours change.
  */
 export async function launchVSCode({
   exe,
@@ -117,11 +137,10 @@ export async function launchVSCode({
   settings = {},
   openFiles = [],
 }) {
+  const settingsFile = join(userDataDir, "User", "settings.json");
+  const applied = { ...QUIET_SETTINGS, ...settings };
   mkdirSync(join(userDataDir, "User"), { recursive: true });
-  writeFileSync(
-    join(userDataDir, "User", "settings.json"),
-    JSON.stringify({ ...QUIET_SETTINGS, ...settings }, null, 2),
-  );
+  writeFileSync(settingsFile, JSON.stringify(applied, null, 2));
 
   const app = await electron.launch({
     executablePath: exe,
@@ -144,7 +163,38 @@ export async function launchVSCode({
   const win = await app.firstWindow();
   await win.waitForSelector(".monaco-workbench", { timeout: 180_000 });
   await win.setViewportSize({ width: 1440, height: 900 });
-  return { app, win };
+
+  /**
+   * Switch the colour theme and wait until it is on screen. Returns whether it took.
+   *
+   * The wait is on the workbench's own theme class rather than a timer: settings are picked up
+   * from disk asynchronously, and a shutter that fires early produces a half-restyled frame that
+   * looks like a rendering bug in whatever the screenshot was meant to show.
+   *
+   * A host that never picks the change up is reported and refused, not thrown: an extra picture
+   * is not worth a 30-minute leg, and everything downstream — the assembler, the gallery — already
+   * treats a surface with one variant as a surface with one variant. The run loses a colour, not
+   * its evidence.
+   */
+  const setTheme = async (theme) => {
+    applied["workbench.colorTheme"] = theme.setting;
+    writeFileSync(settingsFile, JSON.stringify(applied, null, 2));
+    try {
+      await win.waitForFunction(
+        (cls) => document.querySelector(".monaco-workbench")?.classList.contains(cls),
+        theme.workbenchClass,
+        { timeout: 30_000 },
+      );
+    } catch {
+      console.warn(`  ! "${theme.setting}" did not apply within 30s — skipping the ${theme.id} capture`);
+      return false;
+    }
+    // Token colours and icons repaint a frame or two behind the workbench class.
+    await win.waitForTimeout(400);
+    return true;
+  };
+
+  return { app, win, setTheme };
 }
 
 /**

@@ -133,7 +133,10 @@ jobs:
           else if (!fs.existsSync(pkg.icon)) fail(`icon file ${pkg.icon} missing`);
           else ok(`icon: ${pkg.icon}`);
           (pkg.keywords ?? []).length <= 30 ? ok(`keywords: ${(pkg.keywords ?? []).length}/30`) : fail("more than 30 keywords");
-          for (const f of ["README.md", "LICENSE", "CHANGELOG.md"]) {
+          // No LICENSE on this list: the extension ships unlicensed for now, pending a choice.
+          // `vsce package` warns about that and continues; put the file back on this list the
+          // day a license lands, so it cannot go missing again.
+          for (const f of ["README.md", "CHANGELOG.md"]) {
             fs.existsSync(f) ? ok(f) : fail(`${f} missing`);
           }
           EOF

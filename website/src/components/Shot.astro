@@ -1,0 +1,61 @@
+---
+// One capture, in whichever colour scheme the reader is using.
+//
+// The e2e driver photographs every editor surface twice (test/e2e/drive.mjs), and
+// scripts/assemble-screenshots.mjs hands each shot down with a `light` and a `dark` file. A
+// screenshot of a dark editor on a light page — or the reverse — is the thing this exists to stop.
+//
+// Both variants ship in the HTML and CSS hides the one that does not apply, rather than a script
+// swapping `src`. The theme is on <html data-theme> before first paint (BaseLayout), so the right
+// picture is the one that paints; there is no flash to correct, the toggle in the nav switches it
+// with no request, and a reader with JavaScript off gets the dark capture on the dark page they
+// are already looking at.
+//
+// A capture with only one variant — the whole-desktop shots, whose frame holds a native app whose
+// appearance is not VS Code's to set — arrives with `light === dark` and renders as one <img>.
+interface Props {
+  /** A shot from screenshots.json: `{ light, dark, width, height }`. */
+  shot: { light: string; dark: string; file: string; width: number; height: number };
+  alt: string;
+  /**
+   * Load both variants immediately. Worth the second request for the hero, which is the largest
+   * contentful paint and must not blink when the theme changes; everything else stays lazy, and a
+   * lazy variant that is `display: none` is not fetched at all until it is the one on screen.
+   */
+  eager?: boolean;
+}
+import { url } from '../lib/site';
+const { shot, alt, eager = false } = Astro.props;
+const themed = shot.light !== shot.dark;
+const loading = eager ? 'eager' : 'lazy';
+---
+<img
+  class:list={['shot-img', themed && 'only-dark']}
+  src={url(shot.dark)}
+  width={shot.width}
+  height={shot.height}
+  alt={alt}
+  loading={loading}
+  decoding="async"
+  fetchpriority={eager ? 'high' : undefined}
+/>
+{themed && (
+  <img
+    class="shot-img only-light"
+    src={url(shot.light)}
+    width={shot.width}
+    height={shot.height}
+    alt={alt}
+    loading={loading}
+    decoding="async"
+    fetchpriority={eager ? 'high' : undefined}
+  />
+)}
+
+<style>
+  /* Dark is the base palette, so the dark capture is what shows until told otherwise — including
+     when there is no `data-theme` at all because scripting is off. */
+  .only-light { display: none; }
+  :root[data-theme='light'] .only-light { display: block; }
+  :root[data-theme='light'] .only-dark { display: none; }
+</style>

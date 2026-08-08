@@ -90,11 +90,6 @@ CLI seam: tasks exist only if `day metadata --json` ran and parsed. `test:e2e` i
 photographs each step. CI runs both per host — macOS builds `macos-appkit`, Windows
 `windows-xaml`, Linux `linux-gtk` — and uploads the screenshots.
 
-## License
-
-[MPL-2.0](LICENSE), like Day itself.
-
-
 ## AI agents
 
 In a Day workspace the extension registers the **Day MCP server** (`day mcp-server`) with VS

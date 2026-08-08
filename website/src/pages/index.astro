@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import ScreenshotGallery from '../components/ScreenshotGallery.astro';
+import Shot from '../components/Shot.astro';
 import screenshots from '../data/screenshots.json';
 import { site, url, dayDocs } from '../lib/site';
 
@@ -40,7 +41,8 @@ const features = [
 <BaseLayout>
   <section class="container hero">
     <p class="eyebrow">VS Code extension</p>
-    <h1><span class="grad-text">Build and run Day apps</span><br />without leaving the editor</h1>
+    <h1><span class="grad-text">Build and run Day apps</span><br />for any platform from <span
+        class="keep-together">VS Code-compatible</span> editors</h1>
     <p class="lead">
       Pick your targets, press Run, and watch native apps start on every platform your machine can
       build for. The extension is a thin wrapper over the <code>day</code> CLI: it adds a cockpit
@@ -55,13 +57,7 @@ const features = [
 
     {hero && (
       <figure class="hero-shot">
-        <img
-          src={url(hero.file)}
-          width={hero.width}
-          height={hero.height}
-          alt={`The Day view in VS Code on ${heroPlatform.os}`}
-          fetchpriority="high"
-        />
+        <Shot shot={hero} alt={`The Day view in VS Code on ${heroPlatform.os}`} eager />
       </figure>
     )}
   </section>
@@ -110,3 +106,14 @@ const features = [
     </div>
   </section>
 </BaseLayout>
+
+<style>
+  /* A hyphen is a line-break opportunity, so the headline is free to wrap as "VS Code-" /
+     "compatible" — which reads as a broken product name.
+     Only above 480px, though: the headline bottoms out at 2.4rem, and below that the phrase is
+     wider than the viewport, so refusing the break would push the whole page sideways. On a
+     narrow phone the hyphen break is the lesser problem. */
+  @media (min-width: 480px) {
+    .keep-together { white-space: nowrap; }
+  }
+</style>
