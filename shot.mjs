@@ -1,0 +1,14 @@
+import { webkit } from 'playwright';
+import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+const [dist, out] = process.argv.slice(2);
+const types = { '.html':'text/html','.js':'text/javascript','.css':'text/css','.wasm':'application/wasm','.png':'image/png','.json':'application/json','.svg':'image/svg+xml' };
+const srv = http.createServer((q,r)=>{const u=decodeURIComponent(q.url.split('?')[0]);const p=path.join(dist,u==='/'?'index.html':u);fs.readFile(p,(e,b)=>e?(r.writeHead(404),r.end()):(r.writeHead(200,{'content-type':types[path.extname(p)]??'application/octet-stream'}),r.end(b)));});
+await new Promise(r=>srv.listen(0,r));
+const b = await webkit.launch();
+const ctx = await b.newContext({ viewport: { width: 1000, height: 720 }, deviceScaleFactor: 2 });
+const page = await ctx.newPage();
+await page.goto(`http://127.0.0.1:${srv.address().port}/`, { waitUntil: 'load' });
+await page.waitForTimeout(3500);
+await page.screenshot({ path: out });
+console.log('wrote', out);
+await b.close(); srv.close();
