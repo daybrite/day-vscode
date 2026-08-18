@@ -282,7 +282,7 @@
           "day.cliPath": {
             "type": "string",
             "default": "day",
-            "markdownDescription": "Path to the `day` CLI binary. If it is left as `day` and not found on `PATH`, the extension falls back to `cargo run` against a local `day-cli`: the Day repository itself when the workspace is inside one, otherwise a `day/` checkout sitting beside this extension's own `day-vscode/` source (via `--manifest-path`)."
+            "markdownDescription": "Path to the `day` CLI binary. If it is left as `day`, a local Day checkout is preferred over `PATH`: the Day repository itself when the workspace is inside one, otherwise a `day/` checkout sitting beside this extension's own `day-vscode/` source. That checkout's `target/debug/day` is used when it has been built, and `cargo run` against it (via `--manifest-path` for the sibling case) when it has not — so a dev host needs no installed CLI."
           },
           "day.defaultProfile": {
             "type": "string",

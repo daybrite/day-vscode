@@ -15,8 +15,14 @@
       * the app supplies the Day.toml the extension's sidebar, tasks, and debug configs act on;
       * `day/` is open for editing beside it, so a fix to a core/toolkit/piece/part crate and the
         app that exercises it are one window apart;
-      * with `day/` among the workspace folders the extension's CLI resolver can fall back to
-        `cargo run -p day-cli` from that checkout when no `day` is on PATH (src/cli.ts).
+      * with `day/` among the workspace folders the extension's CLI resolver runs
+        `cargo run -q -p day-cli` from that checkout in PREFERENCE to any installed `day`
+        (src/cli.ts), so the editor drives the same CLI this script does.
+
+    Both sides therefore ignore whatever `day` is on PATH. That binary is whatever was released
+    or installed last, and a CLI a version behind the crates in `day/` writes a [patch] table an
+    older `day patch` understood and reports targets and Day.toml fields that predate them - so
+    this script builds `day-cli` from the checkout and invokes it by path.
 
     `day patch` then points the app's cargo resolution at that same checkout, so every crate in
     `day/` - core, toolkits, pieces, parts - is a path dependency rather than the published git
@@ -102,23 +108,39 @@ if (-not (Test-Path $DayCliManifest)) {
 }
 $DayRepo = (Resolve-Path $DayRepo).Path
 
-# The installed CLI when there is one, else the checkout's own - the same order the extension
-# resolves in, so this script never needs a `day` on PATH that the editor would not have either.
-$DayOnPath = [bool](Get-Command day -ErrorAction SilentlyContinue)
-if (-not $DayOnPath) {
-    Step "no 'day' on PATH - using cargo run -p day-cli from $DayRepo"
+if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+    Fail @"
+error: cargo is not on PATH
+       install Rust from https://rustup.rs - the day CLI is built from the checkout at
+       $DayRepo, never taken from PATH
+"@
 }
+
+Step "building day-cli from $DayRepo"
+# Unconditional, and never `day` from PATH: "if needed" is cargo's judgement to make, so a fresh
+# tree costs one no-op invocation and a stale one is rebuilt before the patch table is written
+# with it. Debug, because this is the build TOOL, not the thing under test. cwd is the day repo so
+# cargo reads THAT workspace's config, not the target project's - and it is the same target dir
+# the extension's own `cargo run -q -p day-cli` uses, so this warms the editor's first command too.
+Push-Location $DayRepo
+try {
+    & cargo build -p day-cli
+    if ($LASTEXITCODE -ne 0) {
+        Fail "error: cargo build -p day-cli failed in $DayRepo (exit $LASTEXITCODE)" $LASTEXITCODE
+    }
+}
+finally { Pop-Location }
+
+$TargetDir = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $DayRepo 'target' }
+$DayExe = Join-Path (Join-Path $TargetDir 'debug') 'day.exe'
+if (-not (Test-Path $DayExe)) {
+    Fail "error: cargo reported success but $DayExe is missing`n       (CARGO_TARGET_DIR, or a build.target-dir config pointing elsewhere?)"
+}
+Step "using $DayExe"
 
 function Invoke-Day {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$DayArgs)
-    if ($DayOnPath) {
-        & day @DayArgs
-    }
-    else {
-        # cwd is the day repo so cargo reads THAT workspace's config, not the target project's.
-        Push-Location $DayRepo
-        try { & cargo run -q -p day-cli -- @DayArgs } finally { Pop-Location }
-    }
+    & $DayExe @DayArgs
     # $ErrorActionPreference does not apply to native commands: without this check a failed patch
     # would be followed by a cheerfully launched editor built against the wrong crates.
     if ($LASTEXITCODE -ne 0) {
@@ -143,12 +165,17 @@ Invoke-Day patch --local $DayRepo --project $Project
 New-Item -ItemType Directory -Force -Path (Split-Path $Workspace -Parent) | Out-Null
 # Built as an object and serialized, never interpolated into a here-string: a Windows path is full
 # of backslashes, and "C:\src\day" is not valid JSON. ConvertTo-Json escapes them.
+# `day.cliPath` pins the window to the binary built above. The extension would find the checkout's
+# CLI on its own (src/cli.ts), but this leaves nothing to resolve: no PATH lookup, no cargo needed
+# in the extension host's environment - which is not this shell's when `code` hands the window to an
+# already-running VS Code, and is where "the day CLI isn't installed" came from with a perfectly
+# good CLI sitting in the checkout. Workspace-scoped, in a generated machine-local file.
 $workspaceJson = [ordered]@{
     folders  = @(
         [ordered]@{ path = $Project },
         [ordered]@{ path = $DayRepo }
     )
-    settings = @{}
+    settings = [ordered]@{ 'day.cliPath' = $DayExe }
 } | ConvertTo-Json -Depth 4
 # UTF-8 *without* a BOM - Set-Content -Encoding UTF8 writes one on Windows PowerShell 5.1, and a
 # BOM ahead of the opening brace makes the workspace file fail to parse.

@@ -15,8 +15,14 @@
 #   * the app supplies the Day.toml the extension's sidebar, tasks, and debug configs act on;
 #   * `day/` is open for editing beside it, so a fix to a core/toolkit/piece/part crate and the
 #     app that exercises it are one window apart;
-#   * with `day/` among the workspace folders the extension's CLI resolver can fall back to
-#     `cargo run -p day-cli` from that checkout when no `day` is on PATH (src/cli.ts).
+#   * with `day/` among the workspace folders the extension's CLI resolver runs
+#     `cargo run -q -p day-cli` from that checkout in PREFERENCE to any installed `day`
+#     (src/cli.ts), so the editor drives the same CLI this script does.
+#
+# Both sides therefore ignore whatever `day` is on PATH. That binary is whatever was released or
+# installed last, and a CLI a version behind the crates in `day/` writes a [patch] table an older
+# `day patch` understood and reports targets and Day.toml fields that predate them — so this
+# script builds `day-cli` from the checkout and invokes it by path.
 #
 # `day patch` then points the app's cargo resolution at that same checkout, so every crate in
 # `day/` — core, toolkits, pieces, parts — is a path dependency rather than the published git
@@ -53,14 +59,28 @@ if [ ! -f "$DAY_REPO/crates/day-cli/Cargo.toml" ]; then
 fi
 DAY_REPO="$(cd "$DAY_REPO" && pwd)"
 
-# The installed CLI when there is one, else the checkout's own — the same order the extension
-# resolves in, so this script never needs a `day` on PATH that the editor would not have either.
-if command -v day >/dev/null 2>&1; then
-  day() { command day "$@"; }
-else
-  echo "▸ no 'day' on PATH — using cargo run -p day-cli from $DAY_REPO"
-  day() { (cd "$DAY_REPO" && cargo run -q -p day-cli -- "$@"); }
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "error: cargo is not on PATH" >&2
+  echo "       install Rust from https://rustup.rs — the day CLI is built from the checkout" >&2
+  echo "       at $DAY_REPO, never taken from PATH" >&2
+  exit 1
 fi
+
+echo "▸ building day-cli from $DAY_REPO…"
+# Unconditional, and never `day` from PATH: "if needed" is cargo's judgement to make, so a fresh
+# tree costs one no-op invocation and a stale one is rebuilt before the patch table is written with
+# it. Debug, because this is the build TOOL, not the thing under test. Run from the day repo so
+# cargo reads THAT workspace's config, not the target project's — and it is the same target dir the
+# extension's own `cargo run -q -p day-cli` uses, so this warms the editor's first command too.
+(cd "$DAY_REPO" && cargo build -p day-cli)
+
+DAY_BIN="${CARGO_TARGET_DIR:-$DAY_REPO/target}/debug/day"
+if [ ! -x "$DAY_BIN" ]; then
+  echo "error: cargo reported success but $DAY_BIN is missing" >&2
+  echo "       (CARGO_TARGET_DIR, or a build.target-dir config pointing elsewhere?)" >&2
+  exit 1
+fi
+echo "▸ using $DAY_BIN"
 
 echo "▸ building the extension from source ($EXT_DIR)…"
 (cd "$EXT_DIR" && npm run --silent bundle)
@@ -70,16 +90,23 @@ echo "▸ pointing $(basename "$PROJECT") at ${DAY_REPO}…"
 # Rewrites the app's gitignored .cargo/config.toml and verifies no day crate still resolves from
 # git — a crate missing from the table silently builds from the git cache, and the edit under
 # test then never reaches the app.
-day patch --local "$DAY_REPO" --project "$PROJECT"
+"$DAY_BIN" patch --local "$DAY_REPO" --project "$PROJECT"
 
 mkdir -p "$(dirname "$WORKSPACE")"
+# `day.cliPath` pins the window to the binary built above. The extension would find the checkout's
+# CLI on its own (src/cli.ts), but this leaves nothing to resolve: no PATH lookup, no cargo needed
+# in the extension host's environment — which is not this shell's when `code` hands the window to an
+# already-running VS Code, and is where "the day CLI isn't installed" came from with a perfectly
+# good CLI sitting in the checkout. Workspace-scoped, in a generated machine-local file.
 cat > "$WORKSPACE" <<JSON
 {
   "folders": [
     { "path": "$PROJECT" },
     { "path": "$DAY_REPO" }
   ],
-  "settings": {}
+  "settings": {
+    "day.cliPath": "$DAY_BIN"
+  }
 }
 JSON
 
