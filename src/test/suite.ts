@@ -14,6 +14,7 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
 
+import { delegateByKey, DesktopLaunchPlan, pickDelegate, planFrom } from "../debug";
 import { installRoutes } from "../install";
 
 type Check = [name: string, fn: () => Promise<void> | void];
@@ -103,6 +104,130 @@ const checks: Check[] = [
       assert.strictEqual(cfg.get("defaultProfile"), "debug");
       assert.strictEqual(cfg.get("mcp.enabled"), true);
       assert.strictEqual(cfg.get("script.keepAppRunning"), true);
+      assert.strictEqual(cfg.get("debug.adapter"), "auto");
+    },
+  ],
+  [
+    "breakpoints are contributed for Rust",
+    () => {
+      // Without this contribution VS Code refuses to set a breakpoint in a .rs file at all, and a
+      // delegated session would launch with nothing to stop on.
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const languages: string[] = (ext.packageJSON?.contributes?.breakpoints ?? []).map(
+        (b: { language: string }) => b.language,
+      );
+      assert.ok(languages.includes("rust"), `breakpoints contributes ${JSON.stringify(languages)}`);
+    },
+  ],
+  [
+    "each debug delegate shapes the launch plan the way its adapter declares",
+    () => {
+      // The adapters disagree about the environment, and getting it wrong fails at debug time on
+      // someone else's machine. These shapes are read from each extension's own
+      // `configurationAttributes`: lldb-dap and CodeLLDB take an `env` map, cpptools takes
+      // `environment` as name/value pairs plus an MIMode everywhere but Windows.
+      const plan: DesktopLaunchPlan = {
+        program: "/tmp/app/showcase",
+        args: [],
+        cwd: "/tmp/app",
+        env: { DAY_APP_ID: "dev.daybrite.showcase" },
+        wrapper: null,
+      };
+      const env = { DAY_APP_ID: "dev.daybrite.showcase", DAY_LOCALE: "fr" };
+
+      for (const key of ["lldb-dap", "codelldb"] as const) {
+        const d = delegateByKey(key);
+        assert.ok(d, `no delegate ${key}`);
+        const a = d.attributes(plan, env);
+        assert.deepStrictEqual(a.env, env, `${key} should pass env as a map`);
+        assert.strictEqual(a.program, plan.program);
+        assert.strictEqual(a.cwd, plan.cwd);
+        assert.ok(!("environment" in a), `${key} should not use cpptools' \`environment\` key`);
+      }
+      assert.strictEqual(delegateByKey("lldb-dap")?.debugType(), "lldb-dap");
+      assert.strictEqual(delegateByKey("codelldb")?.debugType(), "lldb");
+
+      const cpp = delegateByKey("cpptools");
+      assert.ok(cpp);
+      const a = cpp.attributes(plan, env);
+      assert.ok(!("env" in a), "cpptools takes `environment`, not `env`");
+      assert.deepStrictEqual(a.environment, [
+        { name: "DAY_APP_ID", value: "dev.daybrite.showcase" },
+        { name: "DAY_LOCALE", value: "fr" },
+      ]);
+      const windows = process.platform === "win32";
+      assert.strictEqual(cpp.debugType(), windows ? "cppvsdbg" : "cppdbg");
+      // cppvsdbg drives the Windows debugger directly; only the MI-based cppdbg needs telling.
+      assert.strictEqual("MIMode" in a, !windows);
+    },
+  ],
+  [
+    "pinning day.debug.adapter to none disables delegation",
+    async () => {
+      const cfg = vscode.workspace.getConfiguration("day");
+      const previous = cfg.get<string>("debug.adapter");
+      try {
+        await cfg.update("debug.adapter", "none", vscode.ConfigurationTarget.Workspace);
+        assert.strictEqual(
+          pickDelegate(),
+          undefined,
+          "a pinned `none` must fall back to the launch-only adapter",
+        );
+      } finally {
+        await cfg.update("debug.adapter", previous, vscode.ConfigurationTarget.Workspace);
+      }
+    },
+  ],
+  [
+    "the launch plan is read out of the CLI's NDJSON result event",
+    () => {
+      const logged: string[] = [];
+      const log = (m: string) => logged.push(m);
+      // Shaped like real `day build --format json` output: day's own status lines go to stderr, so
+      // stdout is result events only — but the parser must still survive a stray non-JSON line.
+      const stream = [
+        "not json at all",
+        JSON.stringify({
+          event: "result",
+          command: "build",
+          ok: true,
+          targets: [
+            {
+              target: "linux-gtk",
+              ok: true,
+              artifacts: [{ path: "/app/build/showcase" }],
+              launch: {
+                program: "/app/build/showcase",
+                args: [],
+                cwd: "/app",
+                env: { DAY_IMAGE_ROOT: "/app/resource/images" },
+                wrapper: null,
+              },
+            },
+          ],
+        }),
+        "",
+      ].join("\n");
+
+      const plan = planFrom(stream, "linux-gtk", log);
+      assert.ok(plan, `no plan parsed; log: ${logged.join(" | ")}`);
+      assert.strictEqual(plan.program, "/app/build/showcase");
+      assert.deepStrictEqual(plan.env, { DAY_IMAGE_ROOT: "/app/resource/images" });
+
+      // A target the CLI reported without a plan (a device or browser runtime) is not an error —
+      // it means "run this one without a debugger", and it has to say so rather than throw.
+      const noPlan = JSON.stringify({
+        event: "result",
+        command: "build",
+        ok: true,
+        targets: [{ target: "android-mdc", ok: true, artifacts: [{ path: "/app/app.apk" }] }],
+      });
+      assert.strictEqual(planFrom(noPlan, "android-mdc", log), undefined);
+      assert.ok(
+        logged.some((m) => m.includes("android-mdc")),
+        `expected a logged reason, got ${JSON.stringify(logged)}`,
+      );
     },
   ],
 ];

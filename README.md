@@ -18,7 +18,49 @@ filtered per target, and processes stop/restart through the standard task lifecy
   (`--script`) — all editable from the sidebar or command palette.
 - **`day` task type** — auto-detected `day: build <target>` / `day: run <target>` tasks integrate with
   the Tasks system, `Ctrl+Shift+B`, and key bindings. Build errors surface via the `$rustc` matcher.
+- **Run and Debug (F5)** — a `day` launch type in the Run panel. On a desktop target, **Start
+  Debugging** builds the app and hands the binary to a Rust debugger you already have installed, so
+  breakpoints in `.rs` files are real. See [Debugging](#debugging).
 - **Doctor** — run `day doctor` to check your toolchains.
+
+## Debugging
+
+Press **F5**, or pick a `Day: Run <target>` configuration in the Run and Debug panel. With no
+`launch.json` at all, F5 runs whatever the Day sidebar has ticked, in the current mode and locale.
+
+For a **desktop target**, Day builds the app and then starts one of these — whichever is installed,
+in this order — pointed at the built binary:
+
+| Debugger | Extension |
+|---|---|
+| LLDB DAP | `llvm-vs-code-extensions.lldb-dap` |
+| CodeLLDB | `vadimcn.vscode-lldb` |
+| C/C++ | `ms-vscode.cpptools` (`cppvsdbg` on Windows, `cppdbg` elsewhere) |
+
+Day ships no debug adapter of its own; it supplies the program, working directory, and the full
+launch environment `day launch` would have used, so an app stopped at a breakpoint still finds its
+images, vectors, fonts, and app identity. Pin one with `day.debug.adapter`, or set it to `none` to
+always run without a debugger.
+
+Everything else runs without a debugger, in the Debug Console: device and browser targets
+(`ios-uikit`, `android-mdc`, `harmony-arkui`, `web-dom`), **Run Without Debugging** (`Ctrl+F5`), and
+any host with none of the extensions above installed. The app still launches — you just don't stop
+on breakpoints, and the reason is reported.
+
+Two things a debug session does not do, because it starts the binary directly rather than through
+`day launch`: it does not drive a selected **dayscript** (use Run Without Debugging for that), and
+it cannot apply the `xvfb-run` wrapper a headless Linux host needs.
+
+### Where breakpoints bind
+
+Put breakpoints in your **library** crate (`src/lib.rs` and below). On `macos-appkit` the app is
+built through an Xcode host project that supplies its own `main`, and your Rust code is linked in as
+a static library — so nothing in the binary crate's `src/main.rs` exists to break on, and a
+breakpoint there stays hollow. The cargo-built targets (`*-gtk`, `*-qt`, `windows-xaml`) build
+`src/main.rs` directly and do bind there.
+
+A breakpoint VS Code shows as hollow rather than filled never bound; that is the signal, and it is
+worth checking before assuming the debugger did not attach.
 
 ## Requirements
 
@@ -56,6 +98,21 @@ project (a folder with a `Day.toml` — `day new app my-app` makes one); the **D
 lists the app and its targets — tick `macos-appkit`, click **Run**, and the app launches in a
 terminal. Tick a second target to run both at once; use the inline stop/restart buttons per
 target. `npx @vscode/vsce package` produces an installable `.vsix`.
+
+For the full loop — editing the framework and the app that exercises it in one window — use the
+dev launcher instead:
+
+```bash
+scripts/dev.sh                  # macOS / Linux
+powershell -ExecutionPolicy Bypass -File scripts\dev.ps1    # Windows
+```
+
+Both take an optional project path (default: the sibling `Day-Showcase` checkout). They bundle the
+extension from this working tree, run `day patch --local` so the app's cargo resolution points at
+the sibling `day/` checkout, and open an Extension Development Host on a multi-root workspace
+holding **the app first, then `day/`**. An edit to any `day/` crate — core, toolkit, piece, part —
+lands in the next Build or Run the extension starts. Both scripts need a `day/` checkout beside
+this repository; neither needs an installed `day` on `PATH`.
 
 Releases: pushing a `v*` tag builds, packages, and publishes to the Visual Studio Marketplace
 and Open VSX (see `.github/workflows/ci.yml`). The extension's release cycle is independent of

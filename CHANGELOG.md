@@ -1,5 +1,18 @@
 ## Unreleased
 
+- **Run and Debug**: `Start Debugging` on a desktop target now stops on breakpoints in Rust. Day
+  builds the app and hands the binary to a debugger you already have — LLDB DAP, CodeLLDB, or
+  C/C++, probed in that order and pinnable with `day.debug.adapter` — passing the same launch
+  environment `day launch` uses, so a stopped app still finds its images, vectors, fonts, and
+  identity. Device and browser targets, `Run Without Debugging`, and hosts with no debugger
+  installed keep launching through the Debug Console as before. Needs a `day` CLI that reports a
+  `launch` plan in `day build --format json`. Put breakpoints in the library crate: `macos-appkit`
+  builds through an Xcode host project that supplies its own `main`, so `src/main.rs` is not part of
+  that binary and a breakpoint there never binds.
+- `scripts/dev.ps1` — the Windows counterpart of `scripts/dev.sh`: opens both the app and the
+  sibling `day/` checkout in one Extension Development Host, with the app's cargo resolution
+  patched at that checkout.
+
 - CLI resolution: when the extension runs from a `day-vscode/` source checkout that sits beside a
   `day/` repo, it now builds the CLI from that peer repo via `cargo run --manifest-path`, so a
   project opened from anywhere (e.g. a sibling `Day-Games/`) loads without an installed `day` on

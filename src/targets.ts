@@ -4,7 +4,7 @@
 // CLI is reachable yet. Each `<os>-<toolkit>` target declares the host OS that can build it,
 // so the UI can dim/disable targets this machine can't run.
 
-export type TargetKind = "desktop" | "iosSim" | "android" | "harmonyOs";
+export type TargetKind = "desktop" | "iosSim" | "android" | "harmonyOs" | "web";
 export type HostOs = "macos" | "linux" | "windows" | "any";
 
 export interface Target {
@@ -76,5 +76,7 @@ export function kindLabel(t: Target): string {
       return "Android";
     case "harmonyOs":
       return "HarmonyOS";
+    case "web":
+      return "web";
   }
 }

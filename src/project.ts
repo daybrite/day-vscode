@@ -6,6 +6,7 @@
 // project marker); everything read out of it comes from the CLI.
 
 import * as cp from "child_process";
+import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { renderCommand, resolveCli } from "./cli";
@@ -65,7 +66,15 @@ export async function findProjects(): Promise<ProjectScan> {
   const projects: DayProject[] = [];
   const failures: ProjectLoadFailure[] = [];
   for (const uri of uris) {
-    const { project, failure } = await loadProject(path.dirname(uri.fsPath));
+    const root = path.dirname(uri.fsPath);
+    // A Day project is also a cargo package, so a Day.toml with no Cargo.toml beside it cannot
+    // be one — it is a scaffold template or a fixture. `day metadata` says exactly that, and
+    // reporting it would put a permanent error notification in front of anyone whose workspace
+    // includes the day checkout (crates/day-cli/templates/app carries such a Day.toml).
+    if (!fs.existsSync(path.join(root, "Cargo.toml"))) {
+      continue;
+    }
+    const { project, failure } = await loadProject(root);
     if (project) {
       projects.push(project);
     } else if (failure) {

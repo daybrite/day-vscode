@@ -325,8 +325,33 @@
         }
       },
       {
-        "title": "AI \u00b7 Agents",
+        "title": "Debugging",
         "order": 3,
+        "properties": {
+          "day.debug.adapter": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "lldb-dap",
+              "codelldb",
+              "cpptools",
+              "none"
+            ],
+            "enumDescriptions": [
+              "Use the first installed debugger, preferring LLDB DAP, then CodeLLDB, then C/C++.",
+              "LLDB DAP (llvm-vs-code-extensions.lldb-dap).",
+              "CodeLLDB (vadimcn.vscode-lldb).",
+              "C/C++ (ms-vscode.cpptools) \u2014 cppvsdbg on Windows, cppdbg elsewhere.",
+              "Never delegate: Start Debugging runs the app without breakpoints."
+            ],
+            "default": "auto",
+            "markdownDescription": "Which Rust debugger **Start Debugging** hands a desktop target to. Day ships no debug adapter of its own \u2014 it builds the app and passes the binary, working directory, and environment to the debugger you already use. Device and browser targets always run without a debugger."
+          }
+        }
+      },
+      {
+        "title": "AI \u00b7 Agents",
+        "order": 4,
         "properties": {
           "day.mcp.enabled": {
             "type": "boolean",
@@ -334,6 +359,11 @@
             "description": "Expose Day to AI agents via the Model Context Protocol (`day mcp-server`): build, launch, relaunch, and drive running apps, with screenshots agents can see."
           }
         }
+      }
+    ],
+    "breakpoints": [
+      {
+        "language": "rust"
       }
     ],
     "debuggers": [
@@ -510,6 +540,7 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "test:integration": "npm run bundle && npm run compile && node test/run-integration.mjs",
+    "test:debug": "npm run bundle && node test/run-debug-e2e.mjs",
     "test:e2e": "node test/e2e/drive.mjs"
   },
   "devDependencies": {
