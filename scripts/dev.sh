@@ -4,10 +4,15 @@
 #
 #   scripts/dev.sh [path-to-day-project]
 #
-# With no argument the app is the sibling `Day-Showcase` checkout. The window is an Extension
-# Development Host: the extension running there is built fresh from THIS working tree
-# (superseding any installed day-vscode in that window), so source edits + rerunning this script
-# are the whole dev loop.
+# The argument is the Day app to open beside `day/` — any conventional Day project, nothing here is
+# specific to one. With no argument it is the nearest ancestor of the CURRENT DIRECTORY holding a
+# Day.toml, the same rule `day --project` follows, so
+#
+#   cd ~/apps/MyApp && ~/src/day-vscode/scripts/dev.sh
+#
+# opens that app. The window is an Extension Development Host: the extension running there is built
+# fresh from THIS working tree (superseding any installed day-vscode in that window), so source
+# edits + rerunning this script are the whole dev loop.
 #
 # The window opens a multi-root workspace — the app FIRST, then the `day` checkout — because the
 # loop needs all three of these at once:
@@ -34,18 +39,55 @@ set -euo pipefail
 EXT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SIBLINGS="$(cd "$EXT_DIR/.." && pwd)"
 DAY_REPO="$SIBLINGS/day"
-PROJECT="${1:-$SIBLINGS/Day-Showcase}"
 # Generated, machine-local, and absolute-pathed: it belongs in the ignored build dir, not in git.
 WORKSPACE="$EXT_DIR/build/day-dev.code-workspace"
+
+usage() {
+  echo "usage: scripts/dev.sh [path-to-day-project]" >&2
+  # Naming the projects that ARE here beats naming one in the default: this list follows whatever
+  # the developer has checked out, and stays right when it changes.
+  local d found=""
+  for d in "$SIBLINGS"/*/; do
+    if [ -f "${d}Day.toml" ]; then
+      [ -n "$found" ] || echo "       Day projects beside this repository:" >&2
+      found=1
+      echo "         ${d%/}" >&2
+    fi
+  done
+}
+
+# The day CLI's own rule (`--project` defaults to the nearest ancestor with a Day.toml). Matching it
+# is what lets this script be run from inside any app, and what keeps a specific app's name out of
+# the source.
+find_project_upward() {
+  local dir="$1"
+  while :; do
+    if [ -f "$dir/Day.toml" ]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+    local parent
+    parent="$(dirname "$dir")"
+    [ "$parent" = "$dir" ] && return 1
+    dir="$parent"
+  done
+}
 
 if ! command -v code >/dev/null 2>&1; then
   echo "error: the 'code' CLI is not on PATH (VS Code → ⇧⌘P → 'Shell Command: Install…')" >&2
   exit 1
 fi
 
-if [ ! -f "$PROJECT/Day.toml" ]; then
-  echo "error: $PROJECT is not a Day project (no Day.toml)" >&2
-  echo "usage: scripts/dev.sh [path-to-day-project]" >&2
+if [ $# -gt 0 ]; then
+  PROJECT="$1"
+  if [ ! -f "$PROJECT/Day.toml" ]; then
+    echo "error: $PROJECT is not a Day project (no Day.toml)" >&2
+    usage
+    exit 2
+  fi
+elif ! PROJECT="$(find_project_upward "$PWD")"; then
+  echo "error: no Day project given, and no Day.toml in $PWD or any parent" >&2
+  usage
   exit 2
 fi
 PROJECT="$(cd "$PROJECT" && pwd)"
@@ -66,7 +108,9 @@ if ! command -v cargo >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "▸ building day-cli from $DAY_REPO…"
+# Braced, like the pointing line below: bash reads the trailing multi-byte ellipsis as part of the
+# variable name otherwise, and `set -u` then aborts the script on a name that never existed.
+echo "▸ building day-cli from ${DAY_REPO}…"
 # Unconditional, and never `day` from PATH: "if needed" is cargo's judgement to make, so a fresh
 # tree costs one no-op invocation and a stale one is rebuilt before the patch table is written with
 # it. Debug, because this is the build TOOL, not the thing under test. Run from the day repo so

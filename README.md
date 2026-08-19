@@ -103,16 +103,24 @@ For the full loop — editing the framework and the app that exercises it in one
 dev launcher instead:
 
 ```bash
-scripts/dev.sh                  # macOS / Linux
-powershell -ExecutionPolicy Bypass -File scripts\dev.ps1    # Windows
+scripts/dev.sh ../Day-Showcase                                            # macOS / Linux
+powershell -ExecutionPolicy Bypass -File scripts\dev.ps1 ..\Day-Showcase  # Windows
 ```
 
-Both take an optional project path (default: the sibling `Day-Showcase` checkout). They bundle the
-extension from this working tree, run `day patch --local` so the app's cargo resolution points at
-the sibling `day/` checkout, and open an Extension Development Host on a multi-root workspace
-holding **the app first, then `day/`**. An edit to any `day/` crate — core, toolkit, piece, part —
-lands in the next Build or Run the extension starts. Both scripts need a `day/` checkout beside
-this repository; neither needs an installed `day` on `PATH`.
+The argument is the Day app to open, and it works for **any** Day project. Omit it and the app is
+the nearest ancestor of the current directory holding a `Day.toml` — the same rule `day --project`
+follows — so running the script from inside an app needs no argument at all:
+
+```bash
+cd ~/apps/MyApp && ~/src/day-vscode/scripts/dev.sh
+```
+
+Either way the script bundles the extension from this working tree, builds `day-cli` from the
+sibling `day/` checkout, runs `day patch --local` so the app's cargo resolution points at that same
+checkout, and opens an Extension Development Host on a multi-root workspace holding **the app
+first, then `day/`**. An edit to any `day/` crate — core, toolkit, piece, part — lands in the next
+Build or Run the extension starts. Both scripts need a `day/` checkout beside this repository;
+neither needs an installed `day` on `PATH`, and neither uses one if it is there.
 
 Releases: pushing a `v*` tag builds, packages, and publishes to the Visual Studio Marketplace
 and Open VSX (see `.github/workflows/ci.yml`). The extension's release cycle is independent of

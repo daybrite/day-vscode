@@ -12,6 +12,9 @@
 - `scripts/dev.ps1` — the Windows counterpart of `scripts/dev.sh`: opens both the app and the
   sibling `day/` checkout in one Extension Development Host, with the app's cargo resolution
   patched at that checkout.
+- Both dev launchers take the Day project as their argument and work against any app, instead of
+  defaulting to `Day-Showcase`. With no argument they use the nearest ancestor of the current
+  directory holding a `Day.toml`, so running one from inside an app needs no argument.
 
 - CLI resolution: when the extension runs from a `day-vscode/` source checkout that sits beside a
   `day/` repo, it now builds the CLI from that peer repo via `cargo run --manifest-path`, so a

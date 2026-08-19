@@ -4,10 +4,15 @@
     repositories the extension's dev loop needs. The Windows counterpart of scripts/dev.sh.
 
 .DESCRIPTION
-    With no argument the app is the sibling `Day-Showcase` checkout. The window is an Extension
-    Development Host: the extension running there is built fresh from THIS working tree
-    (superseding any installed day-vscode in that window), so source edits + rerunning this script
-    are the whole dev loop.
+    The argument is the Day app to open beside `day/` - any conventional Day project, nothing here
+    is specific to one. With no argument it is the nearest ancestor of the CURRENT DIRECTORY holding
+    a Day.toml, the same rule `day --project` follows, so
+
+        cd ~\apps\MyApp; ~\src\day-vscode\scripts\dev.ps1
+
+    opens that app. The window is an Extension Development Host: the extension running there is
+    built fresh from THIS working tree (superseding any installed day-vscode in that window), so
+    source edits + rerunning this script are the whole dev loop.
 
     The window opens a multi-root workspace - the app FIRST, then the `day` checkout - because the
     loop needs all three of these at once:
@@ -33,13 +38,14 @@
     Windows SDK directly, and `day doctor` reports what is missing. Nothing here is macOS-specific.
 
 .PARAMETER Project
-    Path to the Day project to open. Defaults to the sibling `Day-Showcase` checkout.
+    Path to the Day project to open. Defaults to the nearest ancestor of the current directory
+    holding a Day.toml.
 
 .EXAMPLE
-    .\scripts\dev.ps1
+    .\scripts\dev.ps1 ..\Day-Showcase
 
 .EXAMPLE
-    .\scripts\dev.ps1 ..\Day-Games
+    cd ..\Day-Games; ..\day-vscode\scripts\dev.ps1
 
 .NOTES
     If PowerShell refuses to run this file, the execution policy is blocking unsigned local
@@ -81,11 +87,35 @@ function Step {
 $ExtDir = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Siblings = (Resolve-Path (Join-Path $ExtDir '..')).Path
 $DayRepo = Join-Path $Siblings 'day'
-if (-not $Project) {
-    $Project = Join-Path $Siblings 'Day-Showcase'
-}
 # Generated, machine-local, and absolute-pathed: it belongs in the ignored build dir, not in git.
 $Workspace = Join-Path (Join-Path $ExtDir 'build') 'day-dev.code-workspace'
+
+function Get-Usage {
+    $lines = @('usage: scripts\dev.ps1 [path-to-day-project]')
+    # Naming the projects that ARE here beats naming one in the default: this list follows whatever
+    # the developer has checked out, and stays right when it changes.
+    $found = Get-ChildItem -Path $Siblings -Directory -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path (Join-Path $_.FullName 'Day.toml') }
+    if ($found) {
+        $lines += '       Day projects beside this repository:'
+        $lines += ($found | ForEach-Object { "         $($_.FullName)" })
+    }
+    return ($lines -join "`n")
+}
+
+# The day CLI's own rule (`--project` defaults to the nearest ancestor with a Day.toml). Matching it
+# is what lets this script be run from inside any app, and what keeps a specific app's name out of
+# the source.
+function Find-DayProjectUpward {
+    param([string]$Start)
+    $dir = $Start
+    while ($true) {
+        if (Test-Path (Join-Path $dir 'Day.toml')) { return $dir }
+        $parent = Split-Path $dir -Parent
+        if (-not $parent -or $parent -eq $dir) { return $null }
+        $dir = $parent
+    }
+}
 
 if (-not (Get-Command code -ErrorAction SilentlyContinue)) {
     Fail @"
@@ -95,8 +125,19 @@ error: the 'code' CLI is not on PATH
 "@
 }
 
-if (-not (Test-Path (Join-Path $Project 'Day.toml'))) {
-    Fail "error: $Project is not a Day project (no Day.toml)`nusage: scripts\dev.ps1 [path-to-day-project]" 2
+if ($Project) {
+    if (-not (Test-Path (Join-Path $Project 'Day.toml'))) {
+        Fail "error: $Project is not a Day project (no Day.toml)`n$(Get-Usage)" 2
+    }
+}
+else {
+    # ProviderPath, not Get-Location: a PowerShell location can sit on a non-filesystem provider,
+    # and only the filesystem path can be walked upward.
+    $here = $PWD.ProviderPath
+    $Project = Find-DayProjectUpward $here
+    if (-not $Project) {
+        Fail "error: no Day project given, and no Day.toml in $here or any parent`n$(Get-Usage)" 2
+    }
 }
 $Project = (Resolve-Path $Project).Path
 
