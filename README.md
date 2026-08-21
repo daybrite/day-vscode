@@ -14,8 +14,9 @@ filtered per target, and processes stop/restart through the standard task lifecy
   build (e.g. `windows-*` on macOS) are shown disabled.
 - **Multiple simultaneous targets** — each selected target launches in its own terminal and can be
   **stopped / restarted independently** (inline buttons, or the status bar).
-- **Build mode** (debug / release), **locale** (`--locale`), and an optional **dayscript**
-  (`--script`) — all editable from the sidebar or command palette.
+- **Build mode** (debug / release), **locale** (`--locale`), an optional **dayscript**
+  (`--script`), and a **Verbose** checkbox (`--verbose`, to see every sub-command a build runs) —
+  all editable from the sidebar or command palette.
 - **`day` task type** — auto-detected `day: build <target>` / `day: run <target>` tasks integrate with
   the Tasks system, `Ctrl+Shift+B`, and key bindings. Build errors surface via the `$rustc` matcher.
 - **Run and Debug (F5)** — a `day` launch type in the Run panel. On a desktop target, **Start
@@ -83,6 +84,7 @@ beside this extension's own `day-vscode/` source** (the dev-host case, resolved 
 | `day.cliPath` | `day` | Path to the `day` CLI (falls back to `cargo run` in the Day repo, or a `day/` checkout beside the extension source). |
 | `day.defaultProfile` | `debug` | Default build mode. |
 | `day.defaultLocale` | `""` | Default `--locale` (empty = app/system default). |
+| `day.verbose` | `false` | Run builds and launches with `--verbose`, showing every sub-command they execute (cargo, gradle, xcodebuild, hvigor, adb, …) and its raw output. |
 | `day.extraEnv` | `{}` | Extra `KEY=VALUE` env passed to every launch via `--env`. |
 | `day.ohosNdkHome` | `""` | OpenHarmony NDK `native` dir for `harmony-arkui` (exported as `OHOS_NDK_HOME` in the task; empty = auto-detect `~/ohos/ndk-extract/native` or `~/ohos-sdk/native`; the SDK's `toolchains/` joins the task PATH for `hdc`). |
 

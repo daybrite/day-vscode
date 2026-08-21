@@ -182,6 +182,11 @@
         "category": "Day"
       },
       {
+        "command": "day.toggleVerbose",
+        "title": "Toggle Verbose Build Output",
+        "category": "Day"
+      },
+      {
         "command": "day.installCli",
         "title": "Install the day CLI\u2026",
         "category": "Day",
@@ -297,6 +302,11 @@
             "type": "string",
             "default": "",
             "description": "Default BCP-47 locale passed to `--locale` (empty = the app/system default)."
+          },
+          "day.verbose": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "Run `day build` and `day launch` with `--verbose`, so the terminal shows every sub-command they execute (cargo, gradle, xcodebuild, hvigor, adb, codesign, \u2026) and its raw output, instead of Day's own status lines alone. Useful when a build fails inside one of those tools and the summary does not say why."
           },
           "day.extraEnv": {
             "type": "object",

@@ -5,6 +5,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 import { State } from "./config";
+import { verbose } from "./tasks";
 import { DayProject } from "./project";
 import { Runner } from "./runner";
 import { catalog, findTarget, isBuildableHere, kindLabel } from "./targets";
@@ -12,7 +13,7 @@ import { catalog, findTarget, isBuildableHere, kindLabel } from "./targets";
 export type Node =
   | { kind: "project" }
   | { kind: "section"; id: "config" | "targets"; label: string }
-  | { kind: "config"; which: "mode" | "locale" | "script" }
+  | { kind: "config"; which: "mode" | "locale" | "script" | "verbose" }
   | { kind: "target"; name: string };
 
 export interface TreeDeps {
@@ -56,6 +57,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
         { kind: "config", which: "mode" },
         { kind: "config", which: "locale" },
         { kind: "config", which: "script" },
+        { kind: "config", which: "verbose" },
       ];
     }
     if (element.kind === "section" && element.id === "targets") {
@@ -94,7 +96,27 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     return item;
   }
 
-  private configItem(which: "mode" | "locale" | "script"): vscode.TreeItem {
+  private configItem(which: "mode" | "locale" | "script" | "verbose"): vscode.TreeItem {
+    // A checkbox rather than a pick: it is one bit, and the rows below all open a quick pick
+    // because they choose among values. Checked state comes from the SETTING (`day.verbose`),
+    // not the per-workspace selection Memento, so the Settings UI and this row are one control.
+    if (which === "verbose") {
+      const on = verbose();
+      const item = new vscode.TreeItem("Verbose", vscode.TreeItemCollapsibleState.None);
+      item.description = on ? "on" : "off";
+      item.tooltip =
+        "Run builds and launches with `--verbose`, showing every sub-command they execute " +
+        "(cargo, gradle, xcodebuild, hvigor, adb, …) and its raw output.";
+      item.iconPath = new vscode.ThemeIcon("output");
+      item.contextValue = "dayConfig";
+      item.checkboxState = on
+        ? vscode.TreeItemCheckboxState.Checked
+        : vscode.TreeItemCheckboxState.Unchecked;
+      // Clicking the LABEL toggles too — the checkbox is a small target, and every other row in
+      // this section acts on a plain click.
+      item.command = { command: "day.toggleVerbose", title: "Toggle Verbose" };
+      return item;
+    }
     const sel = this.deps.state.selection;
     let label: string;
     let value: string;

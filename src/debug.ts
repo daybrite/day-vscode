@@ -22,7 +22,7 @@ import { buildArgs, launchArgs, LaunchOptions, renderCommand, resolveCli } from 
 import { Profile, Selection } from "./config";
 import { DayProject } from "./project";
 import { findTarget, isBuildableHere } from "./targets";
-import { extraEnv, taskEnv } from "./tasks";
+import { extraEnv, taskEnv, verbose } from "./tasks";
 
 /** A `day` launch configuration (mirrors the launch fields of DayTaskDefinition). */
 export interface DayLaunchConfig extends vscode.DebugConfiguration {
@@ -159,7 +159,7 @@ async function buildAndPlan(
   output: vscode.OutputChannel,
 ): Promise<DesktopLaunchPlan | undefined> {
   const cli = resolveCli(projectRoot || undefined);
-  const args = buildArgs(projectRoot, target, profile);
+  const args = buildArgs(projectRoot, target, profile, verbose());
   // --format json ahead of the subcommand: it is a global flag, and the CLI keeps stdout clean for
   // the NDJSON stream while its own status lines go to stderr (which is what we echo below).
   const argv = [...cli.baseArgs, "--format", "json", ...args];
@@ -505,6 +505,7 @@ class DayLaunchAdapter implements vscode.DebugAdapter {
       script: cfg.script,
       keepAlive: cfg.keepAlive,
       env: extraEnv(),
+      verbose: verbose(),
     };
     const dayArgs = launchArgs(opts);
     const args = [...cli.baseArgs, ...dayArgs];

@@ -1,5 +1,11 @@
 ## Unreleased
 
+- **Verbose** — run `day build` and `day launch` with `--verbose`, so the task terminal shows
+  every sub-command they execute (cargo, gradle, xcodebuild, hvigor, adb, codesign, …) and its
+  raw output instead of Day's status lines alone. Off by default; applies to tasks, the
+  tree/status-bar runs built from them, and debug launches. Toggle it with the checkbox in the
+  Day sidebar's Configuration section, `Day: Toggle Verbose Build Output` in the palette, or
+  the `day.verbose` setting.
 - **Run and Debug**: `Start Debugging` on a desktop target now stops on breakpoints in Rust. Day
   builds the app and hands the binary to a debugger you already have — LLDB DAP, CodeLLDB, or
   C/C++, probed in that order and pinnable with `day.debug.adapter` — passing the same launch

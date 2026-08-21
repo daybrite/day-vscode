@@ -66,6 +66,42 @@ const checks: Check[] = [
     },
   ],
   [
+    "day.toggleVerbose flips the setting, and the tasks it generates carry --verbose",
+    async () => {
+      const cfg = () => vscode.workspace.getConfiguration("day").get<boolean>("verbose", false);
+      const dayTasks = async () => await vscode.tasks.fetchTasks({ type: "day" });
+      const before = cfg();
+      try {
+        // ON: every build and run task should now name the flag. `detail` is the rendered command
+        // line the task will execute, so asserting on it covers the whole path from the checkbox
+        // to the process argv — not merely that a setting changed.
+        if (!cfg()) {
+          await vscode.commands.executeCommand("day.toggleVerbose");
+        }
+        assert.strictEqual(cfg(), true, "toggling did not turn day.verbose on");
+        for (const t of await dayTasks()) {
+          assert.ok(
+            (t.detail ?? "").includes("--verbose"),
+            `task "${t.name}" should carry --verbose: ${t.detail}`,
+          );
+        }
+        // …and OFF again, which must leave the command line exactly as it was before the feature.
+        await vscode.commands.executeCommand("day.toggleVerbose");
+        assert.strictEqual(cfg(), false, "toggling did not turn day.verbose off");
+        for (const t of await dayTasks()) {
+          assert.ok(
+            !(t.detail ?? "").includes("--verbose"),
+            `task "${t.name}" should not carry --verbose when off: ${t.detail}`,
+          );
+        }
+      } finally {
+        if (cfg() !== before) {
+          await vscode.commands.executeCommand("day.toggleVerbose");
+        }
+      }
+    },
+  ],
+  [
     "the tree view is registered and reveals the project",
     async () => {
       // The view id is what `views.day[0].id` contributes; focusing it is the same command the
@@ -105,6 +141,7 @@ const checks: Check[] = [
       assert.strictEqual(cfg.get("mcp.enabled"), true);
       assert.strictEqual(cfg.get("script.keepAppRunning"), true);
       assert.strictEqual(cfg.get("debug.adapter"), "auto");
+      assert.strictEqual(cfg.get("verbose"), false);
     },
   ],
   [

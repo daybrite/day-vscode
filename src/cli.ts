@@ -148,6 +148,8 @@ export interface LaunchOptions {
   /** Keep the app running after its dayscript completes (interactive script development). */
   keepAlive?: boolean;
   env?: Record<string, string>;
+  /** Show every sub-command the CLI runs, and its raw output, instead of day's status lines. */
+  verbose?: boolean;
 }
 
 function projectArgs(projectRoot: string): string[] {
@@ -170,12 +172,24 @@ export function launchArgs(o: LaunchOptions): string[] {
   for (const [k, v] of Object.entries(o.env ?? {})) {
     args.push("--env", `${k}=${v}`);
   }
+  if (o.verbose) {
+    args.push("--verbose");
+  }
   return args;
 }
 
 /** Args for `day build` (a single target). */
-export function buildArgs(projectRoot: string, target: string, profile: "debug" | "release"): string[] {
-  return [...projectArgs(projectRoot), "build", "-p", target, "--profile", profile];
+export function buildArgs(
+  projectRoot: string,
+  target: string,
+  profile: "debug" | "release",
+  verbose = false,
+): string[] {
+  const args = [...projectArgs(projectRoot), "build", "-p", target, "--profile", profile];
+  if (verbose) {
+    args.push("--verbose");
+  }
+  return args;
 }
 
 /** A shell-safe rendering of a command for display in a terminal/log line. */

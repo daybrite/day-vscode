@@ -27,6 +27,31 @@ export function extraEnv(): Record<string, string> {
   return vscode.workspace.getConfiguration("day").get<Record<string, string>>("extraEnv") ?? {};
 }
 
+/** Whether builds and launches run with `--verbose` (day.verbose). */
+export function verbose(): boolean {
+  return vscode.workspace.getConfiguration("day").get<boolean>("verbose", false);
+}
+
+/**
+ * Flip `day.verbose`, for the Configuration checkbox in the Day view. Returns the new value.
+ *
+ * Written at the scope that currently SUPPLIES the value, as `day.toggleScriptKeepAlive` does:
+ * a workspace override stays a workspace override, and everything else lands in user settings.
+ * Always writing the workspace would quietly pin a per-project value for someone who had set it
+ * once, globally, and wondered why the next project ignored it.
+ */
+export async function toggleVerbose(): Promise<boolean> {
+  const cfg = vscode.workspace.getConfiguration("day");
+  const next = !cfg.get<boolean>("verbose", false);
+  const info = cfg.inspect<boolean>("verbose");
+  const target =
+    info?.workspaceValue !== undefined
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
+  await cfg.update("verbose", next, target);
+  return next;
+}
+
 /** Expand a leading `~` (settings values are often written that way). */
 function expandHome(p: string): string {
   return p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p;
@@ -81,8 +106,9 @@ export function buildDayTask(
             def.keepAlive ??
             vscode.workspace.getConfiguration("day").get<boolean>("script.keepAppRunning", true),
           env: extraEnv(),
+          verbose: verbose(),
         })
-      : buildArgs(projectRoot, def.target, profile);
+      : buildArgs(projectRoot, def.target, profile, verbose());
 
   const env = taskEnv(def.target);
   const exec = new vscode.ProcessExecution(cli.command, [...cli.baseArgs, ...args], {
