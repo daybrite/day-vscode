@@ -1,5 +1,10 @@
 ## Unreleased
 
+- **Log level** — every launch now passes `--env DAY_LOG=<level>`, `trace` by default, so a
+  launched app shows everything it logs — the per-statement SQL from day-persistence included —
+  in the task terminal (native targets) or the browser console (`web-dom`). Pick another level
+  from the Day sidebar's Configuration section, `Day: Select Log Level` in the palette, or the
+  `day.logLevel` setting; a `DAY_LOG` entry in `day.extraEnv` still wins.
 - **Verbose** — run `day build` and `day launch` with `--verbose`, so the task terminal shows
   every sub-command they execute (cargo, gradle, xcodebuild, hvigor, adb, codesign, …) and its
   raw output instead of Day's status lines alone. Off by default; applies to tasks, the

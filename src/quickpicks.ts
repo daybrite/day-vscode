@@ -1,4 +1,5 @@
-// QuickPick / input flows for the editable configuration: build mode, locale, dayscript, and project.
+// QuickPick / input flows for the editable configuration: build mode, log level, locale, dayscript,
+// and project.
 
 import * as fs from "fs";
 import * as path from "path";
@@ -6,6 +7,7 @@ import * as vscode from "vscode";
 
 import { Profile } from "./config";
 import { DayProject } from "./project";
+import { LogLevel } from "./tasks";
 import { catalog, findTarget, isBuildableHere } from "./targets";
 
 export async function pickMode(current: Profile): Promise<Profile | undefined> {
@@ -14,6 +16,22 @@ export async function pickMode(current: Profile): Promise<Profile | undefined> {
     { label: "release", description: "optimized", value: "release", picked: current === "release" },
   ];
   const chosen = await vscode.window.showQuickPick(items, { title: "Day: Build Mode", placeHolder: current });
+  return chosen?.value;
+}
+
+export async function pickLogLevel(current: LogLevel): Promise<LogLevel | undefined> {
+  const items: (vscode.QuickPickItem & { value: LogLevel })[] = [
+    { label: "trace", description: "everything, including per-statement SQL", value: "trace" },
+    { label: "debug", description: "framework diagnostics (Day's debug-build default)", value: "debug" },
+    { label: "info", description: "notable events (Day's release default)", value: "info" },
+    { label: "warn", description: "problems only", value: "warn" },
+    { label: "error", description: "failures only", value: "error" },
+    { label: "off", description: "nothing", value: "off" },
+  ];
+  for (const item of items) {
+    item.picked = item.value === current;
+  }
+  const chosen = await vscode.window.showQuickPick(items, { title: "Day: Log Level", placeHolder: current });
   return chosen?.value;
 }
 

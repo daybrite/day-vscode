@@ -5,7 +5,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 import { State } from "./config";
-import { verbose } from "./tasks";
+import { logLevel, verbose } from "./tasks";
 import { DayProject } from "./project";
 import { Runner } from "./runner";
 import { catalog, findTarget, isBuildableHere, kindLabel } from "./targets";
@@ -13,7 +13,7 @@ import { catalog, findTarget, isBuildableHere, kindLabel } from "./targets";
 export type Node =
   | { kind: "project" }
   | { kind: "section"; id: "config" | "targets"; label: string }
-  | { kind: "config"; which: "mode" | "locale" | "script" | "verbose" }
+  | { kind: "config"; which: "mode" | "locale" | "script" | "verbose" | "loglevel" }
   | { kind: "target"; name: string };
 
 export interface TreeDeps {
@@ -58,6 +58,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
         { kind: "config", which: "locale" },
         { kind: "config", which: "script" },
         { kind: "config", which: "verbose" },
+        { kind: "config", which: "loglevel" },
       ];
     }
     if (element.kind === "section" && element.id === "targets") {
@@ -96,7 +97,9 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     return item;
   }
 
-  private configItem(which: "mode" | "locale" | "script" | "verbose"): vscode.TreeItem {
+  private configItem(
+    which: "mode" | "locale" | "script" | "verbose" | "loglevel",
+  ): vscode.TreeItem {
     // A checkbox rather than a pick: it is one bit, and the rows below all open a quick pick
     // because they choose among values. Checked state comes from the SETTING (`day.verbose`),
     // not the per-workspace selection Memento, so the Settings UI and this row are one control.
@@ -140,6 +143,14 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
         value = sel.script.length > 0 ? path.basename(sel.script) : "(none)";
         icon = "play-circle";
         command = "day.selectScript";
+        break;
+      case "loglevel":
+        // From the SETTING (`day.logLevel`), like the Verbose row — the Settings UI and this
+        // row are one control.
+        label = "Log level";
+        value = logLevel();
+        icon = "list-filter";
+        command = "day.selectLogLevel";
         break;
     }
     const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);

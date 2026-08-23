@@ -22,7 +22,7 @@ import { buildArgs, launchArgs, LaunchOptions, renderCommand, resolveCli } from 
 import { Profile, Selection } from "./config";
 import { DayProject } from "./project";
 import { findTarget, isBuildableHere } from "./targets";
-import { extraEnv, taskEnv, verbose } from "./tasks";
+import { launchEnv, taskEnv, verbose } from "./tasks";
 
 /** A `day` launch configuration (mirrors the launch fields of DayTaskDefinition). */
 export interface DayLaunchConfig extends vscode.DebugConfiguration {
@@ -371,7 +371,7 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
     const env: Record<string, string> = {
       ...plan.env,
       ...(cfg.locale ? { DAY_LOCALE: cfg.locale } : {}),
-      ...extraEnv(),
+      ...launchEnv(),
     };
     this.deps.output.appendLine(
       `debugging ${cfg.target} via ${delegate.label} (type ${delegate.debugType()}): ${plan.program}`,
@@ -504,7 +504,7 @@ class DayLaunchAdapter implements vscode.DebugAdapter {
       locale: cfg.locale,
       script: cfg.script,
       keepAlive: cfg.keepAlive,
-      env: extraEnv(),
+      env: launchEnv(),
       verbose: verbose(),
     };
     const dayArgs = launchArgs(opts);

@@ -102,6 +102,45 @@ const checks: Check[] = [
     },
   ],
   [
+    "day.logLevel rides every run task as --env DAY_LOG, trace by default, extraEnv winning",
+    async () => {
+      const cfg = vscode.workspace.getConfiguration("day");
+      const runTasks = async () =>
+        (await vscode.tasks.fetchTasks({ type: "day" })).filter((t) => t.name.startsWith("run "));
+      try {
+        // Default: trace, so a fresh install shows everything (the per-statement SQL firehose
+        // included) without any setup. `detail` is the rendered command line, so this covers
+        // the whole path from the setting to the process argv.
+        for (const t of await runTasks()) {
+          assert.ok(
+            (t.detail ?? "").includes("--env DAY_LOG=trace"),
+            `task "${t.name}" should carry --env DAY_LOG=trace by default: ${t.detail}`,
+          );
+        }
+        // A chosen level replaces the default…
+        await cfg.update("logLevel", "info", vscode.ConfigurationTarget.Global);
+        for (const t of await runTasks()) {
+          assert.ok(
+            (t.detail ?? "").includes("--env DAY_LOG=info"),
+            `task "${t.name}" should carry the chosen level: ${t.detail}`,
+          );
+        }
+        // …and a hand-written DAY_LOG in day.extraEnv beats the setting.
+        await cfg.update("extraEnv", { DAY_LOG: "warn" }, vscode.ConfigurationTarget.Global);
+        for (const t of await runTasks()) {
+          const detail = t.detail ?? "";
+          assert.ok(
+            detail.includes("--env DAY_LOG=warn") && !detail.includes("DAY_LOG=info"),
+            `task "${t.name}" should let extraEnv's DAY_LOG win: ${detail}`,
+          );
+        }
+      } finally {
+        await cfg.update("logLevel", undefined, vscode.ConfigurationTarget.Global);
+        await cfg.update("extraEnv", undefined, vscode.ConfigurationTarget.Global);
+      }
+    },
+  ],
+  [
     "the tree view is registered and reveals the project",
     async () => {
       // The view id is what `views.day[0].id` contributes; focusing it is the same command the

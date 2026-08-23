@@ -187,6 +187,11 @@
         "category": "Day"
       },
       {
+        "command": "day.selectLogLevel",
+        "title": "Select Log Level",
+        "category": "Day"
+      },
+      {
         "command": "day.installCli",
         "title": "Install the day CLI\u2026",
         "category": "Day",
@@ -307,6 +312,27 @@
             "type": "boolean",
             "default": false,
             "markdownDescription": "Run `day build` and `day launch` with `--verbose`, so the terminal shows every sub-command they execute (cargo, gradle, xcodebuild, hvigor, adb, codesign, \u2026) and its raw output, instead of Day's own status lines alone. Useful when a build fails inside one of those tools and the summary does not say why."
+          },
+          "day.logLevel": {
+            "type": "string",
+            "enum": [
+              "trace",
+              "debug",
+              "info",
+              "warn",
+              "error",
+              "off"
+            ],
+            "enumDescriptions": [
+              "Everything, including per-statement SQL from day-persistence.",
+              "Framework diagnostics (Day's own default in a debug build).",
+              "Notable events (Day's default in a release build).",
+              "Problems only.",
+              "Failures only.",
+              "Nothing."
+            ],
+            "default": "trace",
+            "markdownDescription": "Log level for launched apps, passed to every launch as `--env DAY_LOG=<level>`. A native app's lines land in the task terminal; a `web-dom` launch carries the level on the page URL and its lines land in the browser console. A `DAY_LOG` entry in `day.extraEnv` overrides this setting."
           },
           "day.extraEnv": {
             "type": "object",

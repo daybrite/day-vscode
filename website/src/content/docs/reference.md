@@ -41,6 +41,8 @@ in the palette.
 | `day.cliPath` | `day` | Path to the CLI. See [how it resolves](./troubleshooting#how-the-cli-is-resolved) when left at the default. |
 | `day.defaultProfile` | `debug` | Build mode for a new workspace |
 | `day.defaultLocale` | `""` | Default `--locale`; empty means the app or system default |
+| `day.verbose` | `false` | Run builds and launches with `--verbose`, showing every sub-command they execute |
+| `day.logLevel` | `trace` | `DAY_LOG` level passed to every launch as `--env`; a `DAY_LOG` in `day.extraEnv` wins |
 | `day.extraEnv` | `{}` | `KEY=VALUE` pairs passed to every launch as `--env` |
 | `day.ohosNdkHome` | `""` | OpenHarmony NDK `native` directory for `harmony-arkui`; empty auto-detects |
 | `day.script.keepAppRunning` | `true` | Keep the app alive after its dayscript finishes |

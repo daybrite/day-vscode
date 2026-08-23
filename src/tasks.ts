@@ -27,6 +27,36 @@ export function extraEnv(): Record<string, string> {
   return vscode.workspace.getConfiguration("day").get<Record<string, string>>("extraEnv") ?? {};
 }
 
+/** `DAY_LOG`'s level names, most to least verbose (day-vscode passes them through untouched). */
+export const LOG_LEVELS = ["trace", "debug", "info", "warn", "error", "off"] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
+
+/** The `DAY_LOG` level every launch passes (`day.logLevel`). */
+export function logLevel(): LogLevel {
+  const v = vscode.workspace.getConfiguration("day").get<string>("logLevel", "trace");
+  return (LOG_LEVELS as readonly string[]).includes(v) ? (v as LogLevel) : "trace";
+}
+
+/** Set `day.logLevel`, at the scope that currently supplies it (the `toggleVerbose` rule). */
+export async function setLogLevel(level: LogLevel): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration("day");
+  const info = cfg.inspect<string>("logLevel");
+  const target =
+    info?.workspaceValue !== undefined
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
+  await cfg.update("logLevel", level, target);
+}
+
+/**
+ * Environment for the launched app (each entry becomes `--env KEY=VALUE`): the configured log
+ * level, then `day.extraEnv` — last wins, so a hand-written `DAY_LOG` there overrides
+ * `day.logLevel`.
+ */
+export function launchEnv(): Record<string, string> {
+  return { DAY_LOG: logLevel(), ...extraEnv() };
+}
+
 /** Whether builds and launches run with `--verbose` (day.verbose). */
 export function verbose(): boolean {
   return vscode.workspace.getConfiguration("day").get<boolean>("verbose", false);
@@ -105,7 +135,7 @@ export function buildDayTask(
           keepAlive:
             def.keepAlive ??
             vscode.workspace.getConfiguration("day").get<boolean>("script.keepAppRunning", true),
-          env: extraEnv(),
+          env: launchEnv(),
           verbose: verbose(),
         })
       : buildArgs(projectRoot, def.target, profile, verbose());
