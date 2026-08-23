@@ -9,6 +9,15 @@
       "label": "npm: compile"
     },
     {
+      // What F5 runs. `compile` alone type-checks into out/ and leaves dist/extension.js — the
+      // file package.json `main` actually loads — untouched, so the extension host would start
+      // whatever was bundled last rather than the edit under test.
+      "type": "npm",
+      "script": "prelaunch",
+      "problemMatcher": ["$tsc"],
+      "label": "npm: prelaunch"
+    },
+    {
       "type": "npm",
       "script": "watch",
       "isBackground": true,

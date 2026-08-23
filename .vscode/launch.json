@@ -10,7 +10,10 @@
         "${workspaceFolder}/../.."
       ],
       "outFiles": ["${workspaceFolder}/out/**/*.js"],
-      "preLaunchTask": "npm: compile"
+      // Bundles as well as type-checks: dist/extension.js is what package.json `main` loads, it is
+      // NOT in git, and `tsc` does not write it — so without this the host would find no extension
+      // in a fresh clone, and a stale one everywhere else.
+      "preLaunchTask": "npm: prelaunch"
     }
   ]
 }

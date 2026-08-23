@@ -3,6 +3,12 @@ out/
 *.vsix
 day-vscode.vsix
 
+# The esbuild bundle `package.json` `main` points at. Derived from src/, and rebuilt by everything
+# that needs it: `vsce package` through the `vscode:prepublish` hook, both CI jobs, the test:*
+# scripts, scripts/dev.*, and the F5 pre-launch task. Tracking it only ever meant a copy that could
+# silently disagree with the source it was built from — nothing verified the two matched.
+dist/
+
 # @vscode/test-electron downloads VS Code here; the e2e run writes screenshots to build/.
 .vscode-test/
 build/

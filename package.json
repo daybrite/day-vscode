@@ -636,6 +636,7 @@
     "vscode:prepublish": "npm run bundle",
     "bundle": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
     "compile": "tsc -p ./",
+    "prelaunch": "npm run compile && npm run bundle",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "test:integration": "npm run bundle && npm run compile && node test/run-integration.mjs",

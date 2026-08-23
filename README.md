@@ -108,8 +108,13 @@ folder.
 
 ```bash
 npm install
-npm run compile   # or: npm run watch
+npm run compile   # type-check only; or: npm run watch
 ```
+
+`dist/extension.js` — the esbuild bundle `package.json` `main` loads — is **not** in git: it is
+derived from `src/`, and everything that needs it builds it (`vsce package` through
+`vscode:prepublish`, both CI jobs, the `test:*` scripts, `scripts/dev.*`, and F5's pre-launch task).
+`npm run compile` type-checks into `out/` and does not write it; `npm run prelaunch` does both.
 
 Press **F5** (Run → "Run Day Extension") to open an Extension Development Host. Open any Day
 project (a folder with a `Day.toml` — `day new app my-app` makes one); the **Day** sidebar
