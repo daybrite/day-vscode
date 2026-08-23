@@ -1,22 +1,39 @@
 // Launches Day apps through the Tasks API and tracks the running executions so individual targets can
 // be stopped and restarted. Each launch is its own Task (one integrated terminal per target), so
 // output is filtered per-target automatically; multi-target = one task per selected target.
+//
+// Everything is keyed by PROJECT AND TARGET. A window can hold dozens of Day apps, and most of them
+// build `macos-appkit`: keyed by target alone, launching one app's macos-appkit read as "that is
+// already running", stopped the other app's, and left one Stop button for two processes.
 
 import * as vscode from "vscode";
 
 import { State } from "./config";
 import { buildDayTask, DayTaskDefinition } from "./tasks";
 
-interface Running {
+/** One launch, identified the way the rest of the extension addresses it. */
+export interface RunRef {
+  /** Project root (the directory holding Day.toml). */
+  root: string;
   target: string;
+}
+
+/** NUL joins the two halves: it cannot occur in a path or a target name, so the key is unambiguous
+ *  where `${root}:${target}` would collide on a project whose path ends in a target's name. */
+function key(root: string, target: string): string {
+  return `${root}\u0000${target}`;
+}
+
+interface Running {
+  ref: RunRef;
   execution: vscode.TaskExecution;
   pid?: number;
 }
 
 export class Runner implements vscode.Disposable {
   private running = new Map<string, Running>();
-  // Targets launched through the native Run and Debug UI (F5 / Run menu). Tracked alongside
-  // task-launched targets so the cockpit's "running" view, Stop, and restart cover both paths.
+  // Launches from the native Run and Debug UI (F5 / Run menu). Tracked alongside task-launched
+  // ones so the cockpit's "running" view, Stop, and restart cover both paths.
   private debug = new Map<string, vscode.DebugSession>();
   private emitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.emitter.event;
@@ -25,61 +42,89 @@ export class Runner implements vscode.Disposable {
   constructor(private readonly state: State) {
     this.subs.push(
       vscode.tasks.onDidStartTaskProcess((e) => {
-        const def = e.execution.task.definition as DayTaskDefinition;
-        if (this.isTrackedLaunch(def)) {
-          const r = this.running.get(def.target);
-          if (r) {
-            r.pid = e.processId;
-            this.emitter.fire();
-          }
+        const ref = this.taskRef(e.execution.task.definition as DayTaskDefinition);
+        const r = ref && this.running.get(key(ref.root, ref.target));
+        if (r) {
+          r.pid = e.processId;
+          this.emitter.fire();
         }
       }),
       vscode.tasks.onDidEndTaskProcess((e) => {
-        const def = e.execution.task.definition as DayTaskDefinition;
-        if (this.isTrackedLaunch(def) && this.running.has(def.target)) {
-          this.running.delete(def.target);
+        const ref = this.taskRef(e.execution.task.definition as DayTaskDefinition);
+        if (ref && this.running.delete(key(ref.root, ref.target))) {
           this.emitter.fire();
         }
       }),
       vscode.debug.onDidStartDebugSession((s) => {
-        const target = this.debugTarget(s);
-        if (target) {
-          this.debug.set(target, s);
+        const ref = this.debugRef(s);
+        if (ref) {
+          this.debug.set(key(ref.root, ref.target), s);
           this.emitter.fire();
         }
       }),
       vscode.debug.onDidTerminateDebugSession((s) => {
-        const target = this.debugTarget(s);
-        if (target && this.debug.delete(target)) {
+        const ref = this.debugRef(s);
+        if (ref && this.debug.delete(key(ref.root, ref.target))) {
           this.emitter.fire();
         }
       }),
     );
   }
 
-  /** The Day target a debug session launches, if it is one of ours. */
-  private debugTarget(s: vscode.DebugSession): string | undefined {
+  /** The project+target a `day` launch task addresses, if it is one of ours. */
+  private taskRef(def: DayTaskDefinition): RunRef | undefined {
+    if (def?.type !== "day" || def.command !== "launch" || typeof def.target !== "string") {
+      return undefined;
+    }
+    // A task authored in tasks.json may omit `project`; it then means the focused one, which is
+    // what buildDayTask resolved when it ran.
+    const root = def.project || this.state.focusedRoot;
+    return root ? { root, target: def.target } : undefined;
+  }
+
+  /** The project+target a debug session launches, if it is one of ours. */
+  private debugRef(s: vscode.DebugSession): RunRef | undefined {
     if (s.type !== "day") {
       return undefined;
     }
-    const target = (s.configuration as { target?: unknown }).target;
-    return typeof target === "string" && target.length > 0 ? target : undefined;
+    const cfg = s.configuration as { target?: unknown; project?: unknown };
+    const target = typeof cfg.target === "string" ? cfg.target : "";
+    if (!target) {
+      return undefined;
+    }
+    const root = typeof cfg.project === "string" && cfg.project ? cfg.project : this.state.focusedRoot;
+    return root ? { root, target } : undefined;
   }
 
-  private isTrackedLaunch(def: DayTaskDefinition): boolean {
-    return def?.type === "day" && def.command === "launch" && typeof def.target === "string";
+  isRunning(root: string, target: string): boolean {
+    const k = key(root, target);
+    return this.running.has(k) || this.debug.has(k);
   }
 
-  isRunning(target: string): boolean {
-    return this.running.has(target) || this.debug.has(target);
+  /** Every live launch, across every project. */
+  runningRefs(): RunRef[] {
+    const out = new Map<string, RunRef>();
+    for (const [k, r] of this.running) {
+      out.set(k, r.ref);
+    }
+    for (const [k, s] of this.debug) {
+      const ref = this.debugRef(s);
+      if (ref) {
+        out.set(k, ref);
+      }
+    }
+    return [...out.values()];
   }
 
-  runningTargets(): string[] {
-    return [...new Set([...this.running.keys(), ...this.debug.keys()])];
+  /** The targets running in one project. */
+  runningIn(root: string): string[] {
+    return this.runningRefs()
+      .filter((r) => r.root === root)
+      .map((r) => r.target);
   }
 
-  private definition(command: "build" | "launch", target: string): DayTaskDefinition {
-    const sel = this.state.selection;
+  private definition(command: "build" | "launch", root: string, target: string): DayTaskDefinition {
+    const sel = this.state.selectionFor(root);
     return {
       type: "day",
       command,
@@ -87,12 +132,12 @@ export class Runner implements vscode.Disposable {
       profile: sel.profile,
       locale: sel.locale || undefined,
       script: sel.script || undefined,
-      project: sel.projectRoot,
+      project: root,
     };
   }
 
-  async runTargets(targets: string[]): Promise<void> {
-    if (!this.state.selection.projectRoot) {
+  async runTargets(root: string, targets: string[]): Promise<void> {
+    if (!root) {
       throw new Error("No Day project selected.");
     }
     if (targets.length === 0) {
@@ -101,51 +146,54 @@ export class Runner implements vscode.Disposable {
     for (const target of targets) {
       // Re-running a live target restarts it rather than stacking a second instance — whether it
       // was launched from the cockpit (a task) or the native Run UI (a debug session).
-      if (this.isRunning(target)) {
-        await this.stop(target);
+      if (this.isRunning(root, target)) {
+        await this.stop(root, target);
       }
-      const exec = await vscode.tasks.executeTask(buildDayTask(this.definition("launch", target)));
-      this.running.set(target, { target, execution: exec });
+      const exec = await vscode.tasks.executeTask(
+        buildDayTask(this.definition("launch", root, target)),
+      );
+      this.running.set(key(root, target), { ref: { root, target }, execution: exec });
     }
     this.emitter.fire();
   }
 
-  async buildTargets(targets: string[]): Promise<void> {
-    if (!this.state.selection.projectRoot) {
+  async buildTargets(root: string, targets: string[]): Promise<void> {
+    if (!root) {
       throw new Error("No Day project selected.");
     }
     if (targets.length === 0) {
       throw new Error("No targets selected. Tick one or more targets in the Day view.");
     }
     for (const target of targets) {
-      await vscode.tasks.executeTask(buildDayTask(this.definition("build", target)));
+      await vscode.tasks.executeTask(buildDayTask(this.definition("build", root, target)));
     }
   }
 
-  async stop(target: string): Promise<void> {
-    const r = this.running.get(target);
+  async stop(root: string, target: string): Promise<void> {
+    const k = key(root, target);
+    const r = this.running.get(k);
     if (r) {
       r.execution.terminate();
-      this.running.delete(target);
+      this.running.delete(k);
       this.emitter.fire();
     }
-    const d = this.debug.get(target);
+    const d = this.debug.get(k);
     if (d) {
       await vscode.debug.stopDebugging(d);
-      this.debug.delete(target);
+      this.debug.delete(k);
       this.emitter.fire();
     }
   }
 
   async stopAll(): Promise<void> {
-    for (const target of this.runningTargets()) {
-      await this.stop(target);
+    for (const ref of this.runningRefs()) {
+      await this.stop(ref.root, ref.target);
     }
   }
 
-  async restart(target: string): Promise<void> {
-    await this.stop(target);
-    await this.runTargets([target]);
+  async restart(root: string, target: string): Promise<void> {
+    await this.stop(root, target);
+    await this.runTargets(root, [target]);
   }
 
   dispose(): void {

@@ -14,10 +14,10 @@
 
         cd ~\src\daybrite; day-vscode\scripts\dev.ps1 Day-Sketch Day-Showcase
 
-    which is how to exercise the extension against more than one project at a time - it discovers
-    every Day.toml in the workspace and switches between them (the sidebar's project row, or
-    `Day: Select Project`). One selection is active at a time: mode, locale, targets, and dayscript
-    belong to the window, not to each project.
+    which is how to exercise the extension against more than one project at a time. Each app
+    appears in the sidebar with its own targets, mode, locale and dayscript; the focused one
+    follows the file being edited, and `Day: Run All Projects` launches every ticked target across
+    all of them.
 
     The window is an Extension Development Host: the extension running there is built fresh from
     THIS working tree (superseding any installed day-vscode in that window), so source edits +
@@ -29,9 +29,9 @@
       * the app supplies the Day.toml the extension's sidebar, tasks, and debug configs act on;
       * `day/` is open for editing beside it, so a fix to a core/toolkit/piece/part crate and the
         app that exercises it are one window apart;
-      * with `day/` among the workspace folders the extension's CLI resolver runs
-        `cargo run -q -p day-cli` from that checkout in PREFERENCE to any installed `day`
-        (src/cli.ts), so the editor drives the same CLI this script does.
+      * the generated workspace sets `day.cliSource` to that checkout, so every CLI invocation
+        the editor makes is `cargo run` against it (src/cli.ts) - an edit to day-cli reaches the
+        next build without rerunning this script, and no installed `day` is consulted.
 
     Both sides therefore ignore whatever `day` is on PATH. That binary is whatever was released
     or installed last, and a CLI a version behind the crates in `day/` writes a [patch] table an
@@ -243,9 +243,12 @@ New-Item -ItemType Directory -Force -Path (Split-Path $Workspace -Parent) | Out-
 $folderList = @()
 foreach ($p in $Projects) { $folderList += [ordered]@{ path = $p } }
 $folderList += [ordered]@{ path = $DayRepo }
+# `day.cliSource` rather than the binary path: the window runs the CLI through `cargo run` against
+# the checkout, so a day-cli edit is compiled into the next build without rerunning this script.
+# The binary above is still what `day patch` uses, and it leaves the cargo cache warm.
 $workspaceJson = [ordered]@{
     folders  = $folderList
-    settings = [ordered]@{ 'day.cliPath' = $DayExe }
+    settings = [ordered]@{ 'day.cliSource' = $DayRepo }
 } | ConvertTo-Json -Depth 4
 # UTF-8 *without* a BOM - Set-Content -Encoding UTF8 writes one on Windows PowerShell 5.1, and a
 # BOM ahead of the opening brace makes the workspace file fail to parse.

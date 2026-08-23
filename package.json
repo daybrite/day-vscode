@@ -70,6 +70,29 @@
         "icon": "$(run-all)"
       },
       {
+        "command": "day.runAll",
+        "title": "Run All Projects",
+        "category": "Day",
+        "icon": "$(run-all)"
+      },
+      {
+        "command": "day.focusProject",
+        "title": "Focus Project",
+        "category": "Day"
+      },
+      {
+        "command": "day.runProject",
+        "title": "Run Project",
+        "category": "Day",
+        "icon": "$(play)"
+      },
+      {
+        "command": "day.stopProject",
+        "title": "Stop Project",
+        "category": "Day",
+        "icon": "$(debug-stop)"
+      },
+      {
         "command": "day.runTarget",
         "title": "Run",
         "category": "Day",
@@ -160,7 +183,7 @@
       },
       {
         "command": "day.newProject",
-        "title": "New Project\u2026",
+        "title": "New Project…",
         "category": "Day",
         "icon": "$(new-folder)"
       },
@@ -193,7 +216,7 @@
       },
       {
         "command": "day.installCli",
-        "title": "Install the day CLI\u2026",
+        "title": "Install the day CLI…",
         "category": "Day",
         "icon": "$(cloud-download)"
       }
@@ -204,6 +227,11 @@
           "command": "day.run",
           "when": "view == dayTargets",
           "group": "navigation@1"
+        },
+        {
+          "command": "day.runAll",
+          "when": "view == dayTargets",
+          "group": "1_run@2"
         },
         {
           "command": "day.stopAll",
@@ -251,6 +279,16 @@
           "command": "day.restart",
           "when": "view == dayTargets && viewItem == dayTargetRunning",
           "group": "inline@2"
+        },
+        {
+          "command": "day.runProject",
+          "when": "view == dayTargets && viewItem =~ /^dayProject/",
+          "group": "inline@1"
+        },
+        {
+          "command": "day.stopProject",
+          "when": "view == dayTargets && viewItem =~ /^dayProject/",
+          "group": "inline@2"
         }
       ],
       "commandPalette": [
@@ -281,6 +319,18 @@
         {
           "command": "day.buildTarget",
           "when": "false"
+        },
+        {
+          "command": "day.focusProject",
+          "when": "false"
+        },
+        {
+          "command": "day.runProject",
+          "when": "false"
+        },
+        {
+          "command": "day.stopProject",
+          "when": "false"
         }
       ]
     },
@@ -293,6 +343,11 @@
             "type": "string",
             "default": "day",
             "markdownDescription": "Path to the `day` CLI binary. If it is left as `day`, a local Day checkout is preferred over `PATH`: the Day repository itself when the workspace is inside one, otherwise a `day/` checkout sitting beside this extension's own `day-vscode/` source. That checkout's `target/debug/day` is used when it has been built, and `cargo run` against it (via `--manifest-path` for the sibling case) when it has not — so a dev host needs no installed CLI."
+          },
+          "day.cliSource": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Path to a `day` **source checkout** (the folder holding `Cargo.toml` and `crates/day-cli/`). When set, every CLI invocation runs as `cargo run --manifest-path <path>/Cargo.toml -q -p day-cli --`, so an edit to the CLI is compiled into the very next build, launch or project scan — no rebuild step to remember. Takes precedence over `#day.cliPath#`. Costs roughly a second per invocation for cargo's freshness check, and needs `cargo` on the PATH the editor was started with; without it the checkout's already-built binary is used instead. Leave empty for normal use."
           },
           "day.defaultProfile": {
             "type": "string",
@@ -308,10 +363,16 @@
             "default": "",
             "description": "Default BCP-47 locale passed to `--locale` (empty = the app/system default)."
           },
+          "day.followActiveEditor": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Focus the Day project that the active editor's file belongs to. With several apps open in one window, opening a file in one of them points the Configuration rows, the Run button, and the status bar at that project. Turn this off to change focus only from the Day sidebar or `Day: Select Project`."
+          },
           "day.verbose": {
             "type": "boolean",
             "default": false,
-            "markdownDescription": "Run `day build` and `day launch` with `--verbose`, so the terminal shows every sub-command they execute (cargo, gradle, xcodebuild, hvigor, adb, codesign, \u2026) and its raw output, instead of Day's own status lines alone. Useful when a build fails inside one of those tools and the summary does not say why."
+            "markdownDescription": "Run `day build` and `day launch` with `--verbose`, so the terminal shows every sub-command they execute (cargo, gradle, xcodebuild, hvigor, adb, codesign, …) and its raw output, instead of Day's own status lines alone. Useful when a build fails inside one of those tools and the summary does not say why.\n\nSet per project: put it in that app's `.vscode/settings.json` and it applies to that app alone, which is what lets several Day apps in one window run with different settings.",
+            "scope": "resource"
           },
           "day.logLevel": {
             "type": "string",
@@ -332,7 +393,8 @@
               "Nothing."
             ],
             "default": "trace",
-            "markdownDescription": "Log level for launched apps, passed to every launch as `--env DAY_LOG=<level>`. A native app's lines land in the task terminal; a `web-dom` launch carries the level on the page URL and its lines land in the browser console. A `DAY_LOG` entry in `day.extraEnv` overrides this setting."
+            "markdownDescription": "Log level for launched apps, passed to every launch as `--env DAY_LOG=<level>`. A native app's lines land in the task terminal; a `web-dom` launch carries the level on the page URL and its lines land in the browser console. A `DAY_LOG` entry in `day.extraEnv` overrides this setting.\n\nSet per project: put it in that app's `.vscode/settings.json` and it applies to that app alone, which is what lets several Day apps in one window run with different settings.",
+            "scope": "resource"
           },
           "day.extraEnv": {
             "type": "object",
@@ -340,7 +402,8 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Extra environment variables passed to every launch as `--env KEY=VALUE`."
+            "description": "Extra environment variables passed to every launch as `--env KEY=VALUE`.\n\nSet per project: put it in that app's `.vscode/settings.json` and it applies to that app alone, which is what lets several Day apps in one window run with different settings.",
+            "scope": "resource"
           },
           "day.ohosNdkHome": {
             "type": "string",
@@ -377,16 +440,16 @@
               "Use the first installed debugger, preferring LLDB DAP, then CodeLLDB, then C/C++.",
               "LLDB DAP (llvm-vs-code-extensions.lldb-dap).",
               "CodeLLDB (vadimcn.vscode-lldb).",
-              "C/C++ (ms-vscode.cpptools) \u2014 cppvsdbg on Windows, cppdbg elsewhere.",
+              "C/C++ (ms-vscode.cpptools) — cppvsdbg on Windows, cppdbg elsewhere.",
               "Never delegate: Start Debugging runs the app without breakpoints."
             ],
             "default": "auto",
-            "markdownDescription": "Which Rust debugger **Start Debugging** hands a desktop target to. Day ships no debug adapter of its own \u2014 it builds the app and passes the binary, working directory, and environment to the debugger you already use. Device and browser targets always run without a debugger."
+            "markdownDescription": "Which Rust debugger **Start Debugging** hands a desktop target to. Day ships no debug adapter of its own — it builds the app and passes the binary, working directory, and environment to the debugger you already use. Device and browser targets always run without a debugger."
           }
         }
       },
       {
-        "title": "AI \u00b7 Agents",
+        "title": "AI · Agents",
         "order": 4,
         "properties": {
           "day.mcp.enabled": {
@@ -565,7 +628,7 @@
     "mcpServerDefinitionProviders": [
       {
         "id": "day",
-        "label": "Day \u2014 build, run, and drive Day apps"
+        "label": "Day — build, run, and drive Day apps"
       }
     ]
   },

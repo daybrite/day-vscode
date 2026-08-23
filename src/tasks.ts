@@ -23,29 +23,92 @@ export interface DayTaskDefinition extends vscode.TaskDefinition {
   project?: string;
 }
 
-export function extraEnv(): Record<string, string> {
-  return vscode.workspace.getConfiguration("day").get<Record<string, string>>("extraEnv") ?? {};
+/**
+ * The `day` configuration as it applies to one project.
+ *
+ * `extraEnv`, `logLevel` and `verbose` are declared `resource`-scoped, so each app can carry its
+ * own in `<project>/.vscode/settings.json` — one app logging at trace while the next stays quiet.
+ * Passing the root is what makes VS Code apply that folder's value; without it every project would
+ * read the window's.
+ */
+function dayConfig(root?: string): vscode.WorkspaceConfiguration {
+  return vscode.workspace.getConfiguration("day", configResource(root));
+}
+
+/**
+ * The URI to read a project's folder-scoped settings against.
+ *
+ * Not simply `Uri.file(root)`: `day metadata` reports a canonical root (`/private/tmp/…` on
+ * macOS) while the workspace folder keeps the path as opened (`/tmp/…`), and a URI VS Code cannot
+ * place inside a folder silently falls back to the WINDOW's settings — so every project would
+ * quietly share one log level. Matching through resolved paths puts each project back on its own.
+ */
+function configResource(root?: string): vscode.Uri | undefined {
+  if (!root) {
+    return undefined;
+  }
+  const direct = vscode.Uri.file(root);
+  if (vscode.workspace.getWorkspaceFolder(direct)) {
+    return direct;
+  }
+  const resolved = realPath(root);
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    const here = realPath(folder.uri.fsPath);
+    if (resolved === here || resolved.startsWith(here.endsWith(path.sep) ? here : here + path.sep)) {
+      return folder.uri;
+    }
+  }
+  return direct;
+}
+
+function realPath(p: string): string {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return p;
+  }
+}
+
+/**
+ * Where a sidebar edit to a per-project setting is written.
+ *
+ * The project's own folder when it is one, so the Verbose checkbox and Log level row edit the app
+ * they are pointed at. Otherwise the pre-existing rule: keep a workspace override a workspace
+ * override, and put everything else in user settings rather than quietly pinning a value for one
+ * workspace that the user set once, globally.
+ */
+function writeScope(
+  cfg: vscode.WorkspaceConfiguration,
+  key: string,
+  root?: string,
+): vscode.ConfigurationTarget {
+  if (root && vscode.workspace.getWorkspaceFolder(vscode.Uri.file(root))) {
+    return vscode.ConfigurationTarget.WorkspaceFolder;
+  }
+  const info = cfg.inspect(key);
+  return info?.workspaceValue !== undefined
+    ? vscode.ConfigurationTarget.Workspace
+    : vscode.ConfigurationTarget.Global;
+}
+
+export function extraEnv(root?: string): Record<string, string> {
+  return dayConfig(root).get<Record<string, string>>("extraEnv") ?? {};
 }
 
 /** `DAY_LOG`'s level names, most to least verbose (day-vscode passes them through untouched). */
 export const LOG_LEVELS = ["trace", "debug", "info", "warn", "error", "off"] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
-/** The `DAY_LOG` level every launch passes (`day.logLevel`). */
-export function logLevel(): LogLevel {
-  const v = vscode.workspace.getConfiguration("day").get<string>("logLevel", "trace");
+/** The `DAY_LOG` level a project's launches pass (`day.logLevel`). */
+export function logLevel(root?: string): LogLevel {
+  const v = dayConfig(root).get<string>("logLevel", "trace");
   return (LOG_LEVELS as readonly string[]).includes(v) ? (v as LogLevel) : "trace";
 }
 
-/** Set `day.logLevel`, at the scope that currently supplies it (the `toggleVerbose` rule). */
-export async function setLogLevel(level: LogLevel): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration("day");
-  const info = cfg.inspect<string>("logLevel");
-  const target =
-    info?.workspaceValue !== undefined
-      ? vscode.ConfigurationTarget.Workspace
-      : vscode.ConfigurationTarget.Global;
-  await cfg.update("logLevel", level, target);
+/** Set `day.logLevel` for one project (or the window, with no project). */
+export async function setLogLevel(level: LogLevel, root?: string): Promise<void> {
+  const cfg = dayConfig(root);
+  await cfg.update("logLevel", level, writeScope(cfg, "logLevel", root));
 }
 
 /**
@@ -53,32 +116,20 @@ export async function setLogLevel(level: LogLevel): Promise<void> {
  * level, then `day.extraEnv` — last wins, so a hand-written `DAY_LOG` there overrides
  * `day.logLevel`.
  */
-export function launchEnv(): Record<string, string> {
-  return { DAY_LOG: logLevel(), ...extraEnv() };
+export function launchEnv(root?: string): Record<string, string> {
+  return { DAY_LOG: logLevel(root), ...extraEnv(root) };
 }
 
-/** Whether builds and launches run with `--verbose` (day.verbose). */
-export function verbose(): boolean {
-  return vscode.workspace.getConfiguration("day").get<boolean>("verbose", false);
+/** Whether a project's builds and launches run with `--verbose` (day.verbose). */
+export function verbose(root?: string): boolean {
+  return dayConfig(root).get<boolean>("verbose", false);
 }
 
-/**
- * Flip `day.verbose`, for the Configuration checkbox in the Day view. Returns the new value.
- *
- * Written at the scope that currently SUPPLIES the value, as `day.toggleScriptKeepAlive` does:
- * a workspace override stays a workspace override, and everything else lands in user settings.
- * Always writing the workspace would quietly pin a per-project value for someone who had set it
- * once, globally, and wondered why the next project ignored it.
- */
-export async function toggleVerbose(): Promise<boolean> {
-  const cfg = vscode.workspace.getConfiguration("day");
+/** Flip `day.verbose` for one project (see [`writeScope`]). Returns the new value. */
+export async function toggleVerbose(root?: string): Promise<boolean> {
+  const cfg = dayConfig(root);
   const next = !cfg.get<boolean>("verbose", false);
-  const info = cfg.inspect<boolean>("verbose");
-  const target =
-    info?.workspaceValue !== undefined
-      ? vscode.ConfigurationTarget.Workspace
-      : vscode.ConfigurationTarget.Global;
-  await cfg.update("verbose", next, target);
+  await cfg.update("verbose", next, writeScope(cfg, "verbose", root));
   return next;
 }
 
@@ -135,17 +186,25 @@ export function buildDayTask(
           keepAlive:
             def.keepAlive ??
             vscode.workspace.getConfiguration("day").get<boolean>("script.keepAppRunning", true),
-          env: launchEnv(),
-          verbose: verbose(),
+          env: launchEnv(projectRoot),
+          verbose: verbose(projectRoot),
         })
-      : buildArgs(projectRoot, def.target, profile, verbose());
+      : buildArgs(projectRoot, def.target, profile, verbose(projectRoot));
 
   const env = taskEnv(def.target);
   const exec = new vscode.ProcessExecution(cli.command, [...cli.baseArgs, ...args], {
     ...(cli.cwd ? { cwd: cli.cwd } : {}),
     ...(Object.keys(env).length ? { env } : {}),
   });
-  const name = def.command === "launch" ? `run ${def.target}` : `build ${def.target}`;
+  // Always qualified by project, even with one app open. A task's name is its identity — it names
+  // the terminal panel and the entry in the Tasks list — and two apps both building `macos-appkit`
+  // would otherwise share one panel and one identity. Qualifying only when a second project
+  // appears would instead rename a task the moment a folder is added, which is worse: the name
+  // would be stable only as long as the workspace was.
+  const verb = def.command === "launch" ? "run" : "build";
+  const name = projectRoot
+    ? `${verb} ${def.target} (${path.basename(projectRoot)})`
+    : `${verb} ${def.target}`;
   // $day-rustc is contributed by THIS extension (a $rustc it can rely on: the stock name only
   // exists when rust-analyzer is installed, and an unknown matcher name is silently ignored).
   // Launches compile first, so they get the matcher too.

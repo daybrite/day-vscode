@@ -57,31 +57,45 @@ export interface ProjectScan {
   failures: ProjectLoadFailure[];
 }
 
+/** How many `day metadata` processes to have in flight at once. */
+const LOAD_CONCURRENCY = 8;
+
 export async function findProjects(): Promise<ProjectScan> {
   const uris = await vscode.workspace.findFiles(
     "**/Day.toml",
     "**/{node_modules,target,build,out}/**",
     100,
   );
-  const projects: DayProject[] = [];
-  const failures: ProjectLoadFailure[] = [];
-  for (const uri of uris) {
-    const root = path.dirname(uri.fsPath);
+  const roots = uris
+    .map((uri) => path.dirname(uri.fsPath))
     // A Day project is also a cargo package, so a Day.toml with no Cargo.toml beside it cannot
     // be one — it is a scaffold template or a fixture. `day metadata` says exactly that, and
     // reporting it would put a permanent error notification in front of anyone whose workspace
     // includes the day checkout (crates/day-cli/templates/app carries such a Day.toml).
-    if (!fs.existsSync(path.join(root, "Cargo.toml"))) {
-      continue;
+    .filter((root) => fs.existsSync(path.join(root, "Cargo.toml")));
+
+  // Loaded a poolful at a time rather than one after another: each root costs its own `day
+  // metadata` process (~0.25s), so a window holding two dozen apps spent six seconds of activation
+  // waiting on a queue of one. Bounded rather than unbounded because the CLI is not free to spawn.
+  const projects: DayProject[] = [];
+  const failures: ProjectLoadFailure[] = [];
+  let next = 0;
+  const workers = Array.from({ length: Math.min(LOAD_CONCURRENCY, roots.length) }, async () => {
+    for (let i = next++; i < roots.length; i = next++) {
+      const { project, failure } = await loadProject(roots[i]);
+      if (project) {
+        projects.push(project);
+      } else if (failure) {
+        failures.push(failure);
+      }
     }
-    const { project, failure } = await loadProject(root);
-    if (project) {
-      projects.push(project);
-    } else if (failure) {
-      failures.push(failure);
-    }
-  }
+  });
+  await Promise.all(workers);
+
+  // Sorted after the fact, because completion order is now arbitrary and the sidebar's order must
+  // not depend on which project's CLI answered first.
   projects.sort((a, b) => a.name.localeCompare(b.name) || a.root.localeCompare(b.root));
+  failures.sort((a, b) => a.root.localeCompare(b.root));
   return { projects, failures };
 }
 

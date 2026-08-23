@@ -10,8 +10,15 @@ filtered per target, and processes stop/restart through the standard task lifecy
 
 ## Features
 
-- **Day sidebar** — pick a project, tick one or more targets, and Run / Build. Targets your host can't
-  build (e.g. `windows-*` on macOS) are shown disabled.
+- **Day sidebar** — every Day app in the window is listed, each expanding to its own targets. Tick
+  targets and Run / Build. Targets your host can't build (e.g. `windows-*` on macOS) are shown
+  disabled.
+- **Many apps in one window** — open a dozen Day projects side by side and drive them together.
+  Each keeps its own ticked targets, build mode, locale and dayscript; each gets its own terminal
+  per target, so two apps building `macos-appkit` never collide. `Run` launches the focused
+  project, `Day: Run All Projects` launches every ticked target everywhere, and a project row has
+  its own inline run/stop. The focused project follows the file you're editing
+  (`day.followActiveEditor`).
 - **Multiple simultaneous targets** — each selected target launches in its own terminal and can be
   **stopped / restarted independently** (inline buttons, or the status bar).
 - **Build mode** (debug / release), **locale** (`--locale`), an optional **dayscript**
@@ -83,12 +90,19 @@ beside this extension's own `day-vscode/` source** (the dev-host case, resolved 
 | Setting | Default | Description |
 |---|---|---|
 | `day.cliPath` | `day` | Path to the `day` CLI (falls back to `cargo run` in the Day repo, or a `day/` checkout beside the extension source). |
+| `day.cliSource` | `""` | Path to a `day` **source checkout**. When set, every CLI call runs as `cargo run --manifest-path <path>/Cargo.toml -q -p day-cli --`, so edits to the CLI reach the next build with no rebuild step. Takes precedence over `day.cliPath`; needs `cargo` on the editor's PATH (falls back to the checkout's built binary without it). |
 | `day.defaultProfile` | `debug` | Default build mode. |
 | `day.defaultLocale` | `""` | Default `--locale` (empty = app/system default). |
-| `day.verbose` | `false` | Run builds and launches with `--verbose`, showing every sub-command they execute (cargo, gradle, xcodebuild, hvigor, adb, …) and its raw output. |
-| `day.logLevel` | `trace` | `DAY_LOG` level passed to every launch via `--env` (`trace` shows everything, per-statement SQL included; a `DAY_LOG` in `day.extraEnv` wins). |
-| `day.extraEnv` | `{}` | Extra `KEY=VALUE` env passed to every launch via `--env`. |
+| `day.verbose` | `false` | Run builds and launches with `--verbose`, showing every sub-command they execute (cargo, gradle, xcodebuild, hvigor, adb, …) and its raw output. **Per project.** |
+| `day.logLevel` | `trace` | `DAY_LOG` level passed to every launch via `--env` (`trace` shows everything, per-statement SQL included; a `DAY_LOG` in `day.extraEnv` wins). **Per project.** |
+| `day.extraEnv` | `{}` | Extra `KEY=VALUE` env passed to every launch via `--env`. **Per project.** |
+| `day.followActiveEditor` | `true` | Focus the Day project the active editor's file belongs to. |
 | `day.ohosNdkHome` | `""` | OpenHarmony NDK `native` dir for `harmony-arkui` (exported as `OHOS_NDK_HOME` in the task; empty = auto-detect `~/ohos/ndk-extract/native` or `~/ohos-sdk/native`; the SDK's `toolchains/` joins the task PATH for `hdc`). |
+
+Settings marked **Per project** are folder-scoped: put them in one app's `.vscode/settings.json`
+and they apply to that app alone, which is how several apps in one window run with different log
+levels or environments. The Day sidebar's Verbose and Log level rows write to the focused project's
+folder.
 
 ## Developing this extension
 
@@ -125,16 +139,18 @@ Name several to open them in one window, each patched at the same `day/` checkou
 cd ~/src/daybrite && day-vscode/scripts/dev.sh Day-Sketch Day-Showcase
 ```
 
-The extension finds every `Day.toml` in the workspace and switches between them — click the project
-row at the top of the Day sidebar, or run `Day: Select Project`. One project is active at a time,
-and the build mode, locale, targets, and dayscript belong to the window rather than to each project.
+Every app appears in the Day sidebar with its own targets and its own build mode, locale and
+dayscript. The focused one — what the Configuration rows and the plain Run button act on — follows
+the file you're editing, or you can click its row.
 
 Either way the script bundles the extension from this working tree, builds `day-cli` from the
-sibling `day/` checkout, runs `day patch --local` so each app's cargo resolution points at that same
-checkout, and opens an Extension Development Host on a multi-root workspace holding **the app(s)
-first, then `day/`**. An edit to any `day/` crate — core, toolkit, piece, part — lands in the next
-Build or Run the extension starts. Both scripts need a `day/` checkout beside this repository;
-neither needs an installed `day` on `PATH`, and neither uses one if it is there.
+sibling `day/` checkout, runs `day patch --local` for each app so its cargo resolution points at
+that same checkout, and opens an Extension Development Host on a multi-root workspace holding
+**the apps first, then `day/`**. An edit to any `day/` crate — core, toolkit, piece, part — lands in
+the next Build or Run the extension starts, and because the workspace sets `day.cliSource` to the
+checkout, an edit to **day-cli itself** does too: the editor runs the CLI through `cargo run`
+rather than a binary built once at launch. Both scripts need a `day/` checkout beside this
+repository; neither needs an installed `day` on `PATH`, and neither uses one if it is there.
 
 Releases: pushing a `v*` tag builds, packages, and publishes to the Visual Studio Marketplace
 and Open VSX (see `.github/workflows/ci.yml`). The extension's release cycle is independent of

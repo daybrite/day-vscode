@@ -1,6 +1,9 @@
 // Resolve how to invoke the `day` CLI, and build its argument vectors.
 //
-// Resolution order for the default `day.cliPath` ("day"):
+// Resolution order:
+//   0. `day.cliSource` pointing at a day checkout → `cargo run` against it, so an edit to the CLI
+//      is compiled into the very next build or launch. This is the CLI-development mode, and it
+//      wins over everything below because that is the whole point of setting it;
 //   1. an explicit `day.cliPath` set to something other than "day" → use it verbatim;
 //   2. otherwise, if a Day checkout is in reach — the workspace is the Day repo (a Cargo workspace
 //      with a `day-cli` member), or a `day/` repo sits beside this extension — use ITS CLI:
@@ -14,6 +17,7 @@
 // missing `day` CLI and offer to install one it did not need.
 
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 
@@ -109,9 +113,78 @@ function checkoutCli(repo: string, cargoArgs: string[], cargoDisplay: string): D
   return { command: "cargo", baseArgs: cargoArgs, cwd: repo, display: cargoDisplay };
 }
 
+/** Expand a leading `~`, which a hand-written settings path very often carries. */
+function expandHome(p: string): string {
+  return p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p;
+}
+
+/** A day source checkout: a Cargo workspace that actually carries the `day-cli` member. */
+function isDayCheckout(dir: string): boolean {
+  return (
+    fs.existsSync(path.join(dir, "Cargo.toml")) &&
+    fs.existsSync(path.join(dir, "crates", "day-cli", "Cargo.toml"))
+  );
+}
+
+/** Whether `cargo` can be spawned at all, resolved the way the shell would and cached per session.
+ *
+ *  An extension host inherits the environment of whatever started VS Code — a window opened by an
+ *  already-running instance carries THAT instance's PATH, which frequently lacks `~/.cargo/bin`.
+ *  Checking up front lets `day.cliSource` fall back to the checkout's built binary instead of
+ *  failing every CLI call with ENOENT. */
+let cargoOnPath: boolean | undefined;
+function hasCargo(): boolean {
+  if (cargoOnPath === undefined) {
+    const exe = process.platform === "win32" ? "cargo.exe" : "cargo";
+    const dirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+    // `~/.cargo/bin` is where rustup puts it, and is the entry most often missing from a GUI PATH.
+    dirs.push(path.join(os.homedir(), ".cargo", "bin"));
+    cargoOnPath = dirs.some((d) => fs.existsSync(path.join(d, exe)));
+  }
+  return cargoOnPath;
+}
+
+/** Warned once per session, because `resolveCli` runs on every CLI invocation. */
+let warnedAboutSource = false;
+function warnOnce(message: string): void {
+  if (!warnedAboutSource) {
+    warnedAboutSource = true;
+    void vscode.window.showWarningMessage(message);
+  }
+}
+
 export function resolveCli(projectDir?: string): DayCli {
   const cfg = vscode.workspace.getConfiguration("day");
   const cliPath = (cfg.get<string>("cliPath") ?? "day").trim();
+
+  // CLI-development mode: run the CLI from source on every invocation, so a change to day-cli is
+  // in the next build without anyone remembering to rebuild it.
+  const source = (cfg.get<string>("cliSource") ?? "").trim();
+  if (source) {
+    const repo = expandHome(source);
+    if (!isDayCheckout(repo)) {
+      warnOnce(
+        `Day: day.cliSource does not look like a day checkout (no crates/day-cli/Cargo.toml under ${repo}) — ignoring it.`,
+      );
+    } else if (!hasCargo()) {
+      // Falling back rather than failing: the built binary in that same tree is what the dev
+      // scripts leave behind, so the window still works — just without picking up CLI edits.
+      const built = findBuiltDayBinary(repo);
+      warnOnce(
+        built
+          ? `Day: day.cliSource is set but \`cargo\` is not on the extension host's PATH — using ${built}, which will not pick up day-cli edits.`
+          : `Day: day.cliSource is set but \`cargo\` is not on the extension host's PATH, and ${repo} has no built CLI to fall back to.`,
+      );
+      if (built) {
+        return { command: built, baseArgs: [], display: built };
+      }
+    } else {
+      const manifest = path.join(repo, "Cargo.toml");
+      const baseArgs = ["run", "--manifest-path", manifest, "-q", "-p", "day-cli", "--"];
+      // cwd is the checkout, so cargo reads THAT workspace's config rather than the app's.
+      return { command: "cargo", baseArgs, cwd: repo, display: `cargo ${baseArgs.join(" ")}` };
+    }
+  }
 
   if (cliPath && cliPath !== "day") {
     return { command: cliPath, baseArgs: [], display: cliPath };

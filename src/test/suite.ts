@@ -12,10 +12,30 @@
 // exactly what the runner reports.
 
 import * as assert from "assert";
+import * as fs from "fs";
+import * as os from "os";
 import * as vscode from "vscode";
 
+import { findDayRepoRoot, resolveCli } from "../cli";
+import { State } from "../config";
 import { delegateByKey, DesktopLaunchPlan, pickDelegate, planFrom } from "../debug";
 import { installRoutes } from "../install";
+
+/** An in-memory Memento, so the selection store can be exercised without touching the real one. */
+function fakeMemento(): vscode.Memento {
+  const map = new Map<string, unknown>();
+  return {
+    keys: () => [...map.keys()],
+    get: (<T>(key: string, fallback?: T) => (map.has(key) ? (map.get(key) as T) : fallback)) as vscode.Memento["get"],
+    update: async (key: string, value: unknown) => {
+      if (value === undefined) {
+        map.delete(key);
+      } else {
+        map.set(key, value);
+      }
+    },
+  };
+}
 
 type Check = [name: string, fn: () => Promise<void> | void];
 
@@ -24,6 +44,40 @@ const COMBO = process.env.DAY_E2E_COMBO ?? "";
 
 const checks: Check[] = [
   [
+    "each project keeps its own targets, mode, locale and script",
+    async () => {
+      // The point of the per-project store: with a dozen apps in one window, ticking a target in
+      // one must not tick it in the next, and switching focus must not carry a mode across.
+      const state = new State(fakeMemento());
+      const sketch = "/w/Day-Sketch";
+      const showcase = "/w/Day-Showcase";
+
+      await state.focus(sketch);
+      assert.strictEqual(state.focusedRoot, sketch, "focus() must point the cockpit at that project");
+      await state.toggleTargetFor(sketch, "macos-appkit");
+      await state.update({ profile: "release", locale: "fr" });
+
+      await state.focus(showcase);
+      assert.strictEqual(state.focusedRoot, showcase);
+      assert.deepStrictEqual(state.selection.targets, [], "a fresh project starts with no targets");
+      assert.strictEqual(state.selection.profile, "debug", "mode must not carry across projects");
+      assert.strictEqual(state.selection.locale, "", "locale must not carry across projects");
+      await state.toggleTargetFor(showcase, "ios-uikit");
+
+      // Focusing back finds the first project exactly as it was left.
+      const back = state.selectionFor(sketch);
+      assert.deepStrictEqual(back.targets, ["macos-appkit"]);
+      assert.strictEqual(back.profile, "release");
+      assert.strictEqual(back.locale, "fr");
+      assert.deepStrictEqual(state.selectionFor(showcase).targets, ["ios-uikit"]);
+
+      // Editing an UNFOCUSED project (the fan-out tree does this) leaves focus alone.
+      await state.updateFor(sketch, { script: "dayscript/demo.yaml" });
+      assert.strictEqual(state.focusedRoot, showcase, "updateFor must not steal focus");
+      assert.strictEqual(state.selectionFor(sketch).script, "dayscript/demo.yaml");
+    },
+  ],
+  [
     "the extension activates on a workspace containing Day.toml",
     async () => {
       const ext = vscode.extensions.getExtension("daybrite.day-vscode");
@@ -31,7 +85,7 @@ const checks: Check[] = [
       await ext.activate();
       assert.ok(ext.isActive, "extension did not activate");
       const folders = vscode.workspace.workspaceFolders ?? [];
-      assert.strictEqual(folders.length, 1, "expected exactly one workspace folder");
+      assert.strictEqual(folders.length, 2, "expected the two-project fixture workspace");
     },
   ],
   [
@@ -55,13 +109,41 @@ const checks: Check[] = [
       const names = tasks.map((t) => t.name).sort();
       assert.ok(names.length >= 2, `expected day tasks, got ${JSON.stringify(names)}`);
       // Tasks come from the target list `day metadata --json` reported, so their presence is
-      // proof the CLI ran and its envelope parsed.
+      // proof the CLI ran and its envelope parsed. Every name carries the project it belongs to,
+      // which is what keeps two apps' `macos-appkit` in separate terminals.
       for (const name of names) {
-        assert.match(name, /^(build|run) \S+$/, `unexpected task name ${name}`);
+        assert.match(name, /^(build|run) \S+ \(.+\)$/, `unexpected task name ${name}`);
       }
       if (COMBO) {
-        assert.ok(names.includes(`build ${COMBO}`), `no "build ${COMBO}" task in ${names}`);
-        assert.ok(names.includes(`run ${COMBO}`), `no "run ${COMBO}" task in ${names}`);
+        const has = (verb: string) =>
+          names.some((n) => n.startsWith(`${verb} ${COMBO} (`));
+        assert.ok(has("build"), `no "build ${COMBO} (<project>)" task in ${names}`);
+        assert.ok(has("run"), `no "run ${COMBO} (<project>)" task in ${names}`);
+      }
+    },
+  ],
+  [
+    "both projects are discovered, and each gets its own tasks",
+    async () => {
+      // The end this whole feature serves: two apps in one window, each buildable and launchable
+      // without one standing in for the other. Tasks are the public proof — they exist only for
+      // projects the extension actually discovered and loaded through `day metadata`.
+      const tasks = await vscode.tasks.fetchTasks({ type: "day" });
+      const projectOf = (name: string) => name.match(/\(([^)]+)\)$/)?.[1];
+      const projects = new Set(tasks.map((t) => projectOf(t.name)).filter(Boolean));
+      assert.ok(
+        projects.has("day-fixture") && projects.has("day-fixture-two"),
+        `expected tasks for both fixtures, saw ${JSON.stringify([...projects])}`,
+      );
+      // Same target, two projects, two distinct tasks — the collision that used to make one app's
+      // launch stop the other's.
+      if (COMBO) {
+        const both = tasks.filter((t) => t.name.startsWith(`run ${COMBO} (`)).map((t) => t.name);
+        assert.strictEqual(
+          new Set(both).size,
+          2,
+          `each project needs its own "run ${COMBO}" task, saw ${JSON.stringify(both)}`,
+        );
       }
     },
   ],
@@ -173,6 +255,78 @@ const checks: Check[] = [
     },
   ],
   [
+    "each project can carry its own log level, verbose and env",
+    async () => {
+      // Folder-scoped settings: one app at trace while the next stays quiet, and the difference
+      // has to reach the actual command line rather than just the settings UI.
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      assert.strictEqual(folders.length, 2, "this check needs the two-project fixture");
+      const [a, b] = folders;
+      const cfgFor = (f: vscode.WorkspaceFolder) => vscode.workspace.getConfiguration("day", f.uri);
+      const detailFor = async (f: vscode.WorkspaceFolder): Promise<string> => {
+        const tasks = await vscode.tasks.fetchTasks({ type: "day" });
+        const name = f.uri.fsPath.split("/").pop();
+        const task = tasks.find((t) => t.name.endsWith(`(${name})`));
+        assert.ok(task, `no task for ${name} in ${tasks.map((t) => t.name)}`);
+        return task.detail ?? "";
+      };
+
+      try {
+        await cfgFor(a).update("logLevel", "warn", vscode.ConfigurationTarget.WorkspaceFolder);
+        await cfgFor(b).update("logLevel", "error", vscode.ConfigurationTarget.WorkspaceFolder);
+        await cfgFor(a).update("verbose", true, vscode.ConfigurationTarget.WorkspaceFolder);
+
+        const [da, db] = [await detailFor(a), await detailFor(b)];
+        assert.ok(da.includes("--env DAY_LOG=warn"), `first project's level missing: ${da}`);
+        assert.ok(db.includes("--env DAY_LOG=error"), `second project's level missing: ${db}`);
+        // Verbose set on ONE project must not leak into the other's command line.
+        assert.ok(da.includes("--verbose"), `first project should be verbose: ${da}`);
+        assert.ok(!db.includes("--verbose"), `verbose leaked into the second project: ${db}`);
+      } finally {
+        for (const f of [a, b]) {
+          await cfgFor(f).update("logLevel", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+          await cfgFor(f).update("verbose", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+        }
+      }
+    },
+  ],
+  [
+    "day.cliSource runs the CLI from source, and refuses a folder that is not a checkout",
+    async () => {
+      // CLI-development mode: with a day checkout named, every invocation goes through cargo so an
+      // edit to day-cli lands in the next build. Asserted on the resolved command rather than by
+      // running it, because what matters is which program the extension will spawn.
+      const cfg = vscode.workspace.getConfiguration("day");
+      const repo = findDayRepoRoot() ?? process.env.DAY_REPO;
+      try {
+        if (repo) {
+          await cfg.update("cliSource", repo, vscode.ConfigurationTarget.Workspace);
+          const cli = resolveCli();
+          // `cargo` only when it can actually be spawned; the fallback is deliberate, not a bug,
+          // so accept either shape and check the one that applies.
+          if (cli.command === "cargo") {
+            assert.deepStrictEqual(cli.baseArgs.slice(0, 2), ["run", "--manifest-path"]);
+            assert.ok(cli.baseArgs.includes("day-cli"), `expected -p day-cli in ${cli.baseArgs}`);
+            assert.strictEqual(cli.cwd, repo, "cargo must run in the checkout, not the app");
+          } else {
+            assert.match(cli.command, /day(\.exe)?$/, `unexpected fallback ${cli.command}`);
+          }
+        }
+        // A folder that is not a day checkout must not hijack the CLI — it falls through to the
+        // normal resolution instead of spawning cargo somewhere meaningless.
+        await cfg.update("cliSource", os.tmpdir(), vscode.ConfigurationTarget.Workspace);
+        const bogus = resolveCli();
+        assert.notStrictEqual(
+          bogus.cwd,
+          os.tmpdir(),
+          "a non-checkout day.cliSource must be ignored, not used as a cargo workspace",
+        );
+      } finally {
+        await cfg.update("cliSource", undefined, vscode.ConfigurationTarget.Workspace);
+      }
+    },
+  ],
+  [
     "the day configuration carries its documented defaults",
     () => {
       const cfg = vscode.workspace.getConfiguration("day");
@@ -181,6 +335,72 @@ const checks: Check[] = [
       assert.strictEqual(cfg.get("script.keepAppRunning"), true);
       assert.strictEqual(cfg.get("debug.adapter"), "auto");
       assert.strictEqual(cfg.get("verbose"), false);
+      assert.strictEqual(cfg.get("logLevel"), "trace");
+      assert.strictEqual(cfg.get("followActiveEditor"), true);
+    },
+  ],
+  [
+    "opening a file focuses the project it belongs to",
+    async () => {
+      // The context rule: which app the Configuration rows, the Run button and the status bar act
+      // on follows the file being worked on, so moving between apps needs no extra gesture.
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      assert.strictEqual(folders.length, 2, "this check needs the two-project fixture");
+      const roots = folders.map((f) => f.uri.fsPath);
+      // `day metadata` reports a canonical root while a workspace folder keeps the path as opened
+      // (`/private/tmp/…` vs `/tmp/…` on macOS), so compare the two through the same resolution.
+      const real = (p: string): string => {
+        try {
+          return fs.realpathSync.native(p);
+        } catch {
+          return p;
+        }
+      };
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const api = (await ext.activate()) as { focusedProject(): string | undefined };
+      const focused = (): string | undefined => {
+        const f = api.focusedProject();
+        return f === undefined ? undefined : real(f);
+      };
+
+      const focusAfterOpening = async (root: string): Promise<string | undefined> => {
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(`${root}/Day.toml`));
+        await vscode.window.showTextDocument(doc, { preview: false });
+        // The focus is set from an async handler on the editor-changed event; wait for it to land
+        // rather than assuming the event was delivered synchronously.
+        for (let i = 0; i < 50 && focused() !== real(root); i++) {
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        return focused();
+      };
+
+      // Both directions, so this cannot pass by whichever project happened to be focused already.
+      for (const root of [roots[1], roots[0], roots[1]]) {
+        assert.strictEqual(
+          await focusAfterOpening(root),
+          real(root),
+          `opening a file under ${root} should focus that project`,
+        );
+      }
+
+      // …and with the behavior turned off, focus stays where the user put it.
+      const cfg = vscode.workspace.getConfiguration("day");
+      try {
+        await cfg.update("followActiveEditor", false, vscode.ConfigurationTarget.Workspace);
+        const pinned = focused();
+        const other = roots.find((r) => real(r) !== pinned)!;
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(`${other}/Day.toml`));
+        await vscode.window.showTextDocument(doc, { preview: false });
+        await new Promise((r) => setTimeout(r, 300));
+        assert.strictEqual(
+          focused(),
+          pinned,
+          "day.followActiveEditor=false must stop the editor from changing focus",
+        );
+      } finally {
+        await cfg.update("followActiveEditor", undefined, vscode.ConfigurationTarget.Workspace);
+      }
     },
   ],
   [

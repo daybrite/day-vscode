@@ -1,5 +1,24 @@
 ## Unreleased
 
+- **Many Day apps in one window.** The sidebar now lists every project it finds, each expanding to
+  its own targets, and each keeping its own ticked targets, build mode, locale and dayscript — one
+  app's selection no longer stands in for another's. Launches are tracked per project *and* target,
+  so two apps building `macos-appkit` get their own terminals, run badges and stop buttons instead
+  of one silently stopping the other; task names carry the project (`run macos-appkit (Day-Sketch)`)
+  for the same reason. `Run` acts on the focused project, `Day: Run All Projects` launches every
+  ticked target everywhere, and a project row has its own inline run/stop. The focused project
+  follows the file you're editing — turn that off with `day.followActiveEditor`. `day.verbose`,
+  `day.logLevel` and `day.extraEnv` became per-project settings, so apps can run at different log
+  levels side by side; the sidebar's Verbose and Log level rows write to the focused project.
+  `scripts/dev.sh` (and `dev.ps1`) take several projects:
+  `scripts/dev.sh Day-Sketch Day-Showcase`.
+- **`day.cliSource`** — point it at a `day` source checkout and every CLI call runs through
+  `cargo run --manifest-path <path>/Cargo.toml -q -p day-cli --`, so a change to the CLI is compiled
+  into the next build, launch or project scan with no rebuild step to remember. The dev launchers
+  now set it instead of pinning a built binary. Needs `cargo` on the editor's PATH; without it the
+  checkout's built binary is used and a warning says so.
+- Project discovery loads up to eight projects at a time instead of one after another — a window
+  holding two dozen apps spent about six seconds of activation waiting on a queue of one.
 - **Log level** — every launch now passes `--env DAY_LOG=<level>`, `trace` by default, so a
   launched app shows everything it logs — the per-statement SQL from day-persistence included —
   in the task terminal (native targets) or the browser console (`web-dom`). Pick another level

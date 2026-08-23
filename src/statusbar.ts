@@ -64,17 +64,20 @@ export class StatusBar implements vscode.Disposable {
       return;
     }
     const sel = this.state.selection;
-    const running = this.runner.runningTargets();
+    // Two different counts, deliberately: the stop button governs EVERY project's launches (it
+    // calls Stop All), while the target chip below describes the focused project alone.
+    const runningAll = this.runner.runningRefs();
+    const running = this.runner.runningIn(project.root);
 
     // ---- run / stop toggle -------------------------------------------------
-    if (running.length > 0) {
-      this.run.text = running.length > 1 ? `$(debug-stop) ${running.length}` : "$(debug-stop)";
+    if (runningAll.length > 0) {
+      this.run.text = runningAll.length > 1 ? `$(debug-stop) ${runningAll.length}` : "$(debug-stop)";
       this.run.command = "day.stopAll";
     } else {
       this.run.text = "$(play)";
       this.run.command = "day.run";
     }
-    this.run.tooltip = this.runTooltip(project, running);
+    this.run.tooltip = this.runTooltip(project, running, runningAll.length);
     this.run.show();
 
     // ---- targets -----------------------------------------------------------
@@ -150,12 +153,19 @@ export class StatusBar implements vscode.Disposable {
   }
 
   /** The run/stop hover: what a click will do, plus the current CLI resolution. */
-  private runTooltip(project: DayProject, running: string[]): vscode.MarkdownString {
+  private runTooltip(
+    project: DayProject,
+    running: string[],
+    runningEverywhere: number,
+  ): vscode.MarkdownString {
     const md = new vscode.MarkdownString(undefined, true);
     md.isTrusted = true;
     const sel = this.state.selection;
-    if (running.length > 0) {
-      md.appendMarkdown(`**Stop ${running.length} running target${running.length > 1 ? "s" : ""}**\n\n`);
+    if (runningEverywhere > 0) {
+      md.appendMarkdown(`**Stop ${runningEverywhere} running target${runningEverywhere > 1 ? "s" : ""}**`);
+      // Say where they are when they are not all here: the button stops other projects' apps too.
+      const elsewhere = runningEverywhere - running.length;
+      md.appendMarkdown(elsewhere > 0 ? ` (${elsewhere} in other projects)\n\n` : `\n\n`);
     } else if (sel.targets.length > 0) {
       md.appendMarkdown(`**Run ${sel.targets.map(short).join(", ")}** (${sel.profile})\n\n`);
     } else {

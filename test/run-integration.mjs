@@ -6,6 +6,7 @@
 // this checkout, and runs the suite in-process. Fast (about a minute cold, seconds warm) and with
 // no UI automation in it, so it belongs on the PR path; test/e2e/drive.mjs is the slow half.
 
+import { writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,8 +18,29 @@ import { shortTmp, VSCODE_VERSION } from "./e2e/vscode.mjs";
 const root = resolve(fileURLToPath(import.meta.url), "..", "..");
 const dayBin = process.env.DAY_BIN || "day";
 const work = shortTmp("day-vsc-int");
-const workspace = scaffold({ dayBin, parent: fixtureParent(work) });
-console.log(`fixture: ${workspace}\nday CLI: ${dayBin}\nVS Code: ${VSCODE_VERSION}`);
+const parent = fixtureParent(work);
+
+// TWO projects, in a multi-root workspace: the extension is a multi-project cockpit, and a suite
+// that only ever saw one could not tell per-project state from window-wide state — which is the
+// distinction the whole selection store turns on. `day new app` is cheap (nothing is compiled
+// here), so the second fixture costs seconds.
+const primary = scaffold({ dayBin, parent });
+const secondary = scaffold({ dayBin, parent, name: "day-fixture-two" });
+const workspace = join(work, "two-projects.code-workspace");
+writeFileSync(
+  workspace,
+  `${JSON.stringify(
+    {
+      folders: [{ path: primary }, { path: secondary }],
+      settings: { "day.cliPath": dayBin },
+    },
+    null,
+    2,
+  )}\n`,
+);
+console.log(
+  `fixtures: ${primary}\n          ${secondary}\nday CLI: ${dayBin}\nVS Code: ${VSCODE_VERSION}`,
+);
 
 const code = await runTests({
   version: VSCODE_VERSION,

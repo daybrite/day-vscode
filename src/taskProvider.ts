@@ -1,7 +1,11 @@
-// A TaskProvider for the `day` task type. It auto-detects build/launch tasks for the current
-// project's buildable targets (so they appear under "Run Task…"), and resolves tasks written by
-// hand in tasks.json. This is the standard-conventions hook: `day` tasks integrate with the Tasks
-// system, Ctrl+Shift+B, and key bindings.
+// A TaskProvider for the `day` task type. It auto-detects build/launch tasks for EVERY project in
+// the window (so they appear under "Run Task…"), and resolves tasks written by hand in tasks.json.
+// This is the standard-conventions hook: `day` tasks integrate with the Tasks system,
+// Ctrl+Shift+B, and key bindings.
+//
+// Every project, not just the focused one: "Run Task…" is how a second app gets built without
+// first being focused, and each task carries its own project's mode, so the list stays honest
+// about what each one will do.
 
 import * as vscode from "vscode";
 
@@ -16,24 +20,25 @@ export class DayTaskProvider implements vscode.TaskProvider {
   constructor(
     private readonly state: State,
     private readonly currentProject: () => DayProject | undefined,
+    private readonly projects: () => DayProject[],
   ) {}
 
   provideTasks(): vscode.Task[] {
-    const project = this.currentProject();
-    if (!project) {
-      return [];
-    }
     const tasks: vscode.Task[] = [];
-    for (const name of project.targets) {
-      const target = findTarget(name);
-      if (!target || !isBuildableHere(target)) {
-        continue;
-      }
-      const profile = this.state.selection.profile;
-      for (const command of ["launch", "build"] as const) {
-        tasks.push(
-          buildDayTask({ type: "day", command, target: name, profile, project: project.root }),
-        );
+    for (const project of this.projects()) {
+      // Each project's OWN mode: a release-mode app next to a debug-mode one must not have the
+      // focused project's choice put in its task's command line.
+      const profile = this.state.selectionFor(project.root).profile;
+      for (const name of project.targets) {
+        const target = findTarget(name);
+        if (!target || !isBuildableHere(target)) {
+          continue;
+        }
+        for (const command of ["launch", "build"] as const) {
+          tasks.push(
+            buildDayTask({ type: "day", command, target: name, profile, project: project.root }),
+          );
+        }
       }
     }
     return tasks;

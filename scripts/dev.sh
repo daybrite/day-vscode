@@ -14,10 +14,9 @@
 #
 #   cd ~/src/daybrite && day-vscode/scripts/dev.sh Day-Sketch Day-Showcase
 #
-# which is how to exercise the extension against more than one project at a time — it discovers
-# every Day.toml in the workspace and switches between them (the sidebar's project row, or
-# `Day: Select Project`). One selection is active at a time: mode, locale, targets, and dayscript
-# belong to the window, not to each project.
+# which is how to exercise the extension against more than one project at a time. Each app appears
+# in the sidebar with its own targets, mode, locale and dayscript; the focused one follows the file
+# being edited, and `Day: Run All Projects` launches every ticked target across all of them.
 #
 # The window is an Extension Development Host: the extension running there is built fresh from THIS
 # working tree (superseding any installed day-vscode in that window), so source edits + rerunning
@@ -29,9 +28,9 @@
 #   * the app supplies the Day.toml the extension's sidebar, tasks, and debug configs act on;
 #   * `day/` is open for editing beside it, so a fix to a core/toolkit/piece/part crate and the
 #     app that exercises it are one window apart;
-#   * with `day/` among the workspace folders the extension's CLI resolver runs
-#     `cargo run -q -p day-cli` from that checkout in PREFERENCE to any installed `day`
-#     (src/cli.ts), so the editor drives the same CLI this script does.
+#   * the generated workspace sets `day.cliSource` to that checkout, so every CLI invocation the
+#     editor makes is `cargo run` against it (src/cli.ts) — an edit to day-cli reaches the next
+#     build without rerunning this script, and no installed `day` is consulted.
 #
 # Both sides therefore ignore whatever `day` is on PATH. That binary is whatever was released or
 # installed last, and a CLI a version behind the crates in `day/` writes a [patch] table an older
@@ -166,13 +165,20 @@ for project in "${PROJECTS[@]}"; do
 done
 
 mkdir -p "$(dirname "$WORKSPACE")"
-# `day.cliPath` pins the window to the binary built above. The extension would find the checkout's
-# CLI on its own (src/cli.ts), but this leaves nothing to resolve: no PATH lookup, no cargo needed
-# in the extension host's environment — which is not this shell's when `code` hands the window to an
-# already-running VS Code, and is where "the day CLI isn't installed" came from with a perfectly
-# good CLI sitting in the checkout. Workspace-scoped, in a generated machine-local file.
 # Built line by line rather than as one here-document because the folder list is now variable
 # length: the projects in the order they were given, then `day` last.
+#
+# `day.cliSource` rather than `day.cliPath` pointing at the binary built above: the window then runs
+# the CLI as `cargo run --manifest-path <day>/Cargo.toml -q -p day-cli --`, so an edit to day-cli is
+# compiled into the very next build, launch or project scan without rerunning this script. The
+# binary is still built first — it is what `day patch` above runs, and it leaves the cargo cache
+# warm, so the editor's first invocation is a freshness check rather than a cold compile.
+#
+# The cost of that convenience is a dependency on `cargo` being on the PATH the editor inherits,
+# which is NOT this shell's when `code` hands the window to an already-running VS Code — the source
+# of "the day CLI isn't installed" with a perfectly good CLI sitting in the checkout. src/cli.ts
+# checks for cargo up front and falls back to that same built binary rather than failing every
+# call. Workspace-scoped, in a generated machine-local file.
 {
   echo '{'
   echo '  "folders": ['
@@ -182,7 +188,7 @@ mkdir -p "$(dirname "$WORKSPACE")"
   echo "    { \"path\": \"$DAY_REPO\" }"
   echo '  ],'
   echo '  "settings": {'
-  echo "    \"day.cliPath\": \"$DAY_BIN\""
+  echo "    \"day.cliSource\": \"$DAY_REPO\""
   echo '  }'
   echo '}'
 } > "$WORKSPACE"

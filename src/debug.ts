@@ -135,8 +135,9 @@ export interface DebugDeps {
   /** Targets ticked in the Day view that this host can build (extension.ts `selectedRunnable`). */
   runnableTargets: () => string[];
   keepAliveDefault: () => boolean;
-  /** Restart semantics: drop any instance already running for this target before relaunching. */
-  stopIfRunning: (target: string) => Promise<void>;
+  /** Restart semantics: drop any instance of this project's target already running, so F5
+   *  relaunches rather than stacking a second one. */
+  stopIfRunning: (root: string, target: string) => Promise<void>;
   /** The extension's "Day" output channel — where a delegated build's progress and failures go. */
   output: vscode.OutputChannel;
 }
@@ -159,7 +160,7 @@ async function buildAndPlan(
   output: vscode.OutputChannel,
 ): Promise<DesktopLaunchPlan | undefined> {
   const cli = resolveCli(projectRoot || undefined);
-  const args = buildArgs(projectRoot, target, profile, verbose());
+  const args = buildArgs(projectRoot, target, profile, verbose(projectRoot));
   // --format json ahead of the subcommand: it is a global flag, and the CLI keeps stdout clean for
   // the NDJSON stream while its own status lines go to stderr (which is what we echo below).
   const argv = [...cli.baseArgs, "--format", "json", ...args];
@@ -285,7 +286,9 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
         c.keepAlive = this.deps.keepAliveDefault();
       }
       c.project ??= this.deps.project()?.root;
-      await this.deps.stopIfRunning(c.target);
+      if (c.project) {
+        await this.deps.stopIfRunning(c.project, c.target);
+      }
       return this.delegate(folder, c as DayLaunchConfig);
     }
 
@@ -299,14 +302,19 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
       }
       targets = picked;
     }
+    const root = this.deps.project()?.root;
     if (targets.length === 1) {
-      await this.deps.stopIfRunning(targets[0]);
+      if (root) {
+        await this.deps.stopIfRunning(root, targets[0]);
+      }
       return this.make(targets[0]); // single session, resolved inline
     }
     // Several targets → one session each (like the Run button), then suppress the placeholder.
     // Each started config names a target, so its re-resolution hits the branch above (no recursion).
     for (const t of targets) {
-      await this.deps.stopIfRunning(t);
+      if (root) {
+        await this.deps.stopIfRunning(root, t);
+      }
       void vscode.debug.startDebugging(folder, this.make(t));
     }
     return undefined;
@@ -371,7 +379,7 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
     const env: Record<string, string> = {
       ...plan.env,
       ...(cfg.locale ? { DAY_LOCALE: cfg.locale } : {}),
-      ...launchEnv(),
+      ...launchEnv(cfg.project),
     };
     this.deps.output.appendLine(
       `debugging ${cfg.target} via ${delegate.label} (type ${delegate.debugType()}): ${plan.program}`,
@@ -504,8 +512,8 @@ class DayLaunchAdapter implements vscode.DebugAdapter {
       locale: cfg.locale,
       script: cfg.script,
       keepAlive: cfg.keepAlive,
-      env: launchEnv(),
-      verbose: verbose(),
+      env: launchEnv(cfg.project),
+      verbose: verbose(cfg.project),
     };
     const dayArgs = launchArgs(opts);
     const args = [...cli.baseArgs, ...dayArgs];
