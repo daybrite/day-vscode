@@ -111,17 +111,27 @@ scripts/dev.sh ../Day-Showcase                                            # macO
 powershell -ExecutionPolicy Bypass -File scripts\dev.ps1 ..\Day-Showcase  # Windows
 ```
 
-The argument is the Day app to open, and it works for **any** Day project. Omit it and the app is
-the nearest ancestor of the current directory holding a `Day.toml` — the same rule `day --project`
+The arguments are the Day apps to open, and they work for **any** Day project. Omit them and the app
+is the nearest ancestor of the current directory holding a `Day.toml` — the same rule `day --project`
 follows — so running the script from inside an app needs no argument at all:
 
 ```bash
 cd ~/apps/MyApp && ~/src/day-vscode/scripts/dev.sh
 ```
 
+Name several to open them in one window, each patched at the same `day/` checkout:
+
+```bash
+cd ~/src/daybrite && day-vscode/scripts/dev.sh Day-Sketch Day-Showcase
+```
+
+The extension finds every `Day.toml` in the workspace and switches between them — click the project
+row at the top of the Day sidebar, or run `Day: Select Project`. One project is active at a time,
+and the build mode, locale, targets, and dayscript belong to the window rather than to each project.
+
 Either way the script bundles the extension from this working tree, builds `day-cli` from the
-sibling `day/` checkout, runs `day patch --local` so the app's cargo resolution points at that same
-checkout, and opens an Extension Development Host on a multi-root workspace holding **the app
+sibling `day/` checkout, runs `day patch --local` so each app's cargo resolution points at that same
+checkout, and opens an Extension Development Host on a multi-root workspace holding **the app(s)
 first, then `day/`**. An edit to any `day/` crate — core, toolkit, piece, part — lands in the next
 Build or Run the extension starts. Both scripts need a `day/` checkout beside this repository;
 neither needs an installed `day` on `PATH`, and neither uses one if it is there.

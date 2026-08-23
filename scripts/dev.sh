@@ -2,19 +2,28 @@
 # Launch VS Code with the LOCAL source build of the Day extension, on a workspace holding BOTH
 # repositories the extension's dev loop needs.
 #
-#   scripts/dev.sh [path-to-day-project]
+#   scripts/dev.sh [path-to-day-project ...]
 #
-# The argument is the Day app to open beside `day/` — any conventional Day project, nothing here is
-# specific to one. With no argument it is the nearest ancestor of the CURRENT DIRECTORY holding a
+# The arguments are the Day apps to open beside `day/` — any conventional Day project, nothing here
+# is specific to one. With no argument it is the nearest ancestor of the CURRENT DIRECTORY holding a
 # Day.toml, the same rule `day --project` follows, so
 #
 #   cd ~/apps/MyApp && ~/src/day-vscode/scripts/dev.sh
 #
-# opens that app. The window is an Extension Development Host: the extension running there is built
-# fresh from THIS working tree (superseding any installed day-vscode in that window), so source
-# edits + rerunning this script are the whole dev loop.
+# opens that app. Passing several opens them in one window, each patched at `day/`:
 #
-# The window opens a multi-root workspace — the app FIRST, then the `day` checkout — because the
+#   cd ~/src/daybrite && day-vscode/scripts/dev.sh Day-Sketch Day-Showcase
+#
+# which is how to exercise the extension against more than one project at a time — it discovers
+# every Day.toml in the workspace and switches between them (the sidebar's project row, or
+# `Day: Select Project`). One selection is active at a time: mode, locale, targets, and dayscript
+# belong to the window, not to each project.
+#
+# The window is an Extension Development Host: the extension running there is built fresh from THIS
+# working tree (superseding any installed day-vscode in that window), so source edits + rerunning
+# this script are the whole dev loop.
+#
+# The window opens a multi-root workspace — the app(s) FIRST, then the `day` checkout — because the
 # loop needs all three of these at once:
 #
 #   * the app supplies the Day.toml the extension's sidebar, tasks, and debug configs act on;
@@ -43,7 +52,7 @@ DAY_REPO="$SIBLINGS/day"
 WORKSPACE="$EXT_DIR/build/day-dev.code-workspace"
 
 usage() {
-  echo "usage: scripts/dev.sh [path-to-day-project]" >&2
+  echo "usage: scripts/dev.sh [path-to-day-project ...]" >&2
   # Naming the projects that ARE here beats naming one in the default: this list follows whatever
   # the developer has checked out, and stays right when it changes.
   local d found=""
@@ -78,19 +87,34 @@ if ! command -v code >/dev/null 2>&1; then
   exit 1
 fi
 
+PROJECTS=()
+# Named twice in one invocation, or named once as `.` and once by path, would put the same folder in
+# the workspace twice — VS Code shows both, and the second is indistinguishable from the first.
+add_project() {
+  local resolved p
+  resolved="$(cd "$1" && pwd)"
+  for p in ${PROJECTS+"${PROJECTS[@]}"}; do
+    [ "$p" = "$resolved" ] && return 0
+  done
+  PROJECTS+=("$resolved")
+}
+
 if [ $# -gt 0 ]; then
-  PROJECT="$1"
-  if [ ! -f "$PROJECT/Day.toml" ]; then
-    echo "error: $PROJECT is not a Day project (no Day.toml)" >&2
-    usage
-    exit 2
-  fi
-elif ! PROJECT="$(find_project_upward "$PWD")"; then
+  for arg in "$@"; do
+    if [ ! -f "$arg/Day.toml" ]; then
+      echo "error: $arg is not a Day project (no Day.toml)" >&2
+      usage
+      exit 2
+    fi
+    add_project "$arg"
+  done
+elif PROJECT="$(find_project_upward "$PWD")"; then
+  add_project "$PROJECT"
+else
   echo "error: no Day project given, and no Day.toml in $PWD or any parent" >&2
   usage
   exit 2
 fi
-PROJECT="$(cd "$PROJECT" && pwd)"
 
 # A day checkout, not just any folder called `day`: the patch table and the CLI fallback both
 # address crates inside it, and pointing either at the wrong tree fails far from here.
@@ -129,12 +153,17 @@ echo "▸ using $DAY_BIN"
 echo "▸ building the extension from source ($EXT_DIR)…"
 (cd "$EXT_DIR" && npm run --silent bundle)
 
-# Braced so bash does not read the trailing multi-byte ellipsis as part of the name.
-echo "▸ pointing $(basename "$PROJECT") at ${DAY_REPO}…"
-# Rewrites the app's gitignored .cargo/config.toml and verifies no day crate still resolves from
-# git — a crate missing from the table silently builds from the git cache, and the edit under
-# test then never reaches the app.
-"$DAY_BIN" patch --local "$DAY_REPO" --project "$PROJECT"
+# Every project gets its own patch table: they are separate cargo workspaces, and one left
+# unpatched would quietly build the published day crates from the git cache while its neighbour
+# built the checkout — the same window, two different frameworks under test.
+for project in "${PROJECTS[@]}"; do
+  # Braced so bash does not read the trailing multi-byte ellipsis as part of the name.
+  echo "▸ pointing $(basename "$project") at ${DAY_REPO}…"
+  # Rewrites the app's gitignored .cargo/config.toml and verifies no day crate still resolves from
+  # git — a crate missing from the table silently builds from the git cache, and the edit under
+  # test then never reaches the app.
+  "$DAY_BIN" patch --local "$DAY_REPO" --project "$project"
+done
 
 mkdir -p "$(dirname "$WORKSPACE")"
 # `day.cliPath` pins the window to the binary built above. The extension would find the checkout's
@@ -142,17 +171,21 @@ mkdir -p "$(dirname "$WORKSPACE")"
 # in the extension host's environment — which is not this shell's when `code` hands the window to an
 # already-running VS Code, and is where "the day CLI isn't installed" came from with a perfectly
 # good CLI sitting in the checkout. Workspace-scoped, in a generated machine-local file.
-cat > "$WORKSPACE" <<JSON
+# Built line by line rather than as one here-document because the folder list is now variable
+# length: the projects in the order they were given, then `day` last.
 {
-  "folders": [
-    { "path": "$PROJECT" },
-    { "path": "$DAY_REPO" }
-  ],
-  "settings": {
-    "day.cliPath": "$DAY_BIN"
-  }
-}
-JSON
+  echo '{'
+  echo '  "folders": ['
+  for project in "${PROJECTS[@]}"; do
+    echo "    { \"path\": \"$project\" },"
+  done
+  echo "    { \"path\": \"$DAY_REPO\" }"
+  echo '  ],'
+  echo '  "settings": {'
+  echo "    \"day.cliPath\": \"$DAY_BIN\""
+  echo '  }'
+  echo '}'
+} > "$WORKSPACE"
 
-echo "▸ launching VS Code (Extension Development Host) on $PROJECT + $DAY_REPO"
+echo "▸ launching VS Code (Extension Development Host) on ${PROJECTS[*]} + $DAY_REPO"
 exec code --new-window --extensionDevelopmentPath="$EXT_DIR" "$WORKSPACE"

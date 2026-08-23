@@ -4,18 +4,27 @@
     repositories the extension's dev loop needs. The Windows counterpart of scripts/dev.sh.
 
 .DESCRIPTION
-    The argument is the Day app to open beside `day/` - any conventional Day project, nothing here
-    is specific to one. With no argument it is the nearest ancestor of the CURRENT DIRECTORY holding
-    a Day.toml, the same rule `day --project` follows, so
+    The arguments are the Day apps to open beside `day/` - any conventional Day project, nothing
+    here is specific to one. With no argument it is the nearest ancestor of the CURRENT DIRECTORY
+    holding a Day.toml, the same rule `day --project` follows, so
 
         cd ~\apps\MyApp; ~\src\day-vscode\scripts\dev.ps1
 
-    opens that app. The window is an Extension Development Host: the extension running there is
-    built fresh from THIS working tree (superseding any installed day-vscode in that window), so
-    source edits + rerunning this script are the whole dev loop.
+    opens that app. Passing several opens them in one window, each patched at `day/`:
 
-    The window opens a multi-root workspace - the app FIRST, then the `day` checkout - because the
-    loop needs all three of these at once:
+        cd ~\src\daybrite; day-vscode\scripts\dev.ps1 Day-Sketch Day-Showcase
+
+    which is how to exercise the extension against more than one project at a time - it discovers
+    every Day.toml in the workspace and switches between them (the sidebar's project row, or
+    `Day: Select Project`). One selection is active at a time: mode, locale, targets, and dayscript
+    belong to the window, not to each project.
+
+    The window is an Extension Development Host: the extension running there is built fresh from
+    THIS working tree (superseding any installed day-vscode in that window), so source edits +
+    rerunning this script are the whole dev loop.
+
+    The window opens a multi-root workspace - the app(s) FIRST, then the `day` checkout - because
+    the loop needs all three of these at once:
 
       * the app supplies the Day.toml the extension's sidebar, tasks, and debug configs act on;
       * `day/` is open for editing beside it, so a fix to a core/toolkit/piece/part crate and the
@@ -38,11 +47,14 @@
     Windows SDK directly, and `day doctor` reports what is missing. Nothing here is macOS-specific.
 
 .PARAMETER Project
-    Path to the Day project to open. Defaults to the nearest ancestor of the current directory
-    holding a Day.toml.
+    Paths to the Day projects to open, in the order they should appear in the workspace. Defaults
+    to the nearest ancestor of the current directory holding a Day.toml.
 
 .EXAMPLE
     .\scripts\dev.ps1 ..\Day-Showcase
+
+.EXAMPLE
+    .\scripts\dev.ps1 ..\Day-Sketch ..\Day-Showcase
 
 .EXAMPLE
     cd ..\Day-Games; ..\day-vscode\scripts\dev.ps1
@@ -53,8 +65,10 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Position = 0)]
-    [string]$Project
+    # Several projects open in one window, each patched at the day checkout; none means the nearest
+    # ancestor of the current directory holding a Day.toml.
+    [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
+    [string[]]$Project
 )
 
 Set-StrictMode -Version Latest
@@ -91,7 +105,7 @@ $DayRepo = Join-Path $Siblings 'day'
 $Workspace = Join-Path (Join-Path $ExtDir 'build') 'day-dev.code-workspace'
 
 function Get-Usage {
-    $lines = @('usage: scripts\dev.ps1 [path-to-day-project]')
+    $lines = @('usage: scripts\dev.ps1 [path-to-day-project ...]')
     # Naming the projects that ARE here beats naming one in the default: this list follows whatever
     # the developer has checked out, and stays right when it changes.
     $found = Get-ChildItem -Path $Siblings -Directory -ErrorAction SilentlyContinue |
@@ -125,21 +139,28 @@ error: the 'code' CLI is not on PATH
 "@
 }
 
+$Projects = [System.Collections.Generic.List[string]]::new()
 if ($Project) {
-    if (-not (Test-Path (Join-Path $Project 'Day.toml'))) {
-        Fail "error: $Project is not a Day project (no Day.toml)`n$(Get-Usage)" 2
+    foreach ($candidate in $Project) {
+        if (-not (Test-Path (Join-Path $candidate 'Day.toml'))) {
+            Fail "error: $candidate is not a Day project (no Day.toml)`n$(Get-Usage)" 2
+        }
+        # Resolved before the duplicate check: the same folder named twice, or named once as `.` and
+        # once by path, would otherwise appear twice in the workspace.
+        $resolved = (Resolve-Path $candidate).Path
+        if (-not $Projects.Contains($resolved)) { $Projects.Add($resolved) }
     }
 }
 else {
     # ProviderPath, not Get-Location: a PowerShell location can sit on a non-filesystem provider,
     # and only the filesystem path can be walked upward.
     $here = $PWD.ProviderPath
-    $Project = Find-DayProjectUpward $here
-    if (-not $Project) {
+    $found = Find-DayProjectUpward $here
+    if (-not $found) {
         Fail "error: no Day project given, and no Day.toml in $here or any parent`n$(Get-Usage)" 2
     }
+    $Projects.Add((Resolve-Path $found).Path)
 }
-$Project = (Resolve-Path $Project).Path
 
 # A day checkout, not just any folder called `day`: the patch table and the CLI fallback both
 # address crates inside it, and pointing either at the wrong tree fails far from here.
@@ -197,11 +218,16 @@ try {
 }
 finally { Pop-Location }
 
-Step "pointing $(Split-Path $Project -Leaf) at $DayRepo"
-# Rewrites the app's gitignored .cargo/config.toml and verifies no day crate still resolves from
-# git - a crate missing from the table silently builds from the git cache, and the edit under
-# test then never reaches the app.
-Invoke-Day patch --local $DayRepo --project $Project
+# Every project gets its own patch table: they are separate cargo workspaces, and one left
+# unpatched would quietly build the published day crates from the git cache while its neighbour
+# built the checkout - the same window, two different frameworks under test.
+foreach ($p in $Projects) {
+    Step "pointing $(Split-Path $p -Leaf) at $DayRepo"
+    # Rewrites the app's gitignored .cargo/config.toml and verifies no day crate still resolves from
+    # git - a crate missing from the table silently builds from the git cache, and the edit under
+    # test then never reaches the app.
+    Invoke-Day patch --local $DayRepo --project $p
+}
 
 New-Item -ItemType Directory -Force -Path (Split-Path $Workspace -Parent) | Out-Null
 # Built as an object and serialized, never interpolated into a here-string: a Windows path is full
@@ -211,17 +237,20 @@ New-Item -ItemType Directory -Force -Path (Split-Path $Workspace -Parent) | Out-
 # in the extension host's environment - which is not this shell's when `code` hands the window to an
 # already-running VS Code, and is where "the day CLI isn't installed" came from with a perfectly
 # good CLI sitting in the checkout. Workspace-scoped, in a generated machine-local file.
+# Appended one at a time to an array declared as such. `$a + $b` on two [ordered] maps MERGES them
+# (and throws on the duplicate `path` key) rather than making a two-element list, so the pipeline
+# spelling of this is a trap. The day checkout goes last, after the projects.
+$folderList = @()
+foreach ($p in $Projects) { $folderList += [ordered]@{ path = $p } }
+$folderList += [ordered]@{ path = $DayRepo }
 $workspaceJson = [ordered]@{
-    folders  = @(
-        [ordered]@{ path = $Project },
-        [ordered]@{ path = $DayRepo }
-    )
+    folders  = $folderList
     settings = [ordered]@{ 'day.cliPath' = $DayExe }
 } | ConvertTo-Json -Depth 4
 # UTF-8 *without* a BOM - Set-Content -Encoding UTF8 writes one on Windows PowerShell 5.1, and a
 # BOM ahead of the opening brace makes the workspace file fail to parse.
 [System.IO.File]::WriteAllText($Workspace, $workspaceJson, [System.Text.UTF8Encoding]::new($false))
 
-Step "launching VS Code (Extension Development Host) on $Project + $DayRepo"
+Step "launching VS Code (Extension Development Host) on $($Projects -join ' ') + $DayRepo"
 & code --new-window "--extensionDevelopmentPath=$ExtDir" $Workspace
 exit $LASTEXITCODE
