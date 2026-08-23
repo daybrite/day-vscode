@@ -37,6 +37,12 @@ function fakeMemento(): vscode.Memento {
   };
 }
 
+/** Last path segment, on either separator. `split("/")` alone returns the WHOLE path on Windows,
+ *  where a fixture root is `d:\a\day-vscode\…` — the task lookups below then match nothing. */
+function baseName(p: string): string {
+  return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
+}
+
 type Check = [name: string, fn: () => Promise<void> | void];
 
 /** The combo the CI leg scaffolded for (macos-appkit / windows-xaml / linux-gtk). */
@@ -148,36 +154,52 @@ const checks: Check[] = [
     },
   ],
   [
-    "day.toggleVerbose flips the setting, and the tasks it generates carry --verbose",
+    "day.toggleVerbose flips the FOCUSED project, and its tasks carry --verbose",
     async () => {
-      const cfg = () => vscode.workspace.getConfiguration("day").get<boolean>("verbose", false);
-      const dayTasks = async () => await vscode.tasks.fetchTasks({ type: "day" });
-      const before = cfg();
+      // Read through the tasks, not through `getConfiguration("day")`: `day.verbose` is
+      // folder-scoped now, and the toggle writes it to the focused project's folder — a
+      // window-level read cannot see that value at all, and asserting on one would only prove
+      // which scope the test itself guessed. The command line is the thing that matters anyway.
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const api = (await ext.activate()) as { focusedProject(): string | undefined };
+      const focused = api.focusedProject();
+      assert.ok(focused, "no focused project to toggle");
+      const mine = `(${baseName(focused)})`;
+
+      const tasksFor = async (predicate: (name: string) => boolean) =>
+        (await vscode.tasks.fetchTasks({ type: "day" })).filter((t) => predicate(t.name));
+      const verboseHere = async () =>
+        (await tasksFor((n) => n.endsWith(mine))).every((t) => (t.detail ?? "").includes("--verbose"));
+
+      const before = await verboseHere();
       try {
-        // ON: every build and run task should now name the flag. `detail` is the rendered command
-        // line the task will execute, so asserting on it covers the whole path from the checkbox
-        // to the process argv — not merely that a setting changed.
-        if (!cfg()) {
+        if (!before) {
           await vscode.commands.executeCommand("day.toggleVerbose");
         }
-        assert.strictEqual(cfg(), true, "toggling did not turn day.verbose on");
-        for (const t of await dayTasks()) {
+        for (const t of await tasksFor((n) => n.endsWith(mine))) {
           assert.ok(
             (t.detail ?? "").includes("--verbose"),
             `task "${t.name}" should carry --verbose: ${t.detail}`,
           );
         }
+        // The other project must be untouched — the toggle belongs to one app, not the window.
+        for (const t of await tasksFor((n) => !n.endsWith(mine))) {
+          assert.ok(
+            !(t.detail ?? "").includes("--verbose"),
+            `--verbose leaked into another project's task "${t.name}": ${t.detail}`,
+          );
+        }
         // …and OFF again, which must leave the command line exactly as it was before the feature.
         await vscode.commands.executeCommand("day.toggleVerbose");
-        assert.strictEqual(cfg(), false, "toggling did not turn day.verbose off");
-        for (const t of await dayTasks()) {
+        for (const t of await tasksFor((n) => n.endsWith(mine))) {
           assert.ok(
             !(t.detail ?? "").includes("--verbose"),
             `task "${t.name}" should not carry --verbose when off: ${t.detail}`,
           );
         }
       } finally {
-        if (cfg() !== before) {
+        if ((await verboseHere()) !== before) {
           await vscode.commands.executeCommand("day.toggleVerbose");
         }
       }
@@ -265,7 +287,7 @@ const checks: Check[] = [
       const cfgFor = (f: vscode.WorkspaceFolder) => vscode.workspace.getConfiguration("day", f.uri);
       const detailFor = async (f: vscode.WorkspaceFolder): Promise<string> => {
         const tasks = await vscode.tasks.fetchTasks({ type: "day" });
-        const name = f.uri.fsPath.split("/").pop();
+        const name = baseName(f.uri.fsPath);
         const task = tasks.find((t) => t.name.endsWith(`(${name})`));
         assert.ok(task, `no task for ${name} in ${tasks.map((t) => t.name)}`);
         return task.detail ?? "";

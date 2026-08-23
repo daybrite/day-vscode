@@ -82,7 +82,11 @@ function writeScope(
   key: string,
   root?: string,
 ): vscode.ConfigurationTarget {
-  if (root && vscode.workspace.getWorkspaceFolder(vscode.Uri.file(root))) {
+  // Through `configResource`, not `Uri.file(root)`: the read side already resolves the two
+  // spellings of a symlinked path, and a write that did not would land in USER settings while the
+  // row went on reading the folder's — a toggle that silently became window-wide.
+  const resource = configResource(root);
+  if (resource && vscode.workspace.getWorkspaceFolder(resource)) {
     return vscode.ConfigurationTarget.WorkspaceFolder;
   }
   const info = cfg.inspect(key);
