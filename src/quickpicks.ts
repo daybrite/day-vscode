@@ -5,7 +5,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 
-import { Profile } from "./config";
+import { DeviceChoice, Profile } from "./config";
+import { TargetDevices } from "./devices";
 import { DayProject } from "./project";
 import { LogLevel } from "./tasks";
 import { catalog, findTarget, isBuildableHere } from "./targets";
@@ -17,6 +18,76 @@ export async function pickMode(current: Profile): Promise<Profile | undefined> {
   ];
   const chosen = await vscode.window.showQuickPick(items, { title: "Day: Build Mode", placeHolder: current });
   return chosen?.value;
+}
+
+/** What the device picker came back with. `all` clears any pin; `boot` asks to start one first. */
+export type DevicePick =
+  | { kind: "all" }
+  | { kind: "device"; device: DeviceChoice }
+  | { kind: "boot"; id: string; name: string };
+
+/**
+ * Choose the device one target launches onto.
+ *
+ * Returns the choice, `null` for the explicit "All connected" entry, or `undefined` if cancelled —
+ * three outcomes, because clearing a pin and changing nothing must not look the same.
+ *
+ * Connected devices come first because they are the ones that can be launched onto right now;
+ * the rest are offered under a separator as something to boot, which is the common iOS case since
+ * `simctl install` cannot reach a shut-down simulator.
+ */
+export async function pickDevice(
+  target: string,
+  listing: TargetDevices | undefined,
+  current: DeviceChoice | undefined,
+): Promise<DevicePick | undefined> {
+  type Item = vscode.QuickPickItem & { pick?: DevicePick };
+  if (listing && !listing.available) {
+    void vscode.window.showWarningMessage(
+      `Day: no devices for ${target} — ${listing.note ?? "its toolchain was not found"}`,
+    );
+    return undefined;
+  }
+  const connected = listing?.devices ?? [];
+  const items: Item[] = [
+    {
+      label: "All connected",
+      description: connected.length > 0 ? `${connected.length} right now` : "nothing connected",
+      detail: "Launch on every connected device — the default",
+      pick: { kind: "all" },
+      picked: current === undefined,
+    },
+  ];
+  for (const d of connected) {
+    items.push({
+      label: d.name,
+      description: [d.state, d.runtime, d.arch].filter(Boolean).join(" · "),
+      detail: d.id,
+      pick: d.flag ? { kind: "device", device: { id: d.id, label: d.name, flag: d.flag } } : undefined,
+      picked: current?.id === d.id,
+    });
+  }
+  const bootable = listing?.bootable ?? [];
+  if (bootable.length > 0) {
+    items.push({
+      label: "Not running",
+      kind: vscode.QuickPickItemKind.Separator,
+    });
+    for (const d of bootable) {
+      items.push({
+        label: `$(play) ${d.name}`,
+        description: d.runtime,
+        detail: "Start it, then launch on it",
+        pick: { kind: "boot", id: d.id, name: d.name },
+      });
+    }
+  }
+  const chosen = await vscode.window.showQuickPick(items, {
+    title: `Day: Device for ${target}`,
+    placeHolder: current ? current.label : "All connected",
+    matchOnDetail: true,
+  });
+  return chosen?.pick;
 }
 
 export async function pickLogLevel(current: LogLevel): Promise<LogLevel | undefined> {

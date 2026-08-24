@@ -10,8 +10,17 @@ import { renderCommand, resolveCli, setExtensionRoot } from "./cli";
 import { State } from "./config";
 import { DayConfigProvider, DayDebugAdapterFactory } from "./debug";
 import { promptToInstall } from "./install";
+import * as devices from "./devices";
 import { DayProject, findProjects, ProjectLoadFailure } from "./project";
-import { pickLocale, pickLogLevel, pickMode, pickProject, pickScript, pickTargets } from "./quickpicks";
+import {
+  pickDevice,
+  pickLocale,
+  pickLogLevel,
+  pickMode,
+  pickProject,
+  pickScript,
+  pickTargets,
+} from "./quickpicks";
 import { RunRef, Runner } from "./runner";
 import { StatusBar } from "./statusbar";
 import { DayTaskProvider } from "./taskProvider";
@@ -171,7 +180,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
   // workspace lands on whatever was being worked on rather than on whichever project sorts first.
   await followEditor(vscode.window.activeTextEditor);
 
-  const tree = new DayTree({ state, runner, project: currentProject, projects: allProjects });
+  // Enumerating devices shells out to simctl/adb/hdc, so it happens on demand — a device row
+  // asks the first time it draws — and the tree redraws when the answer arrives.
+  let devicesPending = false;
+  const refreshDevices = async (): Promise<void> => {
+    if (devicesPending) {
+      return;
+    }
+    devicesPending = true;
+    try {
+      await devices.list(currentProject()?.root, output);
+      tree.refresh();
+    } finally {
+      devicesPending = false;
+    }
+  };
+
+  const tree = new DayTree({
+    state,
+    runner,
+    project: currentProject,
+    projects: allProjects,
+    refreshDevices,
+  });
   const view = vscode.window.createTreeView("dayTargets", {
     treeDataProvider: tree,
     showCollapseAll: false,
@@ -193,6 +224,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
 
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor((editor) => void followEditor(editor)),
+  );
+
+  context.subscriptions.push(
+    runner.onDidChange(() => devices.invalidate()),
   );
 
   const statusBar = new StatusBar(state, runner, currentProject);
@@ -240,6 +275,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
     vscode.window.showWarningMessage("No Day project (Day.toml) found in this workspace.");
     return false;
   };
+
+  /**
+   * The project a configuration row acts on: the one it is drawn under.
+   *
+   * Invoked from the palette there is no row, so it means the focused project — but a click on
+   * Day-Showcase's Build mode must edit Day-Showcase even while Day-Rise is focused, which is the
+   * whole reason these rows moved inside their projects.
+   */
+  const configRoot = (node?: Node): string | undefined =>
+    node && (node.kind === "config" || node.kind === "group" || node.kind === "project")
+      ? node.root
+      : state.focusedRoot;
 
   // Tree context menus pass a Node, which carries the project the row belongs to; the status-bar
   // tooltip links pass a bare target name, which can only mean the focused project.
@@ -347,9 +394,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
 
   register("day.stopAll", () => guard(() => runner.stopAll()));
 
-  register("day.toggleVerbose", () =>
+  register("day.toggleVerbose", (node?: Node) =>
     guard(async () => {
-      const on = await toggleVerbose(state.focusedRoot);
+      const on = await toggleVerbose(configRoot(node));
       vscode.window.setStatusBarMessage(
         on
           ? "Day: builds and launches will show every sub-command they run"
@@ -359,12 +406,61 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
     }),
   );
 
-  register("day.selectLogLevel", () =>
+  register("day.selectLogLevel", (node?: Node) =>
     guard(async () => {
-      const level = await pickLogLevel(logLevel(state.focusedRoot));
+      const root = configRoot(node);
+      const level = await pickLogLevel(logLevel(root));
       if (level) {
-        await setLogLevel(level, state.focusedRoot);
+        await setLogLevel(level, root);
       }
+    }),
+  );
+
+  register("day.selectDevice", (node?: Node) =>
+    guard(async () => {
+      if (!node || node.kind !== "device") {
+        return;
+      }
+      const { root, target } = node;
+      devices.invalidate(); // opening the picker is the moment to re-look
+      const listing = (await devices.list(root, output)).get(target);
+      const pick = await pickDevice(target, listing, state.selectionFor(root).devices?.[target]);
+      if (!pick) {
+        return; // cancelled
+      }
+      if (pick.kind === "boot") {
+        // Start it, then pick it — the whole reason booting is offered here is that selecting a
+        // shut-down simulator used to dead-end in "boot one yourself".
+        const failed = await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: `Day: starting ${pick.name}` },
+          () => devices.boot(root, target, pick.id),
+        );
+        if (failed) {
+          vscode.window.showErrorMessage(`Day: could not start ${pick.name} — ${failed}`);
+          return;
+        }
+        const started = (await devices.list(root, output))
+          .get(target)
+          ?.devices.find((d) => d.id === pick.id);
+        if (started?.flag) {
+          await state.chooseDevice(root, target, {
+            id: started.id,
+            label: started.name,
+            flag: started.flag,
+          });
+        } else {
+          // It is starting but not ready to install onto yet; leave the target on its default
+          // rather than pinning a device the next launch would fail against.
+          vscode.window.setStatusBarMessage(
+            `Day: ${pick.name} is starting — pick it once it finishes booting`,
+            5000,
+          );
+        }
+      } else {
+        // "All connected" clears the pin; anything else stores the device and its flag.
+        await state.chooseDevice(root, target, pick.kind === "all" ? undefined : pick.device);
+      }
+      tree.refresh();
     }),
   );
 
@@ -419,29 +515,43 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
     }),
   );
 
-  register("day.selectMode", () =>
+  register("day.selectMode", (node?: Node) =>
     guard(async () => {
-      const mode = await pickMode(state.selection.profile);
+      const root = configRoot(node);
+      if (!root) {
+        return;
+      }
+      const mode = await pickMode(state.selectionFor(root).profile);
       if (mode) {
-        await state.update({ profile: mode });
+        await state.updateFor(root, { profile: mode });
       }
     }),
   );
 
-  register("day.selectLocale", () =>
+  register("day.selectLocale", (node?: Node) =>
     guard(async () => {
-      const locale = await pickLocale(currentProject(), state.selection.locale);
+      const root = configRoot(node);
+      const project = projects.find((p) => p.root === root);
+      if (!root) {
+        return;
+      }
+      const locale = await pickLocale(project, state.selectionFor(root).locale);
       if (locale !== undefined) {
-        await state.update({ locale });
+        await state.updateFor(root, { locale });
       }
     }),
   );
 
-  register("day.selectScript", () =>
+  register("day.selectScript", (node?: Node) =>
     guard(async () => {
-      const script = await pickScript(currentProject(), state.selection.script);
+      const root = configRoot(node);
+      const project = projects.find((p) => p.root === root);
+      if (!root) {
+        return;
+      }
+      const script = await pickScript(project, state.selectionFor(root).script);
       if (script !== undefined) {
-        await state.update({ script });
+        await state.updateFor(root, { script });
       }
     }),
   );

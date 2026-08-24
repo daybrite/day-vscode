@@ -16,7 +16,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as vscode from "vscode";
 
-import { findDayRepoRoot, resolveCli } from "../cli";
+import { findDayRepoRoot, launchArgs, resolveCli } from "../cli";
 import { State } from "../config";
 import { delegateByKey, DesktopLaunchPlan, pickDelegate, planFrom } from "../debug";
 import { installRoutes } from "../install";
@@ -309,6 +309,109 @@ const checks: Check[] = [
           await cfgFor(f).update("logLevel", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
           await cfgFor(f).update("verbose", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
         }
+      }
+    },
+  ],
+  [
+    "a chosen device rides the command line as the flag the CLI named",
+    async () => {
+      // The device's OWN flag is what gets used, never one derived from the target: iOS needs
+      // `--ios-simulator` for a booted simulator and `--ios-device` for a plugged-in phone, and
+      // only the listing knows which a given device is.
+      const base = {
+        projectRoot: "/w/Day-Rise",
+        target: "ios-uikit",
+        profile: "debug" as const,
+      };
+      assert.ok(
+        !launchArgs(base).some((a) => a.startsWith("--ios-")),
+        "with no device chosen the launch stays on the CLI's every-connected-device default",
+      );
+      for (const flag of ["--ios-simulator", "--ios-device", "--android-device", "--ohos-device"]) {
+        const args = launchArgs({ ...base, device: { id: "PICKED-ID", flag } });
+        assert.ok(
+          args.join(" ").includes(`${flag} PICKED-ID`),
+          `expected "${flag} PICKED-ID" in ${args.join(" ")}`,
+        );
+      }
+
+      // …and the store keeps it per project AND per target, so a phone picked for one app's
+      // ios-uikit says nothing about another app's.
+      const state = new State(fakeMemento());
+      const rise = "/w/Day-Rise";
+      const showcase = "/w/Day-Showcase";
+      const device = { id: "UDID-1", label: "iPhone 16", flag: "--ios-simulator" };
+      await state.chooseDevice(rise, "ios-uikit", device);
+      assert.deepStrictEqual(state.selectionFor(rise).devices?.["ios-uikit"], device);
+      assert.strictEqual(
+        state.selectionFor(rise).devices?.["android-mdc"],
+        undefined,
+        "choosing for one target must not touch another",
+      );
+      assert.strictEqual(
+        state.selectionFor(showcase).devices?.["ios-uikit"],
+        undefined,
+        "choosing for one project must not touch another",
+      );
+      await state.chooseDevice(rise, "ios-uikit", undefined);
+      assert.strictEqual(
+        state.selectionFor(rise).devices?.["ios-uikit"],
+        undefined,
+        "clearing returns to every connected device",
+      );
+    },
+  ],
+  [
+    "a configuration row edits the project it sits under, not the focused one",
+    async () => {
+      // The point of moving Configuration inside each project: with a dozen apps open, a row that
+      // quietly edited whichever project happened to be focused would be indistinguishable from a
+      // bug. Verbose is the row to test with — it is the only one that takes no quick pick.
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      assert.strictEqual(folders.length, 2, "this check needs the two-project fixture");
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const api = (await ext.activate()) as { focusedProject(): string | undefined };
+
+      // Canonical roots as the extension knows them, by focusing each in turn.
+      const rootOf = async (folder: vscode.WorkspaceFolder): Promise<string> => {
+        const doc = await vscode.workspace.openTextDocument(
+          vscode.Uri.file(`${folder.uri.fsPath}/Day.toml`),
+        );
+        await vscode.window.showTextDocument(doc, { preview: false });
+        for (let i = 0; i < 50 && !api.focusedProject(); i++) {
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        return api.focusedProject()!;
+      };
+      const second = await rootOf(folders[1]);
+      const first = await rootOf(folders[0]);
+      assert.strictEqual(api.focusedProject(), first, "the first project should now be focused");
+
+      const carries = async (name: string): Promise<boolean> =>
+        (await vscode.tasks.fetchTasks({ type: "day" }))
+          .filter((t) => t.name.endsWith(`(${baseName(name)})`))
+          .every((t) => (t.detail ?? "").includes("--verbose"));
+
+      try {
+        // Toggle the UNFOCUSED project's row, by passing the node that row would pass.
+        await vscode.commands.executeCommand("day.toggleVerbose", {
+          kind: "config",
+          root: second,
+          which: "verbose",
+        });
+        assert.ok(await carries(second), "the row's own project should have gone verbose");
+        assert.ok(
+          !(await carries(first)),
+          "the focused project must be untouched — the row named a different one",
+        );
+        assert.strictEqual(api.focusedProject(), first, "editing a row must not move focus");
+      } finally {
+        await vscode.commands.executeCommand("day.toggleVerbose", {
+          kind: "config",
+          root: second,
+          which: "verbose",
+        });
       }
     },
   ],

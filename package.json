@@ -161,6 +161,12 @@
         "icon": "$(checklist)"
       },
       {
+        "command": "day.selectDevice",
+        "title": "Select Device",
+        "category": "Day",
+        "icon": "$(device-mobile)"
+      },
+      {
         "command": "day.buildTarget",
         "title": "Build Target",
         "category": "Day",
@@ -330,6 +336,10 @@
         },
         {
           "command": "day.stopProject",
+          "when": "false"
+        },
+        {
+          "command": "day.selectDevice",
           "when": "false"
         }
       ]

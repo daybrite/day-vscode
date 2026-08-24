@@ -10,16 +10,26 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 import { State } from "./config";
+import { cached, isMobile } from "./devices";
 import { logLevel, verbose } from "./tasks";
 import { DayProject } from "./project";
 import { Runner } from "./runner";
 import { catalog, findTarget, isBuildableHere, kindLabel } from "./targets";
 
+/** Which configuration row a `config` node is. */
+export type ConfigRow = "mode" | "locale" | "script" | "verbose" | "loglevel";
+
+/**
+ * Every node below the roots names the project it belongs to. That is what lets a row act on the
+ * app it is drawn under rather than on whichever project happens to be focused — with a dozen
+ * apps open, a Configuration row that edited someone else's would be indistinguishable from a bug.
+ */
 export type Node =
-  | { kind: "section"; id: "projects" | "config"; label: string }
   | { kind: "project"; root: string }
-  | { kind: "config"; which: "mode" | "locale" | "script" | "verbose" | "loglevel" }
-  | { kind: "target"; root: string; name: string };
+  | { kind: "group"; root: string; id: "config" | "targets"; label: string }
+  | { kind: "config"; root: string; which: ConfigRow }
+  | { kind: "target"; root: string; name: string }
+  | { kind: "device"; root: string; target: string };
 
 export interface TreeDeps {
   state: State;
@@ -28,6 +38,8 @@ export interface TreeDeps {
   project: () => DayProject | undefined;
   /** Every discovered project, in the order the sidebar should list them. */
   projects: () => DayProject[];
+  /** Enumerate devices and refresh the tree when the answer lands. */
+  refreshDevices: () => Promise<void>;
 }
 
 export class DayTree implements vscode.TreeDataProvider<Node> {
@@ -49,36 +61,33 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
   }
 
   getChildren(element?: Node): Node[] {
+    // Projects ARE the roots: a "Projects" wrapper stopped earning its level once each project
+    // grew a subtree of its own, and dropping it keeps the deepest row four deep instead of five.
     if (!element) {
-      const projects = this.deps.projects();
-      if (projects.length === 0) {
-        return []; // triggers the viewsWelcome content
-      }
-      const focused = this.deps.project();
-      const nodes: Node[] = [{ kind: "section", id: "projects", label: "Projects" }];
-      if (focused) {
-        // Named in the header, because with several projects open "Build mode: release" is
-        // ambiguous otherwise — these rows only ever act on the focused one.
-        nodes.push({ kind: "section", id: "config", label: `Configuration — ${focused.name}` });
-      }
-      return nodes;
-    }
-    if (element.kind === "section" && element.id === "projects") {
       return this.deps.projects().map((p) => ({ kind: "project", root: p.root }) as Node);
     }
-    if (element.kind === "section" && element.id === "config") {
+    if (element.kind === "project") {
       return [
-        { kind: "config", which: "mode" },
-        { kind: "config", which: "locale" },
-        { kind: "config", which: "script" },
-        { kind: "config", which: "verbose" },
-        { kind: "config", which: "loglevel" },
+        { kind: "group", root: element.root, id: "config", label: "Configuration" },
+        { kind: "group", root: element.root, id: "targets", label: "Targets" },
       ];
     }
-    if (element.kind === "project") {
+    if (element.kind === "group" && element.id === "config") {
+      const rows: ConfigRow[] = ["mode", "locale", "script", "verbose", "loglevel"];
+      return rows.map((which) => ({ kind: "config", root: element.root, which }) as Node);
+    }
+    if (element.kind === "target") {
+      // Only mobile targets have a device to choose. Desktop and web have nowhere else to run, so
+      // giving them a twisty would promise a choice that does not exist.
+      const kind = findTarget(element.name)?.kind;
+      return isMobile(kind) ? [{ kind: "device", root: element.root, target: element.name }] : [];
+    }
+    if (element.kind === "group" && element.id === "targets") {
       const project = this.deps.projects().find((p) => p.root === element.root);
       return project
-        ? this.targetNames(project).map((name) => ({ kind: "target", root: project.root, name }) as Node)
+        ? this.targetNames(project).map(
+            (name) => ({ kind: "target", root: project.root, name }) as Node,
+          )
         : [];
     }
     return [];
@@ -86,21 +95,56 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
 
   getTreeItem(node: Node): vscode.TreeItem {
     switch (node.kind) {
-      case "section":
-        return this.sectionItem(node);
       case "project":
         return this.projectItem(node.root);
+      case "group":
+        return this.groupItem(node);
       case "config":
-        return this.configItem(node.which);
+        return this.configItem(node.root, node.which);
       case "target":
         return this.targetItem(node.root, node.name);
+      case "device":
+        return this.deviceItem(node.root, node.target);
     }
   }
 
-  private sectionItem(node: { id: string; label: string }): vscode.TreeItem {
-    const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.Expanded);
-    item.id = `section:${node.id}`;
-    item.contextValue = "daySection";
+  /**
+   * A project's `Configuration` or `Targets` heading.
+   *
+   * Both carry a summary on the row itself — the mode and locale a run will use, how many targets
+   * are ticked — so a collapsed project still says what pressing Run would do. Only Targets opens
+   * by default: the configuration is usually set once and then read off the summary.
+   */
+  private groupItem(node: { root: string; id: "config" | "targets"; label: string }): vscode.TreeItem {
+    const open =
+      node.id === "targets"
+        ? vscode.TreeItemCollapsibleState.Expanded
+        : vscode.TreeItemCollapsibleState.Collapsed;
+    const item = new vscode.TreeItem(node.label, open);
+    item.id = `group:${node.root}:${node.id}`;
+    item.contextValue = `dayGroup-${node.id}`;
+    const sel = this.deps.state.selectionFor(node.root);
+    if (node.id === "config") {
+      const bits: string[] = [sel.profile];
+      if (sel.locale) {
+        bits.push(sel.locale);
+      }
+      if (sel.script) {
+        bits.push(path.basename(sel.script));
+      }
+      item.description = bits.join(" · ");
+    } else {
+      const running = this.deps.runner.runningIn(node.root).length;
+      const ticked = sel.targets.length;
+      const bits: string[] = [];
+      if (ticked > 0) {
+        bits.push(`${ticked} ticked`);
+      }
+      if (running > 0) {
+        bits.push(`${running} running`);
+      }
+      item.description = bits.join(" · ");
+    }
     return item;
   }
 
@@ -142,16 +186,14 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     return item;
   }
 
-  private configItem(
-    which: "mode" | "locale" | "script" | "verbose" | "loglevel",
-  ): vscode.TreeItem {
+  private configItem(root: string, which: ConfigRow): vscode.TreeItem {
     // A checkbox rather than a pick: it is one bit, and the rows below all open a quick pick
     // because they choose among values. Checked state comes from the SETTING (`day.verbose`),
     // not the per-workspace selection Memento, so the Settings UI and this row are one control.
     if (which === "verbose") {
-      const on = verbose(this.deps.project()?.root);
+      const on = verbose(root);
       const item = new vscode.TreeItem("Verbose", vscode.TreeItemCollapsibleState.None);
-      item.id = "config:verbose";
+      item.id = `config:${root}:verbose`;
       item.description = on ? "on" : "off";
       item.tooltip =
         "Run builds and launches with `--verbose`, showing every sub-command they execute " +
@@ -163,10 +205,14 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
         : vscode.TreeItemCheckboxState.Unchecked;
       // Clicking the LABEL toggles too — the checkbox is a small target, and every other row in
       // this section acts on a plain click.
-      item.command = { command: "day.toggleVerbose", title: "Toggle Verbose" };
+      item.command = {
+        command: "day.toggleVerbose",
+        title: "Toggle Verbose",
+        arguments: [{ kind: "config", root, which } as Node],
+      };
       return item;
     }
-    const sel = this.deps.state.selection;
+    const sel = this.deps.state.selectionFor(root);
     let label: string;
     let value: string;
     let icon: string;
@@ -194,17 +240,68 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
         // From the SETTING (`day.logLevel`), like the Verbose row — the Settings UI and this
         // row are one control.
         label = "Log level";
-        value = logLevel(this.deps.project()?.root);
+        value = logLevel(root);
         icon = "list-filter";
         command = "day.selectLogLevel";
         break;
     }
     const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
-    item.id = `config:${which}`;
+    item.id = `config:${root}:${which}`;
     item.description = value;
     item.iconPath = new vscode.ThemeIcon(icon);
     item.contextValue = "dayConfig";
-    item.command = { command, title: label };
+    // The row passes its own project, so editing Day-Showcase's mode from its own subtree never
+    // reaches into whichever project happens to be focused.
+    item.command = { command, title: label, arguments: [{ kind: "config", root, which } as Node] };
+    return item;
+  }
+
+  /**
+   * The Device row under a mobile target.
+   *
+   * Renders from the CACHED listing and kicks off a refresh when there is none — `getTreeItem` is
+   * synchronous, and blocking the sidebar on adb would make every expand feel broken. The refresh
+   * fires a tree change when it lands, so the row fills itself in a moment later.
+   */
+  private deviceItem(root: string, target: string): vscode.TreeItem {
+    const chosen = this.deps.state.selectionFor(root).devices?.[target];
+    const item = new vscode.TreeItem("Device", vscode.TreeItemCollapsibleState.None);
+    item.id = `device:${root}:${target}`;
+    item.iconPath = new vscode.ThemeIcon("device-mobile");
+    item.contextValue = "dayDevice";
+    item.command = {
+      command: "day.selectDevice",
+      title: "Select Device",
+      arguments: [{ kind: "device", root, target } as Node],
+    };
+
+    if (chosen) {
+      item.description = chosen.label;
+      item.tooltip = `${chosen.label}\n${chosen.flag} ${chosen.id}`;
+      return item;
+    }
+    const listing = cached()?.get(target);
+    if (!listing) {
+      item.description = "…";
+      item.tooltip = "Looking for connected devices";
+      void this.deps.refreshDevices();
+      return item;
+    }
+    if (!listing.available) {
+      item.description = "unavailable";
+      item.tooltip = listing.note ?? "this target's toolchain was not found";
+      item.iconPath = new vscode.ThemeIcon(
+        "circle-slash",
+        new vscode.ThemeColor("disabledForeground"),
+      );
+      return item;
+    }
+    const n = listing.devices.length;
+    item.description = n === 0 ? "none connected" : `all connected (${n})`;
+    item.tooltip =
+      n === 0
+        ? "Nothing is connected for this target"
+        : `Launches on every connected device:\n${listing.devices.map((d) => d.name).join("\n")}`;
     return item;
   }
 
@@ -214,7 +311,12 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     const buildable = target ? isBuildableHere(target) : true;
     const selected = this.deps.state.selectionFor(root).targets.includes(name);
 
-    const item = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.None);
+    const item = new vscode.TreeItem(
+      name,
+      isMobile(target?.kind)
+        ? vscode.TreeItemCollapsibleState.Collapsed
+        : vscode.TreeItemCollapsibleState.None,
+    );
     item.id = `target:${root}:${name}`;
 
     const parts: string[] = [];

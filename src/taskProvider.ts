@@ -28,7 +28,8 @@ export class DayTaskProvider implements vscode.TaskProvider {
     for (const project of this.projects()) {
       // Each project's OWN mode: a release-mode app next to a debug-mode one must not have the
       // focused project's choice put in its task's command line.
-      const profile = this.state.selectionFor(project.root).profile;
+      const selection = this.state.selectionFor(project.root);
+      const profile = selection.profile;
       for (const name of project.targets) {
         const target = findTarget(name);
         if (!target || !isBuildableHere(target)) {
@@ -36,7 +37,16 @@ export class DayTaskProvider implements vscode.TaskProvider {
         }
         for (const command of ["launch", "build"] as const) {
           tasks.push(
-            buildDayTask({ type: "day", command, target: name, profile, project: project.root }),
+            buildDayTask({
+              type: "day",
+              command,
+              target: name,
+              profile,
+              project: project.root,
+              // The chosen device rides along, so "Run Task…" launches where the sidebar says it
+              // will rather than fanning out to every connected phone.
+              device: selection.devices?.[name],
+            }),
           );
         }
       }

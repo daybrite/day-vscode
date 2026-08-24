@@ -133,6 +133,7 @@ export class Runner implements vscode.Disposable {
       locale: sel.locale || undefined,
       script: sel.script || undefined,
       project: root,
+      device: sel.devices?.[target],
     };
   }
 

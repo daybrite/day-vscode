@@ -1,5 +1,18 @@
 ## Unreleased
 
+- **Pick the phone.** Mobile targets — `ios-uikit`, `android-mdc`, `harmony-arkui` — now expand in
+  the sidebar to a **Device** row: choose a booted simulator, a plugged-in phone, an emulator, or
+  **All connected**, which stays the default and is what every launch did before. The list comes
+  from the new `day devices list --json`, and each device carries the flag that selects it, so iOS
+  picks the right one of `--ios-simulator` / `--ios-device` on its own. Choosing a simulator that
+  is not running offers to start it (`day devices boot`) and then selects it — iOS cannot install
+  onto a shut-down simulator, so that used to be a dead end. Requires a `day` CLI new enough to
+  have `day devices`; without one the rows simply do not appear.
+- **Configuration moved inside each project.** Projects are now the sidebar's roots, each with its
+  own `Configuration` and `Targets` groups, and a configuration row edits the project it sits under
+  rather than whichever one is focused. Collapsed groups summarize — `debug · fr · demo.yaml`,
+  `2 ticked · 1 running` — so a collapsed project still says what Run would do.
+
 - **Many Day apps in one window.** The sidebar now lists every project it finds, each expanding to
   its own targets, and each keeping its own ticked targets, build mode, locale and dayscript — one
   app's selection no longer stands in for another's. Launches are tracked per project *and* target,

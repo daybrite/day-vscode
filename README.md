@@ -19,6 +19,9 @@ filtered per target, and processes stop/restart through the standard task lifecy
   project, `Day: Run All Projects` launches every ticked target everywhere, and a project row has
   its own inline run/stop. The focused project follows the file you're editing
   (`day.followActiveEditor`).
+- **Pick the device** — mobile targets expand to a Device row: a booted simulator, a plugged-in
+  phone, an emulator, or **All connected** (the default). Fed by `day devices list`, so the picker
+  shows what is actually attached, and can start a simulator that is not running.
 - **Multiple simultaneous targets** — each selected target launches in its own terminal and can be
   **stopped / restarted independently** (inline buttons, or the status bar).
 - **Build mode** (debug / release), **locale** (`--locale`), an optional **dayscript**

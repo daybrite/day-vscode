@@ -21,6 +21,8 @@ export interface DayTaskDefinition extends vscode.TaskDefinition {
   /** Keep the app running after its dayscript completes (default: day.script.keepAppRunning). */
   keepAlive?: boolean;
   project?: string;
+  /** Device to launch onto, as `day devices list` described it. Omitted = every connected one. */
+  device?: { id: string; flag: string };
 }
 
 /**
@@ -192,6 +194,7 @@ export function buildDayTask(
             vscode.workspace.getConfiguration("day").get<boolean>("script.keepAppRunning", true),
           env: launchEnv(projectRoot),
           verbose: verbose(projectRoot),
+          device: def.device,
         })
       : buildArgs(projectRoot, def.target, profile, verbose(projectRoot));
 

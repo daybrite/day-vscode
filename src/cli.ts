@@ -223,6 +223,8 @@ export interface LaunchOptions {
   env?: Record<string, string>;
   /** Show every sub-command the CLI runs, and its raw output, instead of day's status lines. */
   verbose?: boolean;
+  /** The device to launch onto. Omitted means every connected one, the CLI's own default. */
+  device?: { id: string; flag: string };
 }
 
 function projectArgs(projectRoot: string): string[] {
@@ -247,6 +249,11 @@ export function launchArgs(o: LaunchOptions): string[] {
   }
   if (o.verbose) {
     args.push("--verbose");
+  }
+  // The flag comes from the listing rather than from the target: iOS needs `--ios-simulator` for a
+  // booted simulator and `--ios-device` for a plugged-in phone, and only the CLI knows which.
+  if (o.device) {
+    args.push(o.device.flag, o.device.id);
   }
   return args;
 }

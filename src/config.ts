@@ -12,6 +12,19 @@ import * as vscode from "vscode";
 
 export type Profile = "debug" | "release";
 
+/**
+ * The device a target launches onto, as `day devices list --json` described it.
+ *
+ * `flag` rides along rather than being derived from the target: iOS alone needs
+ * `--ios-simulator` for a booted simulator and `--ios-device` for a plugged-in phone, and letting
+ * the CLI name the flag per device means a new device class needs no extension release.
+ */
+export interface DeviceChoice {
+  id: string;
+  label: string;
+  flag: string;
+}
+
 export interface Selection {
   targets: string[];
   profile: Profile;
@@ -19,6 +32,11 @@ export interface Selection {
   locale: string;
   /** Dayscript path; "" = none. */
   script: string;
+  /**
+   * Chosen device per target name. A target with no entry launches onto every connected device,
+   * which is the CLI's own default — so an untouched project behaves exactly as it did before.
+   */
+  devices?: Record<string, DeviceChoice>;
 }
 
 /** One project's stored slice. Every field optional: absent means "fall back to the setting". */
@@ -67,6 +85,7 @@ export class State {
       profile: slice.profile ?? (cfg.get<Profile>("defaultProfile") ?? "debug"),
       locale: slice.locale ?? (cfg.get<string>("defaultLocale") ?? ""),
       script: slice.script ?? "",
+      devices: slice.devices ?? {},
     };
   }
 
@@ -99,6 +118,17 @@ export class State {
         [root]: { ...(prev.byProject?.[root] ?? {}), ...patch },
       },
     });
+  }
+
+  /** Choose the device one target launches onto, or clear it back to "every connected device". */
+  chooseDevice(root: string, target: string, device: DeviceChoice | undefined): Promise<void> {
+    const devices = { ...this.selectionFor(root).devices };
+    if (device) {
+      devices[target] = device;
+    } else {
+      delete devices[target];
+    }
+    return this.updateFor(root, { devices });
   }
 
   /** Tick or untick one target of one project. Named explicitly rather than defaulting to the
