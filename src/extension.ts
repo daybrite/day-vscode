@@ -423,7 +423,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
       }
       const { root, target } = node;
       devices.invalidate(); // opening the picker is the moment to re-look
-      const listing = (await devices.list(root, output)).get(target);
+      // Handed the PROMISE, not its result: the picker opens on the next frame and spins while
+      // simctl/adb/hdc answer, instead of leaving the click with no feedback for a second or two.
+      // The tree row spins for the same reason, since the query is what both are waiting on.
+      const listing = devices.list(root, output).then((m) => m.get(target));
+      tree.refresh();
+      void listing.finally(() => tree.refresh());
       const pick = await pickDevice(target, listing, state.selectionFor(root).devices?.[target]);
       if (!pick) {
         return; // cancelled

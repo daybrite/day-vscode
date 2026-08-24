@@ -38,24 +38,67 @@ export type DevicePick =
  */
 export async function pickDevice(
   target: string,
-  listing: TargetDevices | undefined,
+  listing: Promise<TargetDevices | undefined>,
   current: DeviceChoice | undefined,
 ): Promise<DevicePick | undefined> {
   type Item = vscode.QuickPickItem & { pick?: DevicePick };
-  if (listing && !listing.available) {
-    void vscode.window.showWarningMessage(
-      `Day: no devices for ${target} — ${listing.note ?? "its toolchain was not found"}`,
-    );
-    return undefined;
+
+  // Built by hand rather than through `showQuickPick`, which cannot be shown before its items are
+  // known: enumerating devices shells out to simctl, adb and hdc, and the wait for those was
+  // happening with nothing on screen at all. This opens immediately, spins while the CLI answers,
+  // and fills in — Escape cancels it at any point, including mid-query.
+  const qp = vscode.window.createQuickPick<Item>();
+  qp.title = `Day: Device for ${target}`;
+  qp.matchOnDetail = true;
+  qp.busy = true;
+  qp.placeholder = "Looking for connected devices…";
+  // The default is knowable without asking anything, so it is on screen from the first frame.
+  qp.items = [
+    {
+      label: "All connected",
+      detail: "Launch on every connected device — the default",
+      pick: { kind: "all" },
+    },
+  ];
+  qp.show();
+
+  // Closed covers BOTH ways out — Escape and accept — because everything below mutates the
+  // QuickPick, and doing that after it is disposed throws. The wait is exactly the window in
+  // which a user can walk away from it, so this is the common path, not the edge case.
+  let closed = false;
+  const result = new Promise<DevicePick | undefined>((resolve) => {
+    qp.onDidAccept(() => {
+      resolve(qp.selectedItems[0]?.pick);
+      qp.hide();
+    });
+    qp.onDidHide(() => {
+      closed = true;
+      resolve(undefined);
+      qp.dispose();
+    });
+  });
+
+  const found = await listing;
+  if (closed) {
+    return result; // dismissed, or accepted "All connected", before the listing landed
   }
-  const connected = listing?.devices ?? [];
+  qp.busy = false;
+
+  if (found && !found.available) {
+    // A missing toolchain is an answer, not an empty list — say it where the user is looking
+    // rather than in a notification behind the picker.
+    qp.placeholder = found.note ?? "this target's toolchain was not found";
+    return result;
+  }
+
+
+  const connected = found?.devices ?? [];
   const items: Item[] = [
     {
       label: "All connected",
       description: connected.length > 0 ? `${connected.length} right now` : "nothing connected",
       detail: "Launch on every connected device — the default",
       pick: { kind: "all" },
-      picked: current === undefined,
     },
   ];
   for (const d of connected) {
@@ -64,15 +107,11 @@ export async function pickDevice(
       description: [d.state, d.runtime, d.arch].filter(Boolean).join(" · "),
       detail: d.id,
       pick: d.flag ? { kind: "device", device: { id: d.id, label: d.name, flag: d.flag } } : undefined,
-      picked: current?.id === d.id,
     });
   }
-  const bootable = listing?.bootable ?? [];
+  const bootable = found?.bootable ?? [];
   if (bootable.length > 0) {
-    items.push({
-      label: "Not running",
-      kind: vscode.QuickPickItemKind.Separator,
-    });
+    items.push({ label: "Not running", kind: vscode.QuickPickItemKind.Separator });
     for (const d of bootable) {
       items.push({
         label: `$(play) ${d.name}`,
@@ -82,12 +121,16 @@ export async function pickDevice(
       });
     }
   }
-  const chosen = await vscode.window.showQuickPick(items, {
-    title: `Day: Device for ${target}`,
-    placeHolder: current ? current.label : "All connected",
-    matchOnDetail: true,
-  });
-  return chosen?.pick;
+  qp.items = items;
+  qp.placeholder = current ? current.label : "All connected";
+  // Keep the current choice highlighted, so reopening the picker shows where you already are.
+  const active = items.find((i) =>
+    current ? i.pick?.kind === "device" && i.pick.device.id === current.id : i.pick?.kind === "all",
+  );
+  if (active) {
+    qp.activeItems = [active];
+  }
+  return result;
 }
 
 export async function pickLogLevel(current: LogLevel): Promise<LogLevel | undefined> {

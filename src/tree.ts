@@ -10,7 +10,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 import { State } from "./config";
-import { cached, isMobile } from "./devices";
+import { cached, isMobile, loading } from "./devices";
 import { logLevel, verbose } from "./tasks";
 import { DayProject } from "./project";
 import { Runner } from "./runner";
@@ -275,9 +275,21 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       arguments: [{ kind: "device", root, target } as Node],
     };
 
+    // A query in flight spins the row — the click that opens the picker starts one, and this is
+    // the other place the wait is visible. A already-chosen device keeps its label while the
+    // spinner runs, so re-querying never looks like the choice was lost.
+    const busy = loading();
+    if (busy) {
+      item.iconPath = new vscode.ThemeIcon("sync~spin");
+    }
     if (chosen) {
-      item.description = chosen.label;
+      item.description = busy ? `${chosen.label} · checking…` : chosen.label;
       item.tooltip = `${chosen.label}\n${chosen.flag} ${chosen.id}`;
+      return item;
+    }
+    if (busy) {
+      item.description = "looking for devices…";
+      item.tooltip = "Asking simctl, adb and hdc what is connected";
       return item;
     }
     const listing = cached()?.get(target);

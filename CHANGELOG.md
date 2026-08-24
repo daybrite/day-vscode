@@ -6,7 +6,9 @@
   from the new `day devices list --json`, and each device carries the flag that selects it, so iOS
   picks the right one of `--ios-simulator` / `--ios-device` on its own. Choosing a simulator that
   is not running offers to start it (`day devices boot`) and then selects it — iOS cannot install
-  onto a shut-down simulator, so that used to be a dead end. Requires a `day` CLI new enough to
+  onto a shut-down simulator, so that used to be a dead end. The picker opens immediately and spins
+  while the devices are found, and the Device row spins with it, rather than leaving the click with
+  no feedback; Escape backs out at any point, including mid-query. Requires a `day` CLI new enough to
   have `day devices`; without one the rows simply do not appear.
 - **Configuration moved inside each project.** Projects are now the sidebar's roots, each with its
   own `Configuration` and `Targets` groups, and a configuration row edits the project it sits under

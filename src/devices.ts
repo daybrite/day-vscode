@@ -61,8 +61,9 @@ export function invalidate(): void {
 /**
  * Every mobile target's devices, cached.
  *
- * One call covers all three targets because that is what the CLI answers in one process; asking
- * per target would triple the adb and simctl work for the same information.
+ * One call covers all three targets: the CLI enumerates them concurrently, so asking for all of
+ * them costs the slowest one rather than the sum, and a second call for a different target would
+ * pay that again for nothing.
  */
 export async function list(
   projectRoot: string | undefined,
@@ -76,6 +77,11 @@ export async function list(
     inFlight = undefined;
   });
   return inFlight;
+}
+
+/** Whether a listing is being fetched right now — the tree spins its Device rows while it is. */
+export function loading(): boolean {
+  return inFlight !== undefined;
 }
 
 /** The cached listing if there is one, without running anything — for synchronous tree rendering. */
