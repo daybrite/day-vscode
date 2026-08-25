@@ -33,6 +33,12 @@ filtered per target, and processes stop/restart through the standard task lifecy
 - **Run and Debug (F5)** — a `day` launch type in the Run panel. On a desktop target, **Start
   Debugging** builds the app and hands the binary to a Rust debugger you already have installed, so
   breakpoints in `.rs` files are real. See [Debugging](#debugging).
+- **Lint** — **Day: Lint Project** (sidebar toolbar, or right-click a project row) runs `day lint`
+  on that project and draws the findings in the editor, on the lines they name. Findings that name
+  something that does not exist — a Fluent key with no message, a route nothing declares, an
+  undeclared permission — come through as errors; coverage gaps and store copy as warnings. Where
+  the CLI proposed a repair that is safe and unambiguous, it is offered as a **quick fix**
+  (`⌘.`), with **Fix all in file** when there is more than one.
 - **Doctor** — run `day doctor` to check your toolchains.
 
 ## Debugging
@@ -100,7 +106,16 @@ beside this extension's own `day-vscode/` source** (the dev-host case, resolved 
 | `day.logLevel` | `trace` | `DAY_LOG` level passed to every launch via `--env` (`trace` shows everything, per-statement SQL included; a `DAY_LOG` in `day.extraEnv` wins). **Per project.** |
 | `day.extraEnv` | `{}` | Extra `KEY=VALUE` env passed to every launch via `--env`. **Per project.** |
 | `day.followActiveEditor` | `true` | Focus the Day project the active editor's file belongs to. |
+| `day.androidSdkHome` | `""` | Android SDK dir. Exported as `ANDROID_HOME` **and** `ANDROID_SDK_ROOT`, with its `platform-tools/` and `emulator/` added to the task PATH. (`ANDROID_SDK_HOME` is a different, legacy variable and is deliberately not set.) |
+| `day.androidNdkHome` | `""` | Android NDK dir for the `android-mdc` cross-compile. Exported as `ANDROID_NDK_HOME`. |
+| `day.developerDir` | `""` | Xcode to build Apple targets with — the `.app` or its `Contents/Developer`. Exported as `DEVELOPER_DIR`, which `xcrun`/`xcodebuild`/`simctl` read directly. |
 | `day.ohosNdkHome` | `""` | OpenHarmony NDK `native` dir for `harmony-arkui` (exported as `OHOS_NDK_HOME` in the task; empty = auto-detect `~/ohos/ndk-extract/native` or `~/ohos-sdk/native`; the SDK's `toolchains/` joins the task PATH for `hdc`). |
+
+The toolchain paths above (`androidSdkHome`, `androidNdkHome`, `developerDir`, `ohosNdkHome`) are
+exported for **every** `day` command the extension runs — builds, launches, device listing, and
+`day doctor` — so Doctor reports on the same toolchains your builds will use. That matters most
+when VS Code was launched from the Dock or Start menu and inherited none of your shell's
+environment.
 
 Settings marked **Per project** are folder-scoped: put them in one app's `.vscode/settings.json`
 and they apply to that app alone, which is how several apps in one window run with different log

@@ -100,7 +100,11 @@ export function findBuiltDayBinary(repo: string): string | undefined {
 }
 
 /** How to invoke the CLI of a checkout: its built binary if there is one, else cargo. */
-function checkoutCli(repo: string, cargoArgs: string[], cargoDisplay: string): DayCli {
+function checkoutCli(
+  repo: string,
+  cargoArgs: string[],
+  cargoDisplay: string,
+): DayCli {
   const built = findBuiltDayBinary(repo);
   if (built) {
     // No cwd: the caller runs it in the project directory, exactly as an installed `day` would be.
@@ -110,7 +114,12 @@ function checkoutCli(repo: string, cargoArgs: string[], cargoDisplay: string): D
   }
   // cwd is the repo root, so cargo reads that workspace's `.cargo/config`, not the target
   // project's.
-  return { command: "cargo", baseArgs: cargoArgs, cwd: repo, display: cargoDisplay };
+  return {
+    command: "cargo",
+    baseArgs: cargoArgs,
+    cwd: repo,
+    display: cargoDisplay,
+  };
 }
 
 /** Expand a leading `~`, which a hand-written settings path very often carries. */
@@ -180,9 +189,22 @@ export function resolveCli(projectDir?: string): DayCli {
       }
     } else {
       const manifest = path.join(repo, "Cargo.toml");
-      const baseArgs = ["run", "--manifest-path", manifest, "-q", "-p", "day-cli", "--"];
+      const baseArgs = [
+        "run",
+        "--manifest-path",
+        manifest,
+        "-q",
+        "-p",
+        "day-cli",
+        "--",
+      ];
       // cwd is the checkout, so cargo reads THAT workspace's config rather than the app's.
-      return { command: "cargo", baseArgs, cwd: repo, display: `cargo ${baseArgs.join(" ")}` };
+      return {
+        command: "cargo",
+        baseArgs,
+        cwd: repo,
+        display: `cargo ${baseArgs.join(" ")}`,
+      };
     }
   }
 
@@ -192,7 +214,11 @@ export function resolveCli(projectDir?: string): DayCli {
 
   const repo = findDayRepoRoot(projectDir);
   if (repo) {
-    return checkoutCli(repo, ["run", "-q", "-p", "day-cli", "--"], "cargo run -q -p day-cli --");
+    return checkoutCli(
+      repo,
+      ["run", "-q", "-p", "day-cli", "--"],
+      "cargo run -q -p day-cli --",
+    );
   }
 
   // Dev-host convenience: the extension runs from a `day-vscode/` checkout beside a `day/` repo,
@@ -229,12 +255,21 @@ export interface LaunchOptions {
 
 function projectArgs(projectRoot: string): string[] {
   // Omit --project when unknown so the CLI falls back to cwd-based Day.toml discovery.
-  return projectRoot && projectRoot.length > 0 ? ["--project", projectRoot] : [];
+  return projectRoot && projectRoot.length > 0
+    ? ["--project", projectRoot]
+    : [];
 }
 
 /** Args for `day launch` (a single target). */
 export function launchArgs(o: LaunchOptions): string[] {
-  const args = [...projectArgs(o.projectRoot), "launch", "-p", o.target, "--profile", o.profile];
+  const args = [
+    ...projectArgs(o.projectRoot),
+    "launch",
+    "-p",
+    o.target,
+    "--profile",
+    o.profile,
+  ];
   if (o.locale && o.locale.length > 0) {
     args.push("--locale", o.locale);
   }
@@ -265,11 +300,29 @@ export function buildArgs(
   profile: "debug" | "release",
   verbose = false,
 ): string[] {
-  const args = [...projectArgs(projectRoot), "build", "-p", target, "--profile", profile];
+  const args = [
+    ...projectArgs(projectRoot),
+    "build",
+    "-p",
+    target,
+    "--profile",
+    profile,
+  ];
   if (verbose) {
     args.push("--verbose");
   }
   return args;
+}
+
+/**
+ * Args for `day lint --json`.
+ *
+ * `--project` is not optional decoration here: with `day.cliSource` set the command runs as
+ * `cargo run --manifest-path <checkout>` with the CHECKOUT as its cwd, so cwd-based `Day.toml`
+ * discovery would find day's own repo — or nothing — instead of the app.
+ */
+export function lintArgs(projectRoot: string): string[] {
+  return [...projectArgs(projectRoot), "lint", "--json"];
 }
 
 /** A shell-safe rendering of a command for display in a terminal/log line. */

@@ -143,6 +143,12 @@
         "category": "Day"
       },
       {
+        "command": "day.lintProject",
+        "title": "Lint Project",
+        "category": "Day",
+        "icon": "$(search-fuzzy)"
+      },
+      {
         "command": "day.doctor",
         "title": "Doctor (check toolchains)",
         "category": "Day",
@@ -159,6 +165,12 @@
         "title": "Select Targets",
         "category": "Day",
         "icon": "$(checklist)"
+      },
+      {
+        "command": "day.toggleTarget",
+        "title": "Toggle Target Selection",
+        "category": "Day",
+        "icon": "$(check)"
       },
       {
         "command": "day.selectDevice",
@@ -225,6 +237,16 @@
         "title": "Install the day CLI…",
         "category": "Day",
         "icon": "$(cloud-download)"
+      },
+      {
+        "command": "day.fixAllInFile",
+        "title": "Fix All Day Lint Findings in File",
+        "category": "Day"
+      },
+      {
+        "command": "day.relintAfterFix",
+        "title": "Re-check After a Lint Fix",
+        "category": "Day"
       }
     ],
     "menus": {
@@ -253,6 +275,11 @@
           "command": "day.build",
           "when": "view == dayTargets",
           "group": "1_run@1"
+        },
+        {
+          "command": "day.lintProject",
+          "when": "view == dayTargets",
+          "group": "2_tools@0"
         },
         {
           "command": "day.doctor",
@@ -293,6 +320,16 @@
         },
         {
           "command": "day.stopProject",
+          "when": "view == dayTargets && viewItem =~ /^dayProject/",
+          "group": "inline@2"
+        },
+        {
+          "command": "day.toggleTarget",
+          "when": "view == dayTargets && viewItem =~ /^dayTarget(Running)?$/",
+          "group": "1_toggle@1"
+        },
+        {
+          "command": "day.lintProject",
           "when": "view == dayTargets && viewItem =~ /^dayProject/",
           "group": "inline@2"
         }
@@ -341,6 +378,18 @@
         {
           "command": "day.selectDevice",
           "when": "false"
+        },
+        {
+          "command": "day.toggleTarget",
+          "when": "false"
+        },
+        {
+          "command": "day.relintAfterFix",
+          "when": "false"
+        },
+        {
+          "command": "day.fixAllInFile",
+          "when": "false"
         }
       ]
     },
@@ -377,6 +426,21 @@
             "type": "boolean",
             "default": true,
             "markdownDescription": "Focus the Day project that the active editor's file belongs to. With several apps open in one window, opening a file in one of them points the Configuration rows, the Run button, and the status bar at that project. Turn this off to change focus only from the Day sidebar or `Day: Select Project`."
+          },
+          "day.androidSdkHome": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Path to the Android SDK (the directory holding `platform-tools/` and `emulator/`). Exported as both `ANDROID_HOME` and `ANDROID_SDK_ROOT` for every `day` command this extension runs — builds, launches, `day doctor` and device listing — and its `platform-tools/` and `emulator/` are added to the task `PATH`, which is what lets `adb` and the emulator be found when the editor was launched from the Dock and inherited no shell environment. Empty = whatever the environment already provides.\n\nNote: `ANDROID_SDK_HOME` is a different, legacy variable naming the `.android` user directory — it does not select an SDK, so this setting does not export it."
+          },
+          "day.androidNdkHome": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Path to the Android NDK used to cross-compile the Rust cdylib for `android-mdc`. Exported as `ANDROID_NDK_HOME`. Empty = the CLI picks the newest NDK inside the SDK."
+          },
+          "day.developerDir": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Path to the Xcode installation to build Apple targets with — the `.app` itself, or its `Contents/Developer`. Exported as `DEVELOPER_DIR`, which `xcrun`, `xcodebuild` and `simctl` read directly, so this is how a machine with several Xcodes points `macos-appkit` and `ios-uikit` at one of them. Empty = whatever `xcode-select` points to."
           },
           "day.verbose": {
             "type": "boolean",

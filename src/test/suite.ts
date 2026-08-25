@@ -16,9 +16,16 @@ import * as fs from "fs";
 import * as os from "os";
 import * as vscode from "vscode";
 
-import { findDayRepoRoot, launchArgs, resolveCli } from "../cli";
+import { findDayRepoRoot, launchArgs, lintArgs, resolveCli } from "../cli";
 import { State } from "../config";
-import { delegateByKey, DesktopLaunchPlan, pickDelegate, planFrom } from "../debug";
+import {
+  delegateByKey,
+  DesktopLaunchPlan,
+  pickDelegate,
+  planFrom,
+} from "../debug";
+import { editFor, Lint, mapFindings } from "../lint";
+import { toolchainEnv } from "../tasks";
 import { installRoutes } from "../install";
 
 /** An in-memory Memento, so the selection store can be exercised without touching the real one. */
@@ -26,7 +33,8 @@ function fakeMemento(): vscode.Memento {
   const map = new Map<string, unknown>();
   return {
     keys: () => [...map.keys()],
-    get: (<T>(key: string, fallback?: T) => (map.has(key) ? (map.get(key) as T) : fallback)) as vscode.Memento["get"],
+    get: (<T>(key: string, fallback?: T) =>
+      map.has(key) ? (map.get(key) as T) : fallback) as vscode.Memento["get"],
     update: async (key: string, value: unknown) => {
       if (value === undefined) {
         map.delete(key);
@@ -59,15 +67,31 @@ const checks: Check[] = [
       const showcase = "/w/Day-Showcase";
 
       await state.focus(sketch);
-      assert.strictEqual(state.focusedRoot, sketch, "focus() must point the cockpit at that project");
+      assert.strictEqual(
+        state.focusedRoot,
+        sketch,
+        "focus() must point the cockpit at that project",
+      );
       await state.toggleTargetFor(sketch, "macos-appkit");
       await state.update({ profile: "release", locale: "fr" });
 
       await state.focus(showcase);
       assert.strictEqual(state.focusedRoot, showcase);
-      assert.deepStrictEqual(state.selection.targets, [], "a fresh project starts with no targets");
-      assert.strictEqual(state.selection.profile, "debug", "mode must not carry across projects");
-      assert.strictEqual(state.selection.locale, "", "locale must not carry across projects");
+      assert.deepStrictEqual(
+        state.selection.targets,
+        [],
+        "a fresh project starts with no targets",
+      );
+      assert.strictEqual(
+        state.selection.profile,
+        "debug",
+        "mode must not carry across projects",
+      );
+      assert.strictEqual(
+        state.selection.locale,
+        "",
+        "locale must not carry across projects",
+      );
       await state.toggleTargetFor(showcase, "ios-uikit");
 
       // Focusing back finds the first project exactly as it was left.
@@ -75,12 +99,21 @@ const checks: Check[] = [
       assert.deepStrictEqual(back.targets, ["macos-appkit"]);
       assert.strictEqual(back.profile, "release");
       assert.strictEqual(back.locale, "fr");
-      assert.deepStrictEqual(state.selectionFor(showcase).targets, ["ios-uikit"]);
+      assert.deepStrictEqual(state.selectionFor(showcase).targets, [
+        "ios-uikit",
+      ]);
 
       // Editing an UNFOCUSED project (the fan-out tree does this) leaves focus alone.
       await state.updateFor(sketch, { script: "dayscript/demo.yaml" });
-      assert.strictEqual(state.focusedRoot, showcase, "updateFor must not steal focus");
-      assert.strictEqual(state.selectionFor(sketch).script, "dayscript/demo.yaml");
+      assert.strictEqual(
+        state.focusedRoot,
+        showcase,
+        "updateFor must not steal focus",
+      );
+      assert.strictEqual(
+        state.selectionFor(sketch).script,
+        "dayscript/demo.yaml",
+      );
     },
   ],
   [
@@ -91,7 +124,11 @@ const checks: Check[] = [
       await ext.activate();
       assert.ok(ext.isActive, "extension did not activate");
       const folders = vscode.workspace.workspaceFolders ?? [];
-      assert.strictEqual(folders.length, 2, "expected the two-project fixture workspace");
+      assert.strictEqual(
+        folders.length,
+        2,
+        "expected the two-project fixture workspace",
+      );
     },
   ],
   [
@@ -99,13 +136,17 @@ const checks: Check[] = [
     async () => {
       const ext = vscode.extensions.getExtension("daybrite.day-vscode");
       assert.ok(ext);
-      const contributed: string[] = (ext.packageJSON?.contributes?.commands ?? []).map(
-        (c: { command: string }) => c.command,
-      );
+      const contributed: string[] = (
+        ext.packageJSON?.contributes?.commands ?? []
+      ).map((c: { command: string }) => c.command);
       assert.ok(contributed.length > 0, "package.json contributes no commands");
       const registered = new Set(await vscode.commands.getCommands(true));
       const missing = contributed.filter((c) => !registered.has(c));
-      assert.deepStrictEqual(missing, [], `commands contributed but never registered: ${missing}`);
+      assert.deepStrictEqual(
+        missing,
+        [],
+        `commands contributed but never registered: ${missing}`,
+      );
     },
   ],
   [
@@ -113,17 +154,27 @@ const checks: Check[] = [
     async () => {
       const tasks = await vscode.tasks.fetchTasks({ type: "day" });
       const names = tasks.map((t) => t.name).sort();
-      assert.ok(names.length >= 2, `expected day tasks, got ${JSON.stringify(names)}`);
+      assert.ok(
+        names.length >= 2,
+        `expected day tasks, got ${JSON.stringify(names)}`,
+      );
       // Tasks come from the target list `day metadata --json` reported, so their presence is
       // proof the CLI ran and its envelope parsed. Every name carries the project it belongs to,
       // which is what keeps two apps' `macos-appkit` in separate terminals.
       for (const name of names) {
-        assert.match(name, /^(build|run) \S+ \(.+\)$/, `unexpected task name ${name}`);
+        assert.match(
+          name,
+          /^(build|run) \S+ \(.+\)$/,
+          `unexpected task name ${name}`,
+        );
       }
       if (COMBO) {
         const has = (verb: string) =>
           names.some((n) => n.startsWith(`${verb} ${COMBO} (`));
-        assert.ok(has("build"), `no "build ${COMBO} (<project>)" task in ${names}`);
+        assert.ok(
+          has("build"),
+          `no "build ${COMBO} (<project>)" task in ${names}`,
+        );
         assert.ok(has("run"), `no "run ${COMBO} (<project>)" task in ${names}`);
       }
     },
@@ -136,7 +187,9 @@ const checks: Check[] = [
       // projects the extension actually discovered and loaded through `day metadata`.
       const tasks = await vscode.tasks.fetchTasks({ type: "day" });
       const projectOf = (name: string) => name.match(/\(([^)]+)\)$/)?.[1];
-      const projects = new Set(tasks.map((t) => projectOf(t.name)).filter(Boolean));
+      const projects = new Set(
+        tasks.map((t) => projectOf(t.name)).filter(Boolean),
+      );
       assert.ok(
         projects.has("day-fixture") && projects.has("day-fixture-two"),
         `expected tasks for both fixtures, saw ${JSON.stringify([...projects])}`,
@@ -144,7 +197,9 @@ const checks: Check[] = [
       // Same target, two projects, two distinct tasks — the collision that used to make one app's
       // launch stop the other's.
       if (COMBO) {
-        const both = tasks.filter((t) => t.name.startsWith(`run ${COMBO} (`)).map((t) => t.name);
+        const both = tasks
+          .filter((t) => t.name.startsWith(`run ${COMBO} (`))
+          .map((t) => t.name);
         assert.strictEqual(
           new Set(both).size,
           2,
@@ -162,15 +217,21 @@ const checks: Check[] = [
       // which scope the test itself guessed. The command line is the thing that matters anyway.
       const ext = vscode.extensions.getExtension("daybrite.day-vscode");
       assert.ok(ext);
-      const api = (await ext.activate()) as { focusedProject(): string | undefined };
+      const api = (await ext.activate()) as {
+        focusedProject(): string | undefined;
+      };
       const focused = api.focusedProject();
       assert.ok(focused, "no focused project to toggle");
       const mine = `(${baseName(focused)})`;
 
       const tasksFor = async (predicate: (name: string) => boolean) =>
-        (await vscode.tasks.fetchTasks({ type: "day" })).filter((t) => predicate(t.name));
+        (await vscode.tasks.fetchTasks({ type: "day" })).filter((t) =>
+          predicate(t.name),
+        );
       const verboseHere = async () =>
-        (await tasksFor((n) => n.endsWith(mine))).every((t) => (t.detail ?? "").includes("--verbose"));
+        (await tasksFor((n) => n.endsWith(mine))).every((t) =>
+          (t.detail ?? "").includes("--verbose"),
+        );
 
       const before = await verboseHere();
       try {
@@ -210,7 +271,9 @@ const checks: Check[] = [
     async () => {
       const cfg = vscode.workspace.getConfiguration("day");
       const runTasks = async () =>
-        (await vscode.tasks.fetchTasks({ type: "day" })).filter((t) => t.name.startsWith("run "));
+        (await vscode.tasks.fetchTasks({ type: "day" })).filter((t) =>
+          t.name.startsWith("run "),
+        );
       try {
         // Default: trace, so a fresh install shows everything (the per-statement SQL firehose
         // included) without any setup. `detail` is the rendered command line, so this covers
@@ -230,17 +293,240 @@ const checks: Check[] = [
           );
         }
         // …and a hand-written DAY_LOG in day.extraEnv beats the setting.
-        await cfg.update("extraEnv", { DAY_LOG: "warn" }, vscode.ConfigurationTarget.Global);
+        await cfg.update(
+          "extraEnv",
+          { DAY_LOG: "warn" },
+          vscode.ConfigurationTarget.Global,
+        );
         for (const t of await runTasks()) {
           const detail = t.detail ?? "";
           assert.ok(
-            detail.includes("--env DAY_LOG=warn") && !detail.includes("DAY_LOG=info"),
+            detail.includes("--env DAY_LOG=warn") &&
+              !detail.includes("DAY_LOG=info"),
             `task "${t.name}" should let extraEnv's DAY_LOG win: ${detail}`,
           );
         }
       } finally {
-        await cfg.update("logLevel", undefined, vscode.ConfigurationTarget.Global);
-        await cfg.update("extraEnv", undefined, vscode.ConfigurationTarget.Global);
+        await cfg.update(
+          "logLevel",
+          undefined,
+          vscode.ConfigurationTarget.Global,
+        );
+        await cfg.update(
+          "extraEnv",
+          undefined,
+          vscode.ConfigurationTarget.Global,
+        );
+      }
+    },
+  ],
+  [
+    "lint findings become diagnostics, and only the ones an author should act on",
+    async () => {
+      const root = process.platform === "win32" ? "c:\\w\\app" : "/w/app";
+      const { diagnostics, fixes } = mapFindings(root, [
+        {
+          code: "day::lint::unknown-key",
+          severity: "error",
+          message: 'tr("nope") has no message',
+          file: "src/lib.rs",
+          line: 88,
+          column: 9,
+        },
+        {
+          code: "day::lint::store-whitespace",
+          severity: "warning",
+          message: "leading or trailing whitespace",
+          file: "store/en/name.txt",
+          line: 1,
+          column: 1,
+          fix: {
+            title: "Trim it",
+            file: "store/en/name.txt",
+            contents: "Name\n",
+          },
+        },
+        // Waived: the author said this one may stand, so squiggling it would argue with them.
+        {
+          code: "day::lint::store-placeholder",
+          severity: "warning",
+          message: "still TODO",
+          waived: true,
+          file: "store/en/short.txt",
+        },
+        // No file — a locale that exists on no surface has nowhere to point.
+        {
+          code: "day::lint::locale-sync",
+          severity: "warning",
+          message: "fr is missing",
+        },
+      ]);
+
+      assert.strictEqual(
+        diagnostics.size,
+        2,
+        "only the two findings with a place and no waiver",
+      );
+      const source = vscode.Uri.joinPath(
+        vscode.Uri.file(root),
+        "src",
+        "lib.rs",
+      ).toString();
+      const [unknownKey] = diagnostics.get(source) ?? [];
+      assert.ok(
+        unknownKey,
+        `no diagnostic on ${source}: ${[...diagnostics.keys()].join(", ")}`,
+      );
+      assert.strictEqual(unknownKey.severity, vscode.DiagnosticSeverity.Error);
+      assert.strictEqual(unknownKey.code, "day::lint::unknown-key");
+      // The CLI counts lines and columns from 1, the editor from 0. Off by one here puts every
+      // squiggle on the wrong line, which looks like the lint being wrong.
+      assert.strictEqual(unknownKey.range.start.line, 87);
+      assert.strictEqual(unknownKey.range.start.character, 8);
+
+      const store = vscode.Uri.joinPath(
+        vscode.Uri.file(root),
+        "store",
+        "en",
+        "name.txt",
+      ).toString();
+      assert.strictEqual(
+        fixes.get(source),
+        undefined,
+        "a rule with no repair offers no action",
+      );
+      assert.strictEqual(
+        fixes.get(store)?.get("day::lint::store-whitespace@0")?.contents,
+        "Name\n",
+        "the fix must be reachable from the diagnostic's code and line",
+      );
+
+      // The fix replaces the file WHOLE, so the range has to span it exactly — a range that fell
+      // short would append the new text to the old instead of replacing it.
+      const document = await vscode.workspace.openTextDocument({
+        content: "  Day Rise  \n\ntrailing\n",
+      });
+      const edit = editFor(document, {
+        title: "Trim it",
+        file: "store/en/name.txt",
+        contents: "Day Rise\n",
+      });
+      const [entry] = edit.get(document.uri);
+      assert.ok(entry, "the edit must target the document it was built from");
+      assert.strictEqual(entry.newText, "Day Rise\n");
+      assert.strictEqual(document.getText(entry.range), document.getText());
+    },
+  ],
+  [
+    "day.lintProject is registered and survives a CLI that predates `lint --json`",
+    async () => {
+      const commands = await vscode.commands.getCommands(true);
+      assert.ok(
+        commands.includes("day.lintProject"),
+        "day.lintProject must be registered",
+      );
+      assert.ok(commands.includes("day.fixAllInFile"));
+
+      // The e2e leg installs the day CLI from day's main branch, which may not carry `--json`
+      // yet. Missing it must leave the extension usable, so this asserts the SHAPE of the answer
+      // rather than that findings came back: an envelope, or a clean `undefined`.
+      const output = vscode.window.createOutputChannel("Day lint check");
+      try {
+        const lint = new Lint(output);
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        assert.ok(folder, "the fixture workspace must have a folder");
+        const counts = await lint.run(folder.uri.fsPath);
+        if (counts) {
+          assert.strictEqual(typeof (counts.errors ?? 0), "number");
+          assert.strictEqual(typeof (counts.warnings ?? 0), "number");
+        }
+        lint.dispose();
+      } finally {
+        output.dispose();
+      }
+    },
+  ],
+  [
+    "lint names its project on the command line, not by where it happens to run",
+    async () => {
+      // With `day.cliSource` set, the command is `cargo run --manifest-path <checkout>` and its
+      // cwd is the CHECKOUT — so a lint that relied on cwd-based Day.toml discovery looked for
+      // the manifest in day's own repo and failed with "no Day.toml found".
+      const args = lintArgs("/w/Day-Showcase");
+      assert.deepStrictEqual(args, [
+        "--project",
+        "/w/Day-Showcase",
+        "lint",
+        "--json",
+      ]);
+      assert.strictEqual(
+        args.indexOf("--project"),
+        0,
+        "--project is a global flag and must precede the subcommand",
+      );
+      // An unknown root falls back to discovery rather than passing an empty --project, which
+      // clap would read as the next token.
+      assert.deepStrictEqual(lintArgs(""), ["lint", "--json"]);
+    },
+  ],
+  [
+    "a quick fix repairs the file and the finding is gone on the next lint",
+    async () => {
+      // The whole loop, against a real CLI: lint → diagnostic → apply the edit → save → re-lint.
+      // A four-file project is enough, because the two fixable rules are store rules and the
+      // store lint only needs a mobile target declared.
+      const root = fs.mkdtempSync(`${os.tmpdir()}/day-lint-`);
+      const write = (rel: string, text: string): void => {
+        const full = `${root}/${rel}`;
+        fs.mkdirSync(full.slice(0, full.lastIndexOf("/")), { recursive: true });
+        fs.writeFileSync(full, text);
+      };
+      write(
+        "Cargo.toml",
+        '[package]\nname = "min"\nversion = "0.1.0"\nedition = "2021"\n',
+      );
+      write(
+        "Day.toml",
+        'schema = 1\n\n[app]\nid = "com.example.min"\ntitle = "Min"\ntargets = ["ios-uikit"]\n',
+      );
+      write("src/lib.rs", "pub fn f() {}\n");
+      write("store/en/name.txt", "Min  \n");
+
+      const output = vscode.window.createOutputChannel("Day lint fix check");
+      const lint = new Lint(output);
+      try {
+        const counts = await lint.run(root);
+        if (!counts) {
+          console.log("    (skipped: this day CLI has no `lint --json` yet)");
+          return;
+        }
+        const uri = vscode.Uri.file(`${root}/store/en/name.txt`);
+        const [fix] = lint.fixesIn(uri);
+        assert.ok(fix, "the whitespace rule must propose a repair");
+        assert.strictEqual(fix.contents, "Min\n");
+
+        const document = await vscode.workspace.openTextDocument(uri);
+        assert.ok(await vscode.workspace.applyEdit(editFor(document, fix)));
+        // The CLI reads from DISK, so an unsaved buffer would leave it linting the old text and
+        // reporting a finding the author has already fixed.
+        assert.ok(await document.save());
+
+        const after = await lint.run(root);
+        assert.ok(after);
+        assert.strictEqual(
+          after.fixable,
+          0,
+          "the repaired finding must not come back",
+        );
+        assert.strictEqual(lint.fixesIn(uri).length, 0);
+        assert.strictEqual(
+          fs.readFileSync(`${root}/store/en/name.txt`, "utf8"),
+          "Min\n",
+        );
+      } finally {
+        lint.dispose();
+        output.dispose();
+        fs.rmSync(root, { recursive: true, force: true });
       }
     },
   ],
@@ -257,9 +543,16 @@ const checks: Check[] = [
     () => {
       // The ordering is the whole point of the table: someone without the CLI usually has no Rust
       // toolchain either, so `cargo install` must never be the first thing offered.
-      for (const platform of ["darwin", "linux", "win32"] as NodeJS.Platform[]) {
+      for (const platform of [
+        "darwin",
+        "linux",
+        "win32",
+      ] as NodeJS.Platform[]) {
         const routes = installRoutes(platform);
-        assert.ok(routes.length >= 2, `${platform}: expected more than one route`);
+        assert.ok(
+          routes.length >= 2,
+          `${platform}: expected more than one route`,
+        );
         assert.match(
           routes[0].command,
           /curl|irm/,
@@ -272,8 +565,12 @@ const checks: Check[] = [
         );
       }
       // Homebrew is macOS-only here; offering it on Linux would be a guess about the host.
-      assert.ok(installRoutes("darwin").some((r) => r.command.includes("brew")));
-      assert.ok(!installRoutes("win32").some((r) => r.command.includes("brew")));
+      assert.ok(
+        installRoutes("darwin").some((r) => r.command.includes("brew")),
+      );
+      assert.ok(
+        !installRoutes("win32").some((r) => r.command.includes("brew")),
+      );
     },
   ],
   [
@@ -282,9 +579,14 @@ const checks: Check[] = [
       // Folder-scoped settings: one app at trace while the next stays quiet, and the difference
       // has to reach the actual command line rather than just the settings UI.
       const folders = vscode.workspace.workspaceFolders ?? [];
-      assert.strictEqual(folders.length, 2, "this check needs the two-project fixture");
+      assert.strictEqual(
+        folders.length,
+        2,
+        "this check needs the two-project fixture",
+      );
       const [a, b] = folders;
-      const cfgFor = (f: vscode.WorkspaceFolder) => vscode.workspace.getConfiguration("day", f.uri);
+      const cfgFor = (f: vscode.WorkspaceFolder) =>
+        vscode.workspace.getConfiguration("day", f.uri);
       const detailFor = async (f: vscode.WorkspaceFolder): Promise<string> => {
         const tasks = await vscode.tasks.fetchTasks({ type: "day" });
         const name = baseName(f.uri.fsPath);
@@ -294,20 +596,52 @@ const checks: Check[] = [
       };
 
       try {
-        await cfgFor(a).update("logLevel", "warn", vscode.ConfigurationTarget.WorkspaceFolder);
-        await cfgFor(b).update("logLevel", "error", vscode.ConfigurationTarget.WorkspaceFolder);
-        await cfgFor(a).update("verbose", true, vscode.ConfigurationTarget.WorkspaceFolder);
+        await cfgFor(a).update(
+          "logLevel",
+          "warn",
+          vscode.ConfigurationTarget.WorkspaceFolder,
+        );
+        await cfgFor(b).update(
+          "logLevel",
+          "error",
+          vscode.ConfigurationTarget.WorkspaceFolder,
+        );
+        await cfgFor(a).update(
+          "verbose",
+          true,
+          vscode.ConfigurationTarget.WorkspaceFolder,
+        );
 
         const [da, db] = [await detailFor(a), await detailFor(b)];
-        assert.ok(da.includes("--env DAY_LOG=warn"), `first project's level missing: ${da}`);
-        assert.ok(db.includes("--env DAY_LOG=error"), `second project's level missing: ${db}`);
+        assert.ok(
+          da.includes("--env DAY_LOG=warn"),
+          `first project's level missing: ${da}`,
+        );
+        assert.ok(
+          db.includes("--env DAY_LOG=error"),
+          `second project's level missing: ${db}`,
+        );
         // Verbose set on ONE project must not leak into the other's command line.
-        assert.ok(da.includes("--verbose"), `first project should be verbose: ${da}`);
-        assert.ok(!db.includes("--verbose"), `verbose leaked into the second project: ${db}`);
+        assert.ok(
+          da.includes("--verbose"),
+          `first project should be verbose: ${da}`,
+        );
+        assert.ok(
+          !db.includes("--verbose"),
+          `verbose leaked into the second project: ${db}`,
+        );
       } finally {
         for (const f of [a, b]) {
-          await cfgFor(f).update("logLevel", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
-          await cfgFor(f).update("verbose", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+          await cfgFor(f).update(
+            "logLevel",
+            undefined,
+            vscode.ConfigurationTarget.WorkspaceFolder,
+          );
+          await cfgFor(f).update(
+            "verbose",
+            undefined,
+            vscode.ConfigurationTarget.WorkspaceFolder,
+          );
         }
       }
     },
@@ -327,7 +661,12 @@ const checks: Check[] = [
         !launchArgs(base).some((a) => a.startsWith("--ios-")),
         "with no device chosen the launch stays on the CLI's every-connected-device default",
       );
-      for (const flag of ["--ios-simulator", "--ios-device", "--android-device", "--ohos-device"]) {
+      for (const flag of [
+        "--ios-simulator",
+        "--ios-device",
+        "--android-device",
+        "--ohos-device",
+      ]) {
         const args = launchArgs({ ...base, device: { id: "PICKED-ID", flag } });
         assert.ok(
           args.join(" ").includes(`${flag} PICKED-ID`),
@@ -340,9 +679,16 @@ const checks: Check[] = [
       const state = new State(fakeMemento());
       const rise = "/w/Day-Rise";
       const showcase = "/w/Day-Showcase";
-      const device = { id: "UDID-1", label: "iPhone 16", flag: "--ios-simulator" };
+      const device = {
+        id: "UDID-1",
+        label: "iPhone 16",
+        flag: "--ios-simulator",
+      };
       await state.chooseDevice(rise, "ios-uikit", device);
-      assert.deepStrictEqual(state.selectionFor(rise).devices?.["ios-uikit"], device);
+      assert.deepStrictEqual(
+        state.selectionFor(rise).devices?.["ios-uikit"],
+        device,
+      );
       assert.strictEqual(
         state.selectionFor(rise).devices?.["android-mdc"],
         undefined,
@@ -368,13 +714,21 @@ const checks: Check[] = [
       // quietly edited whichever project happened to be focused would be indistinguishable from a
       // bug. Verbose is the row to test with — it is the only one that takes no quick pick.
       const folders = vscode.workspace.workspaceFolders ?? [];
-      assert.strictEqual(folders.length, 2, "this check needs the two-project fixture");
+      assert.strictEqual(
+        folders.length,
+        2,
+        "this check needs the two-project fixture",
+      );
       const ext = vscode.extensions.getExtension("daybrite.day-vscode");
       assert.ok(ext);
-      const api = (await ext.activate()) as { focusedProject(): string | undefined };
+      const api = (await ext.activate()) as {
+        focusedProject(): string | undefined;
+      };
 
       // Canonical roots as the extension knows them, by focusing each in turn.
-      const rootOf = async (folder: vscode.WorkspaceFolder): Promise<string> => {
+      const rootOf = async (
+        folder: vscode.WorkspaceFolder,
+      ): Promise<string> => {
         const doc = await vscode.workspace.openTextDocument(
           vscode.Uri.file(`${folder.uri.fsPath}/Day.toml`),
         );
@@ -386,7 +740,11 @@ const checks: Check[] = [
       };
       const second = await rootOf(folders[1]);
       const first = await rootOf(folders[0]);
-      assert.strictEqual(api.focusedProject(), first, "the first project should now be focused");
+      assert.strictEqual(
+        api.focusedProject(),
+        first,
+        "the first project should now be focused",
+      );
 
       const carries = async (name: string): Promise<boolean> =>
         (await vscode.tasks.fetchTasks({ type: "day" }))
@@ -400,18 +758,101 @@ const checks: Check[] = [
           root: second,
           which: "verbose",
         });
-        assert.ok(await carries(second), "the row's own project should have gone verbose");
+        assert.ok(
+          await carries(second),
+          "the row's own project should have gone verbose",
+        );
         assert.ok(
           !(await carries(first)),
           "the focused project must be untouched — the row named a different one",
         );
-        assert.strictEqual(api.focusedProject(), first, "editing a row must not move focus");
+        assert.strictEqual(
+          api.focusedProject(),
+          first,
+          "editing a row must not move focus",
+        );
       } finally {
         await vscode.commands.executeCommand("day.toggleVerbose", {
           kind: "config",
           root: second,
           which: "verbose",
         });
+      }
+    },
+  ],
+  [
+    "the toolchain settings export the variables the tools actually read",
+    async () => {
+      // Names matter more than usual here: `ANDROID_SDK_HOME` is a legacy variable naming the
+      // `.android` user directory and selects no SDK at all, so exporting that instead of
+      // `ANDROID_HOME` would look configured and change nothing.
+      const cfg = vscode.workspace.getConfiguration("day");
+      const sdk = os.tmpdir();
+      try {
+        await cfg.update(
+          "androidSdkHome",
+          sdk,
+          vscode.ConfigurationTarget.Workspace,
+        );
+        await cfg.update(
+          "androidNdkHome",
+          `${sdk}/ndk`,
+          vscode.ConfigurationTarget.Workspace,
+        );
+        await cfg.update(
+          "developerDir",
+          "/Applications/Xcode.app",
+          vscode.ConfigurationTarget.Workspace,
+        );
+        const env = toolchainEnv();
+        assert.strictEqual(
+          env.ANDROID_HOME,
+          sdk,
+          "day-toolchain reads ANDROID_HOME first",
+        );
+        assert.strictEqual(
+          env.ANDROID_SDK_ROOT,
+          sdk,
+          "Google's tooling prefers ANDROID_SDK_ROOT",
+        );
+        assert.strictEqual(
+          env.ANDROID_SDK_HOME,
+          undefined,
+          "the legacy name selects no SDK",
+        );
+        assert.strictEqual(env.ANDROID_NDK_HOME, `${sdk}/ndk`);
+        // An `.app` is what a person picks; the variable wants the Developer dir inside it.
+        assert.strictEqual(
+          env.DEVELOPER_DIR,
+          "/Applications/Xcode.app/Contents/Developer",
+          "an .app bundle must be resolved to its Developer dir",
+        );
+      } finally {
+        for (const key of [
+          "androidSdkHome",
+          "androidNdkHome",
+          "developerDir",
+        ]) {
+          await cfg.update(
+            key,
+            undefined,
+            vscode.ConfigurationTarget.Workspace,
+          );
+        }
+      }
+      // Unset settings contribute nothing, so the inherited environment is left exactly as it is.
+      const bare = toolchainEnv();
+      for (const key of [
+        "ANDROID_HOME",
+        "ANDROID_SDK_ROOT",
+        "ANDROID_NDK_HOME",
+        "DEVELOPER_DIR",
+      ]) {
+        assert.strictEqual(
+          bare[key],
+          undefined,
+          `${key} must not be invented when unset`,
+        );
       }
     },
   ],
@@ -425,21 +866,43 @@ const checks: Check[] = [
       const repo = findDayRepoRoot() ?? process.env.DAY_REPO;
       try {
         if (repo) {
-          await cfg.update("cliSource", repo, vscode.ConfigurationTarget.Workspace);
+          await cfg.update(
+            "cliSource",
+            repo,
+            vscode.ConfigurationTarget.Workspace,
+          );
           const cli = resolveCli();
           // `cargo` only when it can actually be spawned; the fallback is deliberate, not a bug,
           // so accept either shape and check the one that applies.
           if (cli.command === "cargo") {
-            assert.deepStrictEqual(cli.baseArgs.slice(0, 2), ["run", "--manifest-path"]);
-            assert.ok(cli.baseArgs.includes("day-cli"), `expected -p day-cli in ${cli.baseArgs}`);
-            assert.strictEqual(cli.cwd, repo, "cargo must run in the checkout, not the app");
+            assert.deepStrictEqual(cli.baseArgs.slice(0, 2), [
+              "run",
+              "--manifest-path",
+            ]);
+            assert.ok(
+              cli.baseArgs.includes("day-cli"),
+              `expected -p day-cli in ${cli.baseArgs}`,
+            );
+            assert.strictEqual(
+              cli.cwd,
+              repo,
+              "cargo must run in the checkout, not the app",
+            );
           } else {
-            assert.match(cli.command, /day(\.exe)?$/, `unexpected fallback ${cli.command}`);
+            assert.match(
+              cli.command,
+              /day(\.exe)?$/,
+              `unexpected fallback ${cli.command}`,
+            );
           }
         }
         // A folder that is not a day checkout must not hijack the CLI — it falls through to the
         // normal resolution instead of spawning cargo somewhere meaningless.
-        await cfg.update("cliSource", os.tmpdir(), vscode.ConfigurationTarget.Workspace);
+        await cfg.update(
+          "cliSource",
+          os.tmpdir(),
+          vscode.ConfigurationTarget.Workspace,
+        );
         const bogus = resolveCli();
         assert.notStrictEqual(
           bogus.cwd,
@@ -447,7 +910,11 @@ const checks: Check[] = [
           "a non-checkout day.cliSource must be ignored, not used as a cargo workspace",
         );
       } finally {
-        await cfg.update("cliSource", undefined, vscode.ConfigurationTarget.Workspace);
+        await cfg.update(
+          "cliSource",
+          undefined,
+          vscode.ConfigurationTarget.Workspace,
+        );
       }
     },
   ],
@@ -470,7 +937,11 @@ const checks: Check[] = [
       // The context rule: which app the Configuration rows, the Run button and the status bar act
       // on follows the file being worked on, so moving between apps needs no extra gesture.
       const folders = vscode.workspace.workspaceFolders ?? [];
-      assert.strictEqual(folders.length, 2, "this check needs the two-project fixture");
+      assert.strictEqual(
+        folders.length,
+        2,
+        "this check needs the two-project fixture",
+      );
       const roots = folders.map((f) => f.uri.fsPath);
       // `day metadata` reports a canonical root while a workspace folder keeps the path as opened
       // (`/private/tmp/…` vs `/tmp/…` on macOS), so compare the two through the same resolution.
@@ -483,14 +954,20 @@ const checks: Check[] = [
       };
       const ext = vscode.extensions.getExtension("daybrite.day-vscode");
       assert.ok(ext);
-      const api = (await ext.activate()) as { focusedProject(): string | undefined };
+      const api = (await ext.activate()) as {
+        focusedProject(): string | undefined;
+      };
       const focused = (): string | undefined => {
         const f = api.focusedProject();
         return f === undefined ? undefined : real(f);
       };
 
-      const focusAfterOpening = async (root: string): Promise<string | undefined> => {
-        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(`${root}/Day.toml`));
+      const focusAfterOpening = async (
+        root: string,
+      ): Promise<string | undefined> => {
+        const doc = await vscode.workspace.openTextDocument(
+          vscode.Uri.file(`${root}/Day.toml`),
+        );
         await vscode.window.showTextDocument(doc, { preview: false });
         // The focus is set from an async handler on the editor-changed event; wait for it to land
         // rather than assuming the event was delivered synchronously.
@@ -512,10 +989,16 @@ const checks: Check[] = [
       // …and with the behavior turned off, focus stays where the user put it.
       const cfg = vscode.workspace.getConfiguration("day");
       try {
-        await cfg.update("followActiveEditor", false, vscode.ConfigurationTarget.Workspace);
+        await cfg.update(
+          "followActiveEditor",
+          false,
+          vscode.ConfigurationTarget.Workspace,
+        );
         const pinned = focused();
         const other = roots.find((r) => real(r) !== pinned)!;
-        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(`${other}/Day.toml`));
+        const doc = await vscode.workspace.openTextDocument(
+          vscode.Uri.file(`${other}/Day.toml`),
+        );
         await vscode.window.showTextDocument(doc, { preview: false });
         await new Promise((r) => setTimeout(r, 300));
         assert.strictEqual(
@@ -524,7 +1007,11 @@ const checks: Check[] = [
           "day.followActiveEditor=false must stop the editor from changing focus",
         );
       } finally {
-        await cfg.update("followActiveEditor", undefined, vscode.ConfigurationTarget.Workspace);
+        await cfg.update(
+          "followActiveEditor",
+          undefined,
+          vscode.ConfigurationTarget.Workspace,
+        );
       }
     },
   ],
@@ -535,10 +1022,13 @@ const checks: Check[] = [
       // delegated session would launch with nothing to stop on.
       const ext = vscode.extensions.getExtension("daybrite.day-vscode");
       assert.ok(ext);
-      const languages: string[] = (ext.packageJSON?.contributes?.breakpoints ?? []).map(
-        (b: { language: string }) => b.language,
+      const languages: string[] = (
+        ext.packageJSON?.contributes?.breakpoints ?? []
+      ).map((b: { language: string }) => b.language);
+      assert.ok(
+        languages.includes("rust"),
+        `breakpoints contributes ${JSON.stringify(languages)}`,
       );
-      assert.ok(languages.includes("rust"), `breakpoints contributes ${JSON.stringify(languages)}`);
     },
   ],
   [
@@ -564,7 +1054,10 @@ const checks: Check[] = [
         assert.deepStrictEqual(a.env, env, `${key} should pass env as a map`);
         assert.strictEqual(a.program, plan.program);
         assert.strictEqual(a.cwd, plan.cwd);
-        assert.ok(!("environment" in a), `${key} should not use cpptools' \`environment\` key`);
+        assert.ok(
+          !("environment" in a),
+          `${key} should not use cpptools' \`environment\` key`,
+        );
       }
       assert.strictEqual(delegateByKey("lldb-dap")?.debugType(), "lldb-dap");
       assert.strictEqual(delegateByKey("codelldb")?.debugType(), "lldb");
@@ -589,14 +1082,22 @@ const checks: Check[] = [
       const cfg = vscode.workspace.getConfiguration("day");
       const previous = cfg.get<string>("debug.adapter");
       try {
-        await cfg.update("debug.adapter", "none", vscode.ConfigurationTarget.Workspace);
+        await cfg.update(
+          "debug.adapter",
+          "none",
+          vscode.ConfigurationTarget.Workspace,
+        );
         assert.strictEqual(
           pickDelegate(),
           undefined,
           "a pinned `none` must fall back to the launch-only adapter",
         );
       } finally {
-        await cfg.update("debug.adapter", previous, vscode.ConfigurationTarget.Workspace);
+        await cfg.update(
+          "debug.adapter",
+          previous,
+          vscode.ConfigurationTarget.Workspace,
+        );
       }
     },
   ],
@@ -634,7 +1135,9 @@ const checks: Check[] = [
       const plan = planFrom(stream, "linux-gtk", log);
       assert.ok(plan, `no plan parsed; log: ${logged.join(" | ")}`);
       assert.strictEqual(plan.program, "/app/build/showcase");
-      assert.deepStrictEqual(plan.env, { DAY_IMAGE_ROOT: "/app/resource/images" });
+      assert.deepStrictEqual(plan.env, {
+        DAY_IMAGE_ROOT: "/app/resource/images",
+      });
 
       // A target the CLI reported without a plan (a device or browser runtime) is not an error —
       // it means "run this one without a debugger", and it has to say so rather than throw.
@@ -642,7 +1145,13 @@ const checks: Check[] = [
         event: "result",
         command: "build",
         ok: true,
-        targets: [{ target: "android-mdc", ok: true, artifacts: [{ path: "/app/app.apk" }] }],
+        targets: [
+          {
+            target: "android-mdc",
+            ok: true,
+            artifacts: [{ path: "/app/app.apk" }],
+          },
+        ],
       });
       assert.strictEqual(planFrom(noPlan, "android-mdc", log), undefined);
       assert.ok(
@@ -665,8 +1174,12 @@ export async function run(): Promise<void> {
       failures.push(name);
     }
   }
-  console.log(`${checks.length - failures.length}/${checks.length} checks passed`);
+  console.log(
+    `${checks.length - failures.length}/${checks.length} checks passed`,
+  );
   if (failures.length) {
-    throw new Error(`${failures.length} check(s) failed: ${failures.join(", ")}`);
+    throw new Error(
+      `${failures.length} check(s) failed: ${failures.join(", ")}`,
+    );
   }
 }

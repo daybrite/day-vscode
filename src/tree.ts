@@ -38,8 +38,9 @@ export interface TreeDeps {
   project: () => DayProject | undefined;
   /** Every discovered project, in the order the sidebar should list them. */
   projects: () => DayProject[];
-  /** Enumerate devices and refresh the tree when the answer lands. */
-  refreshDevices: () => Promise<void>;
+  /** Enumerate ONE target's devices and refresh the tree when the answer lands. Per target, so
+   *  drawing the iOS row never runs adb. */
+  refreshDevices: (target: string) => Promise<void>;
 }
 
 export class DayTree implements vscode.TreeDataProvider<Node> {
@@ -278,7 +279,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     // A query in flight spins the row — the click that opens the picker starts one, and this is
     // the other place the wait is visible. A already-chosen device keeps its label while the
     // spinner runs, so re-querying never looks like the choice was lost.
-    const busy = loading();
+    const busy = loading(target);
     if (busy) {
       item.iconPath = new vscode.ThemeIcon("sync~spin");
     }
@@ -292,11 +293,11 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       item.tooltip = "Asking simctl, adb and hdc what is connected";
       return item;
     }
-    const listing = cached()?.get(target);
+    const listing = cached(target);
     if (!listing) {
       item.description = "…";
       item.tooltip = "Looking for connected devices";
-      void this.deps.refreshDevices();
+      void this.deps.refreshDevices(target);
       return item;
     }
     if (!listing.available) {
@@ -354,16 +355,15 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       item.contextValue = "dayTarget";
     }
 
-    // Only buildable targets get a selection checkbox + a toggle-on-click.
+    // Only buildable targets get a selection checkbox — a target this host cannot build has
+    // nothing to tick. Deliberately NO `item.command`: the checkbox is the only thing that
+    // toggles, so clicking the row selects it the way every other checkbox tree in VS Code
+    // behaves. Binding the whole row to the toggle meant a row could not be selected, expanded,
+    // or right-clicked without also flipping whether it builds.
     if (buildable) {
       item.checkboxState = selected
         ? vscode.TreeItemCheckboxState.Checked
         : vscode.TreeItemCheckboxState.Unchecked;
-      item.command = {
-        command: "day.toggleTarget",
-        title: "Toggle Target",
-        arguments: [{ kind: "target", root, name } as Node],
-      };
     }
     item.tooltip = target
       ? `${name} — ${kindLabel(target)}${buildable ? "" : ` (requires a ${target.host} host)`}`

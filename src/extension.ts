@@ -10,6 +10,7 @@ import { renderCommand, resolveCli, setExtensionRoot } from "./cli";
 import { State } from "./config";
 import { DayConfigProvider, DayDebugAdapterFactory } from "./debug";
 import { promptToInstall } from "./install";
+import { editFor, Lint, LintActions } from "./lint";
 import * as devices from "./devices";
 import { DayProject, findProjects, ProjectLoadFailure } from "./project";
 import {
@@ -24,7 +25,7 @@ import {
 import { RunRef, Runner } from "./runner";
 import { StatusBar } from "./statusbar";
 import { DayTaskProvider } from "./taskProvider";
-import { logLevel, setLogLevel, toggleVerbose } from "./tasks";
+import { logLevel, setLogLevel, toggleVerbose, toolchainEnv } from "./tasks";
 import { findTarget, isBuildableHere } from "./targets";
 import { DayTree, Node } from "./tree";
 
@@ -41,7 +42,9 @@ export interface DayApi {
   focusedProject(): string | undefined;
 }
 
-export async function activate(context: vscode.ExtensionContext): Promise<DayApi> {
+export async function activate(
+  context: vscode.ExtensionContext,
+): Promise<DayApi> {
   // Record where the extension is loaded from, so the CLI resolver can find a peer `day/` repo
   // when running from a source checkout (see cli.ts `findPeerDayRepo`). Must precede any scan.
   setExtensionRoot(context.extensionPath);
@@ -52,6 +55,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
 
   const output = vscode.window.createOutputChannel("Day");
   context.subscriptions.push(output);
+
+  const lint = new Lint(output);
+  context.subscriptions.push(lint);
+  context.subscriptions.push(
+    vscode.languages.registerCodeActionsProvider(
+      { scheme: "file" },
+      new LintActions(lint),
+      {
+        providedCodeActionKinds: LintActions.kinds,
+      },
+    ),
+  );
 
   let projects: DayProject[] = [];
   let loadFailures: ProjectLoadFailure[] = [];
@@ -89,7 +104,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
     }
     const within = (file: string, root: string): boolean => {
       const [f, r] =
-        process.platform === "win32" ? [file.toLowerCase(), root.toLowerCase()] : [file, root];
+        process.platform === "win32"
+          ? [file.toLowerCase(), root.toLowerCase()]
+          : [file, root];
       return f === r || f.startsWith(r.endsWith(path.sep) ? r : r + path.sep);
     };
     let best: DayProject | undefined;
@@ -103,11 +120,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
   };
 
   /** Focus the project an editor belongs to, when the user has left that behavior on. */
-  const followEditor = async (editor: vscode.TextEditor | undefined): Promise<void> => {
+  const followEditor = async (
+    editor: vscode.TextEditor | undefined,
+  ): Promise<void> => {
     if (!editor) {
       return; // switching to a non-editor pane says nothing about which app is being worked on
     }
-    if (!vscode.workspace.getConfiguration("day").get<boolean>("followActiveEditor", true)) {
+    if (
+      !vscode.workspace
+        .getConfiguration("day")
+        .get<boolean>("followActiveEditor", true)
+    ) {
       return;
     }
     const project = projectForUri(editor.document.uri);
@@ -131,7 +154,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
       output.appendLine(`    tried: ${f.command}`);
       output.appendLine(`    error: ${f.message}`);
     }
-    const key = loadFailures.map((f) => `${f.root}\u0000${f.message}`).join("|");
+    const key = loadFailures
+      .map((f) => `${f.root}\u0000${f.message}`)
+      .join("|");
     if (key === lastFailureKey) {
       return;
     }
@@ -163,7 +188,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
     projects = scan.projects;
     loadFailures = scan.failures;
     const root = state.focusedRoot;
-    if ((!root || !projects.find((p) => p.root === root)) && projects.length > 0) {
+    if (
+      (!root || !projects.find((p) => p.root === root)) &&
+      projects.length > 0
+    ) {
       await state.focus(projects[0].root);
     }
     // Drives the alternate "found it but couldn't load it" welcome view (package.json).
@@ -182,18 +210,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
 
   // Enumerating devices shells out to simctl/adb/hdc, so it happens on demand — a device row
   // asks the first time it draws — and the tree redraws when the answer arrives.
-  let devicesPending = false;
-  const refreshDevices = async (): Promise<void> => {
-    if (devicesPending) {
-      return;
-    }
-    devicesPending = true;
-    try {
-      await devices.list(currentProject()?.root, output);
-      tree.refresh();
-    } finally {
-      devicesPending = false;
-    }
+  const refreshDevices = async (target: string): Promise<void> => {
+    // `devices.list` coalesces per target, so a row redrawing while its own query is still in
+    // flight joins that one instead of starting a second.
+    await devices.list(currentProject()?.root, output, target);
+    tree.refresh();
   };
 
   const tree = new DayTree({
@@ -216,19 +237,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
           // The row names its own project, so ticking a target under one app never reaches another.
           await state.toggleTargetFor(node.root, node.name);
         } else if (node.kind === "config" && node.which === "verbose") {
-          await toggleVerbose(state.focusedRoot);
+          // The row's own project, like every other config row — ticking Day-Showcase's Verbose
+          // while Day-Rise is focused was flipping Day-Rise's.
+          await toggleVerbose(node.root);
         }
       }
     }),
   );
 
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor((editor) => void followEditor(editor)),
+    vscode.window.onDidChangeActiveTextEditor(
+      (editor) => void followEditor(editor),
+    ),
   );
 
-  context.subscriptions.push(
-    runner.onDidChange(() => devices.invalidate()),
-  );
+  context.subscriptions.push(runner.onDidChange(() => devices.invalidate()));
 
   const statusBar = new StatusBar(state, runner, currentProject);
   context.subscriptions.push(statusBar);
@@ -272,7 +295,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
     if (currentProject()) {
       return true;
     }
-    vscode.window.showWarningMessage("No Day project (Day.toml) found in this workspace.");
+    vscode.window.showWarningMessage(
+      "No Day project (Day.toml) found in this workspace.",
+    );
     return false;
   };
 
@@ -284,7 +309,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
    * whole reason these rows moved inside their projects.
    */
   const configRoot = (node?: Node): string | undefined =>
-    node && (node.kind === "config" || node.kind === "group" || node.kind === "project")
+    node &&
+    (node.kind === "config" || node.kind === "group" || node.kind === "project")
       ? node.root
       : state.focusedRoot;
 
@@ -295,7 +321,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
       const root = state.focusedRoot;
       return root ? { root, target: node } : undefined;
     }
-    return node && node.kind === "target" ? { root: node.root, target: node.name } : undefined;
+    return node && node.kind === "target"
+      ? { root: node.root, target: node.name }
+      : undefined;
   };
 
   const guard = async (fn: () => Promise<void>): Promise<void> => {
@@ -319,7 +347,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
       }
       const targets = selectedRunnable();
       if (targets.length === 0) {
-        vscode.window.showInformationMessage("Tick one or more targets in the Day view, then Run.");
+        vscode.window.showInformationMessage(
+          "Tick one or more targets in the Day view, then Run.",
+        );
         return;
       }
       await runner.runTargets(currentProject()!.root, targets);
@@ -358,7 +388,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
       }
       const targets = selectedRunnable();
       if (targets.length === 0) {
-        vscode.window.showInformationMessage("Tick one or more targets in the Day view, then Build.");
+        vscode.window.showInformationMessage(
+          "Tick one or more targets in the Day view, then Build.",
+        );
         return;
       }
       await runner.buildTargets(currentProject()!.root, targets);
@@ -422,14 +454,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
         return;
       }
       const { root, target } = node;
-      devices.invalidate(); // opening the picker is the moment to re-look
+      devices.invalidate(target); // opening the picker is the moment to re-look at THIS target
       // Handed the PROMISE, not its result: the picker opens on the next frame and spins while
-      // simctl/adb/hdc answer, instead of leaving the click with no feedback for a second or two.
-      // The tree row spins for the same reason, since the query is what both are waiting on.
-      const listing = devices.list(root, output).then((m) => m.get(target));
+      // the CLI answers, instead of leaving the click with no feedback. The tree row spins for
+      // the same reason, since the query is what both are waiting on.
+      const listing = devices.list(root, output, target);
       tree.refresh();
       void listing.finally(() => tree.refresh());
-      const pick = await pickDevice(target, listing, state.selectionFor(root).devices?.[target]);
+      const pick = await pickDevice(
+        target,
+        listing,
+        state.selectionFor(root).devices?.[target],
+      );
       if (!pick) {
         return; // cancelled
       }
@@ -437,16 +473,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
         // Start it, then pick it — the whole reason booting is offered here is that selecting a
         // shut-down simulator used to dead-end in "boot one yourself".
         const failed = await vscode.window.withProgress(
-          { location: vscode.ProgressLocation.Notification, title: `Day: starting ${pick.name}` },
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Day: starting ${pick.name}`,
+          },
           () => devices.boot(root, target, pick.id),
         );
         if (failed) {
-          vscode.window.showErrorMessage(`Day: could not start ${pick.name} — ${failed}`);
+          vscode.window.showErrorMessage(
+            `Day: could not start ${pick.name} — ${failed}`,
+          );
           return;
         }
-        const started = (await devices.list(root, output))
-          .get(target)
-          ?.devices.find((d) => d.id === pick.id);
+        const started = (
+          await devices.list(root, output, target)
+        )?.devices.find((d) => d.id === pick.id);
         if (started?.flag) {
           await state.chooseDevice(root, target, {
             id: started.id,
@@ -463,7 +504,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
         }
       } else {
         // "All connected" clears the pin; anything else stores the device and its flag.
-        await state.chooseDevice(root, target, pick.kind === "all" ? undefined : pick.device);
+        await state.chooseDevice(
+          root,
+          target,
+          pick.kind === "all" ? undefined : pick.device,
+        );
       }
       tree.refresh();
     }),
@@ -483,7 +528,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
       if (!requireProject()) {
         return;
       }
-      const chosen = await pickTargets(currentProject(), state.selection.targets);
+      const chosen = await pickTargets(
+        currentProject(),
+        state.selection.targets,
+      );
       if (chosen) {
         await state.update({ targets: chosen });
         tree.refresh();
@@ -584,7 +632,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
 
   /** The project a Projects-section row addresses. */
   const projectOf = (node?: Node): DayProject | undefined =>
-    node && node.kind === "project" ? projects.find((p) => p.root === node.root) : undefined;
+    node && node.kind === "project"
+      ? projects.find((p) => p.root === node.root)
+      : undefined;
 
   // Run and Stop for ONE project from its own row. Without these, launching an app that is not the
   // focused one means focusing it first — two gestures for what the row is already pointing at.
@@ -617,10 +667,111 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
     }),
   );
 
+  // Per PROJECT, not per target: every rule reads the project's sources, catalogs and manifest,
+  // and none of them is target-specific today. Running it once per ticked target would run the
+  // same checks a dozen times and report each finding a dozen times.
+  const lintProject = async (root: string): Promise<void> => {
+    const counts = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Window, title: "Day: linting" },
+      () => lint.run(root),
+    );
+    if (!counts) {
+      vscode.window.showErrorMessage(
+        "Day: `day lint` could not run — see the Day output channel.",
+      );
+      output.show(true);
+      return;
+    }
+    const { errors = 0, warnings = 0, fixable = 0 } = counts;
+    if (errors + warnings === 0) {
+      vscode.window.setStatusBarMessage(
+        `Day: no lint findings in ${path.basename(root)}`,
+        4000,
+      );
+      return;
+    }
+    const parts = [`${errors} error(s)`, `${warnings} warning(s)`];
+    if (fixable > 0) {
+      parts.push(`${fixable} fixable`);
+    }
+    vscode.window.setStatusBarMessage(`Day: ${parts.join(", ")}`, 6000);
+    await vscode.commands.executeCommand("workbench.actions.view.problems");
+  };
+
+  register("day.lintProject", (node?: Node) =>
+    guard(async () => {
+      const root = configRoot(node);
+      if (!root) {
+        vscode.window.showInformationMessage("Open a Day project first.");
+        return;
+      }
+      await lintProject(root);
+    }),
+  );
+
+  // Runs after a quick fix's edit has been applied. The CLI reads files from DISK, so the buffer
+  // has to be saved before re-checking or the next run would report what the fix just removed.
+  register("day.relintAfterFix", (uri?: vscode.Uri) =>
+    guard(async () => {
+      if (!uri) {
+        return;
+      }
+      const root = lint.projectOf(uri);
+      const document = vscode.workspace.textDocuments.find(
+        (d) => d.uri.toString() === uri.toString(),
+      );
+      await document?.save();
+      if (root) {
+        await lint.run(root);
+      }
+    }),
+  );
+
+  // Every fix is a whole-file rewrite computed from the text as it was, so they cannot be applied
+  // together — the second would undo the first. One at a time, re-checking in between, which is
+  // what `day lint --fix` does on the command line.
+  register("day.fixAllInFile", (uri?: vscode.Uri) =>
+    guard(async () => {
+      if (!uri) {
+        return;
+      }
+      const root = lint.projectOf(uri);
+      let applied = 0;
+      for (let pass = 0; pass < 8; pass++) {
+        const [fix] = lint.fixesIn(uri);
+        if (!fix) {
+          break;
+        }
+        const document = await vscode.workspace.openTextDocument(uri);
+        if (!(await vscode.workspace.applyEdit(editFor(document, fix)))) {
+          break;
+        }
+        await document.save();
+        applied += 1;
+        if (!root || !(await lint.run(root))) {
+          break;
+        }
+      }
+      vscode.window.setStatusBarMessage(
+        applied > 0
+          ? `Day: applied ${applied} lint fix(es) to ${path.basename(uri.fsPath)}`
+          : "Day: nothing here has a fix that can be applied unattended",
+        4000,
+      );
+    }),
+  );
+
   register("day.doctor", () =>
     guard(async () => {
       const cli = resolveCli(currentProject()?.root);
-      const term = vscode.window.createTerminal({ name: "day doctor", cwd: cli.cwd });
+      // The toolchain settings go in explicitly: a terminal otherwise inherits the login
+      // environment, and doctor would report on whichever SDK that names rather than the one
+      // every build here will actually use.
+      const term = vscode.window.createTerminal({
+        name: "day doctor",
+        cwd: cli.cwd,
+        env: toolchainEnv(),
+      });
       term.show(true);
       term.sendText(renderCommand(cli, ["doctor"]));
     }),
@@ -634,7 +785,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
   );
 
   register("day.openSettings", () =>
-    vscode.commands.executeCommand("workbench.action.openSettings", "@ext:daybrite.day-vscode"),
+    vscode.commands.executeCommand(
+      "workbench.action.openSettings",
+      "@ext:daybrite.day-vscode",
+    ),
   );
 
   register("day.showLog", () => output.show(true));
@@ -667,7 +821,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
         title: "Day: New Project (1/3) — name",
         prompt: "Crate name for the new app",
         placeHolder: "my-app",
-        validateInput: (v) => (/^[a-z][a-z0-9_-]*$/.test(v) ? undefined : "lowercase letters, digits, - or _"),
+        validateInput: (v) =>
+          /^[a-z][a-z0-9_-]*$/.test(v)
+            ? undefined
+            : "lowercase letters, digits, - or _",
       });
       if (!name) {
         return;
@@ -676,13 +833,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
         [
           { label: "macos-appkit", description: "macOS · AppKit" },
           { label: "ios-uikit", description: "iOS · UIKit" },
-          { label: "android-mdc", description: "Android · Material Design Components" },
+          {
+            label: "android-mdc",
+            description: "Android · Material Design Components",
+          },
           { label: "linux-gtk", description: "Linux · GTK 4" },
           { label: "linux-qt", description: "Linux · Qt 6" },
           { label: "windows-winui", description: "Windows · WinUI" },
           { label: "harmony-arkui", description: "HarmonyOS · ArkUI" },
         ],
-        { title: "Day: New Project (2/3) — targets", canPickMany: true, placeHolder: "Pick the platform-toolkits to scaffold" },
+        {
+          title: "Day: New Project (2/3) — targets",
+          canPickMany: true,
+          placeHolder: "Pick the platform-toolkits to scaffold",
+        },
       );
       if (!toolkits || toolkits.length === 0) {
         return;
@@ -701,27 +865,40 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
       const cli = resolveCli();
       const args = [
         ...cli.baseArgs,
-        "new", "app", name,
-        "--toolkit", toolkits.map((t) => t.label).join(","),
+        "new",
+        "app",
+        name,
+        "--toolkit",
+        toolkits.map((t) => t.label).join(","),
         "--no-input",
       ];
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: `Scaffolding ${name}…` },
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Scaffolding ${name}…`,
+        },
         () =>
           new Promise<void>((resolve, reject) => {
-            childProcess.execFile(cli.command, args, { cwd: cli.cwd ?? parent, env: process.env }, (err, _out, stderr) => {
-              if (err) {
-                reject(new Error(stderr || err.message));
-              } else {
-                resolve();
-              }
-            });
+            childProcess.execFile(
+              cli.command,
+              args,
+              { cwd: cli.cwd ?? parent, env: process.env },
+              (err, _out, stderr) => {
+                if (err) {
+                  reject(new Error(stderr || err.message));
+                } else {
+                  resolve();
+                }
+              },
+            );
           }),
       );
       // The cargo fallback runs in the day repo cwd; the plain CLI runs in the parent folder.
       // `day new` always creates ./<name> under its cwd.
       const created = vscode.Uri.file(path.join(cli.cwd ?? parent, name));
-      await vscode.commands.executeCommand("vscode.openFolder", created, { forceNewWindow: true });
+      await vscode.commands.executeCommand("vscode.openFolder", created, {
+        forceNewWindow: true,
+      });
     }),
   );
 
@@ -732,7 +909,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
     context.subscriptions.push(
       lmAny.registerMcpServerDefinitionProvider("day", {
         provideMcpServerDefinitions: async () => {
-          if (!vscode.workspace.getConfiguration("day").get<boolean>("mcp.enabled", true)) {
+          if (
+            !vscode.workspace
+              .getConfiguration("day")
+              .get<boolean>("mcp.enabled", true)
+          ) {
             return [];
           }
           const project = currentProject();
@@ -768,7 +949,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
     selection: () => state.selection,
     runnableTargets: selectedRunnable,
     keepAliveDefault: () =>
-      vscode.workspace.getConfiguration("day").get<boolean>("script.keepAppRunning", true),
+      vscode.workspace
+        .getConfiguration("day")
+        .get<boolean>("script.keepAppRunning", true),
     // The debug session names its own project (DayLaunchConfig.project); an F5 with no project in
     // launch.json means the focused one, which is what resolveDebugConfiguration filled in.
     stopIfRunning: async (root, target) => {
@@ -785,15 +968,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<DayApi
       debugProvider,
       vscode.DebugConfigurationProviderTriggerKind.Dynamic,
     ),
-    vscode.debug.registerDebugAdapterDescriptorFactory("day", new DayDebugAdapterFactory()),
+    vscode.debug.registerDebugAdapterDescriptorFactory(
+      "day",
+      new DayDebugAdapterFactory(),
+    ),
   );
 
   // Re-scan when a Day.toml appears/changes/disappears.
   const watcher = vscode.workspace.createFileSystemWatcher("**/Day.toml");
-  const rescan = () => guard(async () => {
-    await refreshProjects();
-    tree.refresh();
-  });
+  const rescan = () =>
+    guard(async () => {
+      await refreshProjects();
+      tree.refresh();
+    });
   watcher.onDidCreate(rescan);
   watcher.onDidChange(rescan);
   watcher.onDidDelete(rescan);

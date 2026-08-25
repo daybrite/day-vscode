@@ -1,5 +1,15 @@
 ## Unreleased
 
+- **Lint in the editor.** `Day: Lint Project` — the sidebar toolbar, the palette, or a project
+  row's right-click menu — runs `day lint` on that project and draws its findings on the lines
+  they name, in the Problems panel and in the file. Findings that name something that does not
+  exist (a Fluent key with no message, a route nothing declares, an undeclared permission) come
+  through as errors; coverage gaps and store copy as warnings. Where the CLI proposed a repair
+  that is safe and unambiguous, it is offered as a **quick fix**, with **Fix all in file** when a
+  file has more than one; applying one re-lints, so a stale repair can't undo the one before it.
+  Each project owns its own diagnostics, so linting one app never clears another's. Requires a
+  `day` CLI new enough to have `day lint --json`; without one the command reports and the sidebar
+  is otherwise unaffected.
 - **Pick the phone.** Mobile targets — `ios-uikit`, `android-mdc`, `harmony-arkui` — now expand in
   the sidebar to a **Device** row: choose a booted simulator, a plugged-in phone, an emulator, or
   **All connected**, which stays the default and is what every launch did before. The list comes
@@ -7,9 +17,24 @@
   picks the right one of `--ios-simulator` / `--ios-device` on its own. Choosing a simulator that
   is not running offers to start it (`day devices boot`) and then selects it — iOS cannot install
   onto a shut-down simulator, so that used to be a dead end. The picker opens immediately and spins
-  while the devices are found, and the Device row spins with it, rather than leaving the click with
-  no feedback; Escape backs out at any point, including mid-query. Requires a `day` CLI new enough to
+  while the devices are found, and that target's Device row spins with it, rather than leaving the
+  click with no feedback; Escape backs out at any point, including mid-query. Each target is
+  queried on its own, so opening the Android picker takes 0.13s instead of 1.3s and never runs
+  `simctl` or `hdc` — and opening the iOS one never starts an `adb` server. Requires a `day` CLI new enough to
   have `day devices`; without one the rows simply do not appear.
+- Clicking a target row selects it instead of toggling whether it builds. Only the checkbox
+  toggles now, the way every other checkbox tree in VS Code behaves — a row can be selected,
+  expanded and right-clicked without flipping its state. `Toggle Target Selection` is on the row's
+  right-click menu for anyone who found the checkbox a small target.
+- Fixed: ticking a project's **Verbose** checkbox wrote to whichever project was focused rather
+  than the one the row sits under.
+- **Toolchain locations are settings now.** `day.androidSdkHome`, `day.androidNdkHome` and
+  `day.developerDir` join `day.ohosNdkHome`, and all four are exported for every `day` command the
+  extension runs — including `day doctor`, which previously opened a plain terminal and reported on
+  whatever the login environment named rather than what builds here actually use. The Android SDK
+  sets both `ANDROID_HOME` and `ANDROID_SDK_ROOT` and puts `platform-tools/` and `emulator/` on the
+  task PATH, so `adb` and the emulator are found in a Dock-launched window; `day.developerDir`
+  accepts either `Xcode.app` or its `Contents/Developer`.
 - **Configuration moved inside each project.** Projects are now the sidebar's roots, each with its
   own `Configuration` and `Targets` groups, and a configuration row edits the project it sits under
   rather than whichever one is focused. Collapsed groups summarize — `debug · fr · demo.yaml`,

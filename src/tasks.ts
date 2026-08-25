@@ -153,22 +153,90 @@ function expandHome(p: string): string {
  * environment.
  */
 export function taskEnv(target: string): Record<string, string> {
-  if (findTarget(target)?.kind !== "harmonyOs") {return {};}
+  const env = toolchainEnv();
+  const ndk = ohosNdk();
+  if (findTarget(target)?.kind === "harmonyOs" && ndk) {
+    env.OHOS_NDK_HOME = ndk;
+    // `hdc` ships in the SDK's sibling toolchains/ dir rather than in `native`, and every
+    // install/launch shells out to it.
+    prependPath(env, path.join(path.dirname(ndk), "toolchains"));
+  }
+  return env;
+}
+
+/**
+ * The OpenHarmony `native` dir: the setting, then the environment, then the usual install spots.
+ * `undefined` when none of them holds an NDK, so the CLI reports what to install rather than
+ * being handed a path that does not exist.
+ */
+function ohosNdk(): string | undefined {
   const configured = vscode.workspace.getConfiguration("day").get<string>("ohosNdkHome") ?? "";
-  const candidates = [
+  return [
     expandHome(configured),
     process.env.OHOS_NDK_HOME ?? "",
     path.join(os.homedir(), "ohos/ndk-extract/native"),
     path.join(os.homedir(), "ohos-sdk/native"),
-  ].filter((c) => c.length > 0);
-  const ndk = candidates.find((c) => fs.existsSync(path.join(c, "llvm", "bin")));
-  if (!ndk) {return {};} // let the day CLI report what to install
-  const env: Record<string, string> = { OHOS_NDK_HOME: ndk };
-  const toolchains = path.join(path.dirname(ndk), "toolchains");
-  if (fs.existsSync(toolchains)) {
-    env.PATH = `${toolchains}${path.delimiter}${process.env.PATH ?? ""}`;
+  ]
+    .filter((c) => c.length > 0)
+    .find((c) => fs.existsSync(path.join(c, "llvm", "bin")));
+}
+
+/**
+ * Toolchain locations from settings, as the environment variables the tools actually read.
+ *
+ * Applied to EVERY `day` command the extension runs — builds, launches, `day doctor`, device
+ * listing — because a GUI-launched VS Code inherits the login environment, which frequently has
+ * none of these. Doctor especially: it exists to report what is installed, and reporting against a
+ * different SDK than the one builds will use would be worse than not reporting at all.
+ *
+ * Set unconditionally rather than per target: naming an Android SDK cannot confuse an iOS build,
+ * and gating each variable on the target would mean `day doctor`, which checks every toolkit at
+ * once, could only ever see one of them.
+ */
+export function toolchainEnv(): Record<string, string> {
+  const cfg = vscode.workspace.getConfiguration("day");
+  const env: Record<string, string> = {};
+  const read = (key: string): string | undefined => {
+    const v = (cfg.get<string>(key) ?? "").trim();
+    return v.length > 0 ? expandHome(v) : undefined;
+  };
+
+  const sdk = read("androidSdkHome");
+  if (sdk) {
+    // BOTH spellings: `ANDROID_HOME` is what day-toolchain reads first, `ANDROID_SDK_ROOT` is
+    // what Google's own tooling prefers, and a machine where the two disagree is a machine where
+    // the build and the emulator use different SDKs.
+    env.ANDROID_HOME = sdk;
+    env.ANDROID_SDK_ROOT = sdk;
+    // adb and the emulator live here; putting them on PATH is what lets `day devices` find them
+    // when the editor's environment does not already.
+    prependPath(env, path.join(sdk, "platform-tools"));
+    prependPath(env, path.join(sdk, "emulator"));
+  }
+  const ndk = read("androidNdkHome");
+  if (ndk) {
+    env.ANDROID_NDK_HOME = ndk;
+  }
+  const developer = read("developerDir");
+  if (developer) {
+    // Read by `xcrun`, `xcodebuild` and `simctl` themselves — Day never looks at it — so this is
+    // how a machine with several Xcodes points every Apple target at one of them. The `.app` is
+    // what a person picks in Finder, but the variable wants the Developer dir inside it; taking
+    // either spelling beats failing with "cannot find utility" over a trailing path segment.
+    env.DEVELOPER_DIR = developer.endsWith(".app")
+      ? path.join(developer, "Contents", "Developer")
+      : developer;
   }
   return env;
+}
+
+/** Prepend `dir` to the env's PATH, building on the process PATH the first time. */
+function prependPath(env: Record<string, string>, dir: string): void {
+  if (!fs.existsSync(dir)) {
+    return;
+  }
+  const current = env.PATH ?? process.env.PATH ?? "";
+  env.PATH = `${dir}${path.delimiter}${current}`;
 }
 
 export function buildDayTask(
