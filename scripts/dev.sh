@@ -10,7 +10,13 @@
 #
 #   cd ~/apps/MyApp && ~/src/day-vscode/scripts/dev.sh
 #
-# opens that app. Passing several opens them in one window, each patched at `day/`:
+# opens that app. With no argument AND no Day project to find — a fresh clone, before there is
+# anything to open — it installs this repository's dependencies and opens a window on the
+# extension's welcome page instead of refusing to start. That window has no app in it, so the Day
+# sidebar shows its empty state, and the way on from there is the same `Create a Day Project`
+# button a first-time user sees.
+#
+# Passing several opens them in one window, each patched at `day/`:
 #
 #   cd ~/src/daybrite && day-vscode/scripts/dev.sh Day-Sketch Day-Showcase
 #
@@ -98,6 +104,9 @@ add_project() {
   PROJECTS+=("$resolved")
 }
 
+# Nothing to open is a legitimate starting point rather than an error: it is what a fresh clone
+# looks like, and the welcome page exists for exactly that moment.
+WELCOME=0
 if [ $# -gt 0 ]; then
   for arg in "$@"; do
     if [ ! -f "$arg/Day.toml" ]; then
@@ -110,9 +119,8 @@ if [ $# -gt 0 ]; then
 elif PROJECT="$(find_project_upward "$PWD")"; then
   add_project "$PROJECT"
 else
-  echo "error: no Day project given, and no Day.toml in $PWD or any parent" >&2
-  usage
-  exit 2
+  WELCOME=1
+  echo "▸ no Day project given, and none above $PWD — opening the welcome page"
 fi
 
 # A day checkout, not just any folder called `day`: the patch table and the CLI fallback both
@@ -149,13 +157,25 @@ if [ ! -x "$DAY_BIN" ]; then
 fi
 echo "▸ using $DAY_BIN"
 
+# A fresh clone has no node_modules, and `npm run bundle` fails there with esbuild "not found" —
+# which reads like a broken repository rather than a missing install step. `npm ci` when the
+# lockfile is there (reproducible, and what CI runs), `npm install` when it is not.
+if [ ! -d "$EXT_DIR/node_modules" ]; then
+  echo "▸ installing extension dependencies (first run)…"
+  if [ -f "$EXT_DIR/package-lock.json" ]; then
+    (cd "$EXT_DIR" && npm ci)
+  else
+    (cd "$EXT_DIR" && npm install)
+  fi
+fi
+
 echo "▸ building the extension from source ($EXT_DIR)…"
 (cd "$EXT_DIR" && npm run --silent bundle)
 
 # Every project gets its own patch table: they are separate cargo workspaces, and one left
 # unpatched would quietly build the published day crates from the git cache while its neighbour
 # built the checkout — the same window, two different frameworks under test.
-for project in "${PROJECTS[@]}"; do
+for project in ${PROJECTS+"${PROJECTS[@]}"}; do
   # Braced so bash does not read the trailing multi-byte ellipsis as part of the name.
   echo "▸ pointing $(basename "$project") at ${DAY_REPO}…"
   # Rewrites the app's gitignored .cargo/config.toml and verifies no day crate still resolves from
@@ -182,16 +202,39 @@ mkdir -p "$(dirname "$WORKSPACE")"
 {
   echo '{'
   echo '  "folders": ['
-  for project in "${PROJECTS[@]}"; do
+  for project in ${PROJECTS+"${PROJECTS[@]}"}; do
     echo "    { \"path\": \"$project\" },"
   done
   echo "    { \"path\": \"$DAY_REPO\" }"
   echo '  ],'
   echo '  "settings": {'
-  echo "    \"day.cliSource\": \"$DAY_REPO\""
+  if [ "$WELCOME" = 1 ]; then
+    echo "    \"day.cliSource\": \"$DAY_REPO\","
+  else
+    echo "    \"day.cliSource\": \"$DAY_REPO\""
+  fi
+  # With no app to open, land on the extension's own welcome page.
+  #
+  # `code` has no flag that runs a command at startup, and it hands a new window to an
+  # already-running VS Code — which does not inherit this shell's environment — so a setting in
+  # the generated workspace is the only channel that works every time. The extension reads
+  # `day.showWalkthroughOnStartup` when it activates and opens the walkthrough.
+  #
+  # `workbench.startupEditor` is the backstop for the case where it does not activate: the
+  # extension activates on a Day.toml anywhere in the workspace, which the day checkout satisfies
+  # only because it carries the scaffold TEMPLATE's Day.toml. That is incidental, so the Welcome
+  # page — which lists the walkthrough whether or not anything activated — is what catches it.
+  if [ "$WELCOME" = 1 ]; then
+    echo '    "day.showWalkthroughOnStartup": true,'
+    echo '    "workbench.startupEditor": "welcomePage"'
+  fi
   echo '  }'
   echo '}'
 } > "$WORKSPACE"
 
-echo "▸ launching VS Code (Extension Development Host) on ${PROJECTS[*]} + $DAY_REPO"
+if [ "$WELCOME" = 1 ]; then
+  echo "▸ launching VS Code (Extension Development Host) on $DAY_REPO — welcome page"
+else
+  echo "▸ launching VS Code (Extension Development Host) on ${PROJECTS[*]} + $DAY_REPO"
+fi
 exec code --new-window --extensionDevelopmentPath="$EXT_DIR" "$WORKSPACE"

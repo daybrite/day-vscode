@@ -54,12 +54,17 @@
       {
         "view": "dayTargets",
         "when": "!day.loadError",
-        "contents": "No Day project found in this workspace.\n\nA Day project is a folder containing a [Day.toml](https://daybrite.dev) manifest.\n\n[Refresh](command:day.refresh)"
+        "contents": "No Day project found in this workspace.\n\nA Day project is a folder containing a [Day.toml](https://daybrite.dev) manifest.\n\n[Refresh](command:day.refresh)\n[Create a Day Project](command:day.newProject)\n[Get Started with Day](command:day.openWalkthrough)"
       },
       {
         "view": "dayTargets",
         "when": "day.loadError",
         "contents": "A Day project was found, but the `day` CLI couldn't run.\n\nThe extension drives the CLI for every build and launch, so one has to be installed.\n\n[Install the day CLI](command:day.installCli)\n[Set day.cliPath](command:day.openSettings)\n[Show Log](command:day.showLog)\n[Retry](command:day.refresh)"
+      },
+      {
+        "view": "explorer",
+        "contents": "Create a Day app that builds natively for desktop and mobile.\n[Create a Day Project](command:day.newProject)",
+        "when": "workspaceFolderCount == 0"
       }
     ],
     "commands": [
@@ -206,6 +211,12 @@
         "icon": "$(new-folder)"
       },
       {
+        "command": "day.openWalkthrough",
+        "title": "Get Started with Day",
+        "category": "Day",
+        "icon": "$(book)"
+      },
+      {
         "command": "day.openSettings",
         "title": "Open Settings",
         "category": "Day",
@@ -295,6 +306,11 @@
           "command": "day.openSettings",
           "when": "view == dayTargets",
           "group": "navigation@9"
+        },
+        {
+          "command": "day.openWalkthrough",
+          "when": "view == dayTargets",
+          "group": "9_help@1"
         }
       ],
       "view/item/context": [
@@ -483,6 +499,30 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Path to the OpenHarmony NDK `native` directory (e.g. `~/ohos-sdk/native`), exported as `OHOS_NDK_HOME` when building/launching the `harmony-arkui` target. Leave empty to auto-detect: the existing `OHOS_NDK_HOME`, then `~/ohos/ndk-extract/native`, then `~/ohos-sdk/native`. The SDK's sibling `toolchains/` directory (which carries `hdc`) is added to the task `PATH` as well."
+          },
+          "day.newProject.openAfterCreate": {
+            "type": "string",
+            "enum": [
+              "ask",
+              "open",
+              "openNewWindow",
+              "addToWorkspace"
+            ],
+            "enumDescriptions": [
+              "Ask each time.",
+              "Open the new project in this window, replacing what is open.",
+              "Open the new project in a new window.",
+              "Add the new project to the current workspace, keeping everything else open."
+            ],
+            "default": "ask",
+            "scope": "window",
+            "markdownDescription": "What to do with a project after `Day: New Project` scaffolds it."
+          },
+          "day.showWalkthroughOnStartup": {
+            "type": "boolean",
+            "default": false,
+            "scope": "window",
+            "markdownDescription": "Open the **Get started with Day** walkthrough every time a window opens, rather than once per install. `scripts/dev.sh` sets this in the workspace it generates when there is no project to open, so the welcome page is what you land on."
           }
         }
       },
@@ -703,6 +743,71 @@
       {
         "id": "day",
         "label": "Day — build, run, and drive Day apps"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "welcome",
+        "title": "Get started with Day",
+        "description": "Build one app in Rust and ship it natively on every desktop and mobile platform. [daybrite.dev](https://daybrite.dev)",
+        "steps": [
+          {
+            "id": "new-project",
+            "title": "Create a Day project",
+            "description": "Scaffold an app that builds and runs on the platforms you pick.\n\n[Create a Day Project](command:day.newProject)",
+            "media": {
+              "markdown": "walkthroughs/new-project.md"
+            },
+            "completionEvents": [
+              "onCommand:day.newProject"
+            ]
+          },
+          {
+            "id": "sidebar",
+            "title": "Pick your platforms and run",
+            "description": "The Day view lists every project in the window. Tick the platform-toolkits you want and press Run.\n\n[Open the Day view](command:workbench.view.extension.day)",
+            "media": {
+              "markdown": "walkthroughs/sidebar.md"
+            },
+            "completionEvents": [
+              "onView:dayTargets"
+            ]
+          },
+          {
+            "id": "doctor",
+            "title": "Check your toolchains",
+            "description": "Each platform needs its own SDK. Doctor reports what is installed and prints the command that installs the rest.\n\n[Run day doctor](command:day.doctor)",
+            "media": {
+              "markdown": "walkthroughs/doctor.md"
+            },
+            "completionEvents": [
+              "onCommand:day.doctor"
+            ]
+          },
+          {
+            "id": "lint",
+            "title": "Lint as you go",
+            "description": "Missing translations, duplicate ids, routes nothing declares — reported in the editor, with quick fixes where the repair is unambiguous.\n\n[Lint the project](command:day.lintProject)",
+            "media": {
+              "markdown": "walkthroughs/lint.md"
+            },
+            "completionEvents": [
+              "onCommand:day.lintProject"
+            ]
+          },
+          {
+            "id": "docs",
+            "title": "Read the docs",
+            "description": "The guides cover pieces, layout, navigation, localization, packaging and the CLI.\n\n[Open the documentation](https://daybrite.dev/docs)",
+            "media": {
+              "image": "media/day-icon.png",
+              "altText": "The Day logo"
+            },
+            "completionEvents": [
+              "onLink:https://daybrite.dev/docs"
+            ]
+          }
+        ]
       }
     ]
   },

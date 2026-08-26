@@ -41,6 +41,7 @@ export const TARGETS: Target[] = [
   { name: "ios-uikit", toolkit: "uikit", kind: "iosSim", host: "macos" },
   { name: "android-mdc", toolkit: "mdc", kind: "android", host: "any" },
   { name: "harmony-arkui", toolkit: "arkui", kind: "harmonyOs", host: "any" },
+  { name: "web-dom", toolkit: "dom", kind: "web", host: "any" },
 ];
 
 export function findTarget(name: string): Target | undefined {

@@ -1,5 +1,32 @@
 ## Unreleased
 
+- The capture harness now drives **New Project** end to end on each of the three host platforms
+  and photographs it: the walkthrough, the kind picker, the name step, the platform-toolkit picker
+  — where the host's own target arrives preselected and the ones it cannot build say so — and the
+  scaffolded app appearing in the Day view. The pictures land in the same `screenshots-<combo>`
+  artifacts the website already builds its gallery from. A native folder dialog would have stopped
+  this dead, so the harness turns on VS Code's own simple file dialog, which is a quick input it
+  can type into.
+- `scripts/dev.sh` / `dev.ps1` with no argument and no Day project to find used to stop with an
+  error. That is what a fresh clone looks like, so they now install this repository's dependencies
+  if `node_modules` is missing and open a window on the extension's welcome page instead — the
+  same empty state, and the same **Create a Day Project** button, a first-time user sees. Running
+  them from inside an app, or naming apps as arguments, is unchanged.
+- **New Project asks the CLI what to ask.** The wizard now walks every question `day new` would
+  ask — app, piece or part — reading them from the new `day new --describe`, so the extension no
+  longer keeps its own copy of the target list, the toolkit list, or which questions a native
+  piece needs. Steps have a **Back** button and a counter, blank optional fields fall through to
+  the CLI's own defaults, and what happens after scaffolding (open here, new window, add to the
+  workspace) is a setting, `day.newProject.openAfterCreate`, that defaults to asking. Needs a
+  `day` CLI new enough to have `day new --describe`; without one the command says so.
+- **A welcome page.** A `Get started with Day` walkthrough now appears on VS Code's Welcome
+  page, with steps for creating a project, running it from the sidebar, checking toolchains, and
+  linting — each with a button. It renders without activating the extension, which is what lets it
+  reach someone who has no Day project yet, and **Day: Get Started with Day** reopens it. The
+  empty Day view and an empty Explorer both offer **Create a Day Project** too.
+- Fixed: **New Project** offered `windows-winui`, which is not a Day target, and omitted five that
+  are — the picker now reads the target catalog. It also scaffolded into the day checkout instead
+  of the folder you picked whenever `day.cliSource` was set.
 - **Lint in the editor.** `Day: Lint Project` — the sidebar toolbar, the palette, or a project
   row's right-click menu — runs `day lint` on that project and draws its findings on the lines
   they name, in the Problems panel and in the file. Findings that name something that does not

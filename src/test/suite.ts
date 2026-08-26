@@ -25,6 +25,8 @@ import {
   planFrom,
 } from "../debug";
 import { editFor, Lint, mapFindings } from "../lint";
+import { composeArgs, describeSpec, visibleFields } from "../newproject";
+import { catalog } from "../targets";
 import { toolchainEnv } from "../tasks";
 import { installRoutes } from "../install";
 
@@ -316,6 +318,222 @@ const checks: Check[] = [
           "extraEnv",
           undefined,
           vscode.ConfigurationTarget.Global,
+        );
+      }
+    },
+  ],
+  [
+    "the wizard composes the command line the CLI described",
+    async () => {
+      const app = {
+        id: "app",
+        label: "App",
+        command: ["new", "app"],
+        fields: [
+          { id: "name", label: "Project name", type: "text" as const, positional: true, required: true },
+          { id: "id", label: "Application id", type: "text" as const, flag: "--appid" },
+          {
+            id: "targets",
+            label: "Platform-toolkits",
+            type: "multi-select" as const,
+            flag: "--toolkit",
+            list: "repeat" as const,
+          },
+          { id: "title", label: "Window title", type: "text" as const, flag: "--title" },
+        ],
+      };
+
+      // A repeatable list is repeated, and the name is positional.
+      assert.deepStrictEqual(
+        composeArgs(app, { name: "my-app", targets: ["macos-appkit", "linux-gtk"] }),
+        ["new", "app", "my-app", "--toolkit", "macos-appkit", "--toolkit", "linux-gtk", "--no-input"],
+      );
+
+      // A blank optional field is OMITTED, not passed empty — that is what lets the CLI apply
+      // `dev.example.<name>` and the title-cased name instead of this file recomputing them.
+      assert.deepStrictEqual(
+        composeArgs(app, { name: "a", id: "", title: "", targets: ["web-dom"] }),
+        ["new", "app", "a", "--toolkit", "web-dom", "--no-input"],
+      );
+      assert.deepStrictEqual(
+        composeArgs(app, { name: "a", id: "com.x.a", targets: ["web-dom"], title: "A" }),
+        ["new", "app", "a", "--appid", "com.x.a", "--toolkit", "web-dom", "--title", "A", "--no-input"],
+      );
+
+      // A comma list is joined, because `day new piece` takes `--toolkits a,b` and not a repeat.
+      const piece = {
+        id: "piece",
+        label: "Piece",
+        command: ["new", "piece"],
+        fields: [
+          { id: "name", label: "Name", type: "text" as const, positional: true, required: true },
+          {
+            id: "native",
+            label: "Kind",
+            type: "select" as const,
+            flag: null,
+            options: [{ value: "composite" }, { value: "native" }],
+          },
+          {
+            id: "toolkits",
+            label: "Toolkits",
+            type: "multi-select" as const,
+            flag: "--toolkits",
+            list: "comma" as const,
+            visible_when: { field: "native", equals: "native" },
+          },
+        ],
+      };
+      assert.deepStrictEqual(
+        composeArgs(piece, { name: "dial", native: "native", toolkits: ["appkit", "gtk"] }),
+        ["new", "piece", "dial", "--toolkits", "appkit,gtk", "--no-input"],
+      );
+
+      // A hidden field contributes nothing even when an answer is left over from going Back:
+      // choosing composite after having chosen toolkits must not still pass them.
+      assert.deepStrictEqual(
+        visibleFields(piece, { native: "composite" }).map((f) => f.id),
+        ["name", "native"],
+      );
+      assert.deepStrictEqual(
+        composeArgs(piece, { name: "dial", native: "composite", toolkits: ["appkit"] }),
+        ["new", "piece", "dial", "--no-input"],
+      );
+    },
+  ],
+  [
+    "the CLI describes the questions, or the wizard says so",
+    async () => {
+      // The e2e leg installs the day CLI from day's main branch, which may predate
+      // `day new --describe`. Missing it must leave the command reporting rather than throwing,
+      // so this asserts the SHAPE of the answer: a usable spec, or a clean undefined.
+      const output = vscode.window.createOutputChannel("Day describe check");
+      try {
+        const spec = await describeSpec(output);
+        if (!spec) {
+          console.log("    (skipped: this day CLI has no `new --describe` yet)");
+          return;
+        }
+        assert.strictEqual(spec.schema, 1);
+        assert.deepStrictEqual(
+          spec.kinds.map((k) => k.id).sort(),
+          ["app", "part", "piece"],
+        );
+        for (const kind of spec.kinds) {
+          assert.ok(kind.fields.length > 0, `${kind.id} has no fields`);
+          const positional = kind.fields.filter((f) => f.positional);
+          assert.strictEqual(positional.length, 1, `${kind.id} needs exactly one positional`);
+          for (const f of kind.fields) {
+            if (f.type === "select" || f.type === "multi-select") {
+              assert.ok((f.options ?? []).length > 0, `${kind.id}.${f.id} has no options`);
+            }
+          }
+        }
+        // The targets offered are the real ones, from the CLI rather than a mirrored list.
+        const targets = spec.kinds
+          .find((k) => k.id === "app")
+          ?.fields.find((f) => f.id === "targets");
+        const values = (targets?.options ?? []).map((o) => o.value);
+        assert.ok(values.includes("windows-xaml"));
+        assert.ok(!values.includes("windows-winui"));
+        // And the host's own target is named, so the wizard never re-derives it.
+        assert.ok(values.includes(String(spec.host?.default_target)));
+      } finally {
+        output.dispose();
+      }
+    },
+  ],
+  [
+    "the scripts set settings this extension actually declares",
+    async () => {
+      // The dev launchers and the capture harness write settings into generated files by name. A
+      // typo there is silent — VS Code ignores an unknown setting — and the welcome page would
+      // simply not appear, or the capture run would stop at a native dialog, with nothing to say
+      // why.
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const declared = new Set(
+        (ext.packageJSON.contributes.configuration as { properties: Record<string, unknown> }[])
+          .flatMap((c) => Object.keys(c.properties)),
+      );
+      // `test/e2e/vscode.mjs` writes them too, into the harness's generated settings.json.
+      for (const script of ["scripts/dev.sh", "scripts/dev.ps1", "test/e2e/vscode.mjs"]) {
+        const text = fs.readFileSync(
+          vscode.Uri.joinPath(ext.extensionUri, script).fsPath,
+          "utf8",
+        );
+        for (const [, name] of text.matchAll(/["']?(day\.[A-Za-z.]+)["']?\s*[:=]/g)) {
+          assert.ok(declared.has(name), `${script} writes undeclared setting ${name}`);
+        }
+      }
+      assert.ok(declared.has("day.showWalkthroughOnStartup"));
+    },
+  ],
+  [
+    "the walkthrough's buttons and media all resolve",
+    async () => {
+      // A `command:` link naming a command that is not registered renders as a dead button, and a
+      // missing media file renders as an empty pane. Both fail silently in the UI, so they are
+      // worth asserting rather than eyeballing once.
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext, "the extension must be resolvable by id");
+      const contributes = ext.packageJSON.contributes;
+      const walkthroughs = contributes.walkthroughs ?? [];
+      assert.strictEqual(walkthroughs.length, 1, "one walkthrough");
+      const welcome = walkthroughs[0];
+      assert.strictEqual(welcome.id, "welcome");
+
+      const registered = new Set(await vscode.commands.getCommands(true));
+      const linked = (text: string): string[] =>
+        [...text.matchAll(/\(command:([^)\s]+)\)/g)].map((m) => m[1]);
+
+      let buttons = 0;
+      for (const step of welcome.steps) {
+        for (const id of linked(step.description)) {
+          buttons += 1;
+          assert.ok(registered.has(id), `walkthrough step ${step.id} links to unknown ${id}`);
+        }
+        // Media is a file path relative to the extension root, or an inline image.
+        const media = step.media ?? {};
+        const file = media.markdown ?? media.image ?? media.svg;
+        assert.ok(file, `step ${step.id} has no media`);
+        assert.ok(
+          fs.existsSync(vscode.Uri.joinPath(ext.extensionUri, file).fsPath),
+          `step ${step.id} media is missing: ${file}`,
+        );
+      }
+      assert.ok(buttons >= 3, `expected buttons on most steps, found ${buttons}`);
+
+      // The same rule for the empty-view buttons, which are the only route out of "no project".
+      for (const view of contributes.viewsWelcome ?? []) {
+        for (const id of linked(view.contents)) {
+          assert.ok(registered.has(id), `viewsWelcome (${view.view}) links to unknown ${id}`);
+        }
+      }
+      assert.ok(
+        (contributes.viewsWelcome ?? []).some((v: { contents: string }) =>
+          v.contents.includes("command:day.newProject"),
+        ),
+        "an empty Day view must offer to create a project",
+      );
+    },
+  ],
+  [
+    "the new-project picker offers real targets, from the catalog",
+    async () => {
+      // This list used to be hand-copied into extension.ts and named `windows-winui`, which is
+      // not a target — picking it scaffolded nothing and failed in the CLI.
+      const names = catalog().map((t) => t.name);
+      assert.ok(names.includes("windows-xaml"), "the Windows target is windows-xaml");
+      assert.ok(!names.includes("windows-winui"), "windows-winui is not a Day target");
+      for (const expected of ["macos-appkit", "ios-uikit", "android-mdc", "web-dom"]) {
+        assert.ok(names.includes(expected), `${expected} missing from the catalog`);
+      }
+      // Every entry must be classifiable, or the picker cannot say what a host can build.
+      for (const t of catalog()) {
+        assert.ok(
+          ["macos", "linux", "windows", "any"].includes(t.host),
+          `${t.name} has an unusable host: ${t.host}`,
         );
       }
     },
@@ -955,6 +1173,10 @@ const checks: Check[] = [
       assert.strictEqual(cfg.get("verbose"), false);
       assert.strictEqual(cfg.get("logLevel"), "trace");
       assert.strictEqual(cfg.get("followActiveEditor"), true);
+      // Both default OFF: the walkthrough shows itself once per install without a setting, and
+      // `scripts/dev.sh` turns this on only inside the workspace it generates.
+      assert.strictEqual(cfg.get("showWalkthroughOnStartup"), false);
+      assert.strictEqual(cfg.get("newProject.openAfterCreate"), "ask");
     },
   ],
   [

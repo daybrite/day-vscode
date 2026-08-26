@@ -10,6 +10,12 @@ filtered per target, and processes stop/restart through the standard task lifecy
 
 ## Features
 
+- **New Project** — **Day: New Project** walks the questions `day new` would ask for an app, a
+  piece or a part, with Back at every step. The questions come from `day new --describe`, so the
+  wizard always offers exactly the platforms and toolkits your CLI supports.
+- **Get started** — a walkthrough on VS Code's Welcome page introduces Day and offers
+  **Create a Day Project**. It shows without the extension being activated, so it reaches you
+  before you have a Day project; reopen it any time with **Day: Get Started with Day**.
 - **Day sidebar** — every Day app in the window is listed, each expanding to its own targets. Tick
   targets and Run / Build. Targets your host can't build (e.g. `windows-*` on macOS) are shown
   disabled.
@@ -155,6 +161,11 @@ follows — so running the script from inside an app needs no argument at all:
 ```bash
 cd ~/apps/MyApp && ~/src/day-vscode/scripts/dev.sh
 ```
+
+With no argument and no `Day.toml` to find — a fresh clone, before there is anything to open — the
+script installs this repository's dependencies and opens a window on the extension's welcome page,
+which is where **Create a Day Project** lives. That is the shortest path from `git clone` to a
+running app.
 
 Name several to open them in one window, each patched at the same `day/` checkout:
 

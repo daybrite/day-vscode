@@ -11,6 +11,7 @@ import { State } from "./config";
 import { DayConfigProvider, DayDebugAdapterFactory } from "./debug";
 import { promptToInstall } from "./install";
 import { editFor, Lint, LintActions } from "./lint";
+import { askAll, composeArgs, describeSpec } from "./newproject";
 import * as devices from "./devices";
 import { DayProject, findProjects, ProjectLoadFailure } from "./project";
 import {
@@ -37,6 +38,9 @@ import { DayTree, Node } from "./tree";
  * integration suite cannot read. Exposing the one value keeps that behavior testable without
  * reaching into module internals.
  */
+/** globalState key: whether this install has ever shown the walkthrough. */
+const SEEN_WALKTHROUGH = "day.seenWalkthrough";
+
 export interface DayApi {
   /** Root of the project the cockpit is currently pointed at, if any. */
   focusedProject(): string | undefined;
@@ -207,6 +211,27 @@ export async function activate(
   // The editor that is already open when the window starts decides the first focus, so reopening a
   // workspace lands on whatever was being worked on rather than on whichever project sorts first.
   await followEditor(vscode.window.activeTextEditor);
+
+  // Once, on the first activation this install ever has. VS Code already offers the walkthrough
+  // on its Welcome page, which is the route for someone with no Day project — this covers the
+  // other order, where the first thing that happens is opening a project someone else made.
+  // Remembered in globalState, so it does not reappear per window or per workspace.
+  //
+  // `day.showWalkthroughOnStartup` overrides that memory. It is the only channel a script has:
+  // `code` hands a new window to an ALREADY-RUNNING VS Code, which does not inherit the calling
+  // shell's environment, so an env var would work exactly once per reboot and look flaky.
+  const alwaysShow = vscode.workspace
+    .getConfiguration("day")
+    .get<boolean>("showWalkthroughOnStartup", false);
+  if (alwaysShow || !context.globalState.get<boolean>(SEEN_WALKTHROUGH)) {
+    void context.globalState.update(SEEN_WALKTHROUGH, true);
+    void vscode.commands.executeCommand(
+      "workbench.action.openWalkthrough",
+      `${context.extension.id}#welcome`,
+      // Beside the editor rather than taking it over: the person opened a project to work on it.
+      true,
+    );
+  }
 
   // Enumerating devices shells out to simctl/adb/hdc, so it happens on demand — a device row
   // asks the first time it draws — and the tree redraws when the answer arrives.
@@ -815,44 +840,85 @@ export async function activate(
     }),
   );
 
+  // The walkthrough itself is declarative (package.json `contributes.walkthroughs`), so VS Code
+  // shows it on the Welcome page WITHOUT activating this extension — which is what a person with
+  // no Day project yet will actually see. This command is the way back to it afterwards.
+  /**
+   * Open what was just scaffolded, the way the user wants it opened.
+   *
+   * Asking every time gets old by the third piece, so the answer is a setting with an `ask`
+   * default — the same shape rust-analyzer settled on.
+   */
+  const openCreated = async (created: vscode.Uri, name: string): Promise<void> => {
+    const configured = vscode.workspace
+      .getConfiguration("day")
+      .get<string>("newProject.openAfterCreate", "ask");
+    const hasWorkspace = Boolean(vscode.workspace.workspaceFolders?.length);
+    let action = configured;
+    if (action === "ask") {
+      const choice = await vscode.window.showInformationMessage(
+        `Created ${name}. Open it?`,
+        { modal: true },
+        "Open",
+        "Open in New Window",
+        ...(hasWorkspace ? ["Add to Workspace"] : []),
+      );
+      if (!choice) {
+        return; // created and left alone, which is a legitimate answer
+      }
+      action =
+        choice === "Open"
+          ? "open"
+          : choice === "Open in New Window"
+            ? "openNewWindow"
+            : "addToWorkspace";
+    }
+    if (action === "addToWorkspace" && hasWorkspace) {
+      vscode.workspace.updateWorkspaceFolders(
+        vscode.workspace.workspaceFolders?.length ?? 0,
+        null,
+        { uri: created },
+      );
+      return;
+    }
+    await vscode.commands.executeCommand("vscode.openFolder", created, {
+      forceNewWindow: action !== "open",
+    });
+  };
+
+  register("day.openWalkthrough", () =>
+    vscode.commands.executeCommand(
+      "workbench.action.openWalkthrough",
+      `${context.extension.id}#welcome`,
+      false,
+    ),
+  );
+
   register("day.newProject", () =>
     guard(async () => {
-      const name = await vscode.window.showInputBox({
-        title: "Day: New Project (1/3) — name",
-        prompt: "Crate name for the new app",
-        placeHolder: "my-app",
-        validateInput: (v) =>
-          /^[a-z][a-z0-9_-]*$/.test(v)
-            ? undefined
-            : "lowercase letters, digits, - or _",
-      });
-      if (!name) {
-        return;
-      }
-      const toolkits = await vscode.window.showQuickPick(
-        [
-          { label: "macos-appkit", description: "macOS · AppKit" },
-          { label: "ios-uikit", description: "iOS · UIKit" },
-          {
-            label: "android-mdc",
-            description: "Android · Material Design Components",
-          },
-          { label: "linux-gtk", description: "Linux · GTK 4" },
-          { label: "linux-qt", description: "Linux · Qt 6" },
-          { label: "windows-winui", description: "Windows · WinUI" },
-          { label: "harmony-arkui", description: "HarmonyOS · ArkUI" },
-        ],
-        {
-          title: "Day: New Project (2/3) — targets",
-          canPickMany: true,
-          placeHolder: "Pick the platform-toolkits to scaffold",
-        },
+      // Every question comes from `day new --describe`, so this command never has to know what a
+      // target is called or which toolkits a native piece can have.
+      const spec = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Window, title: "Day: reading the project options" },
+        () => describeSpec(output),
       );
-      if (!toolkits || toolkits.length === 0) {
+      if (!spec) {
+        vscode.window.showErrorMessage(
+          "Day: this `day` CLI cannot describe its project options — it predates `day new --describe`. Update it, then try again.",
+        );
+        output.show(true);
         return;
       }
+
+      const asked = await askAll(spec);
+      if (!asked) {
+        return; // escaped, at any step
+      }
+      const { kind, answers } = asked;
+      const name = String(answers.name ?? "").trim();
+
       const dir = await vscode.window.showOpenDialog({
-        title: "Day: New Project (3/3) — parent folder",
+        title: `Day: New ${kind.label} — parent folder`,
         canSelectFiles: false,
         canSelectFolders: true,
         canSelectMany: false,
@@ -862,16 +928,10 @@ export async function activate(
         return;
       }
       const parent = dir[0].fsPath;
+
       const cli = resolveCli();
-      const args = [
-        ...cli.baseArgs,
-        "new",
-        "app",
-        name,
-        "--toolkit",
-        toolkits.map((t) => t.label).join(","),
-        "--no-input",
-      ];
+      const args = [...cli.baseArgs, ...composeArgs(kind, answers)];
+      output.appendLine(`> ${renderCommand(cli, args.slice(cli.baseArgs.length))}`);
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
@@ -882,7 +942,10 @@ export async function activate(
             childProcess.execFile(
               cli.command,
               args,
-              { cwd: cli.cwd ?? parent, env: process.env },
+              // The folder the user PICKED, always. `day new` creates ./<name> under its cwd, and
+              // `cli.cwd` is the day checkout under `day.cliSource` — so honouring that put the
+              // new project inside the day repo and ignored the dialog entirely.
+              { cwd: parent, env: { ...process.env, ...toolchainEnv() } },
               (err, _out, stderr) => {
                 if (err) {
                   reject(new Error(stderr || err.message));
@@ -893,12 +956,9 @@ export async function activate(
             );
           }),
       );
-      // The cargo fallback runs in the day repo cwd; the plain CLI runs in the parent folder.
-      // `day new` always creates ./<name> under its cwd.
-      const created = vscode.Uri.file(path.join(cli.cwd ?? parent, name));
-      await vscode.commands.executeCommand("vscode.openFolder", created, {
-        forceNewWindow: true,
-      });
+
+      const created = vscode.Uri.file(path.join(parent, name));
+      await openCreated(created, name);
     }),
   );
 

@@ -64,6 +64,14 @@ const QUIET_SETTINGS = {
   "editor.minimap.enabled": false,
   "explorer.confirmDragAndDrop": false,
   "terminal.integrated.gpuAcceleration": "off",
+  // `showOpenDialog` is an OS dialog, and Playwright drives the Electron window, not the window
+  // manager — so the New Project flow would stop dead at "choose a parent folder" on all three
+  // hosts. VS Code's own simple dialog is a quick input instead, which the harness can type into.
+  "files.simpleDialog.enable": true,
+  // Keep the session: the default asks, and both other answers open a folder, which ends the
+  // window the harness is holding. Adding to the workspace leaves the new project visible beside
+  // the fixture, which is also the better picture.
+  "day.newProject.openAfterCreate": "addToWorkspace",
 };
 
 /** Download (or reuse) the pinned VS Code and return its executable path. */

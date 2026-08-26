@@ -10,7 +10,13 @@
 
         cd ~\apps\MyApp; ~\src\day-vscode\scripts\dev.ps1
 
-    opens that app. Passing several opens them in one window, each patched at `day/`:
+    opens that app. With no argument AND no Day project to find - a fresh clone, before there is
+    anything to open - it installs this repository's dependencies and opens a window on the
+    extension's welcome page instead of refusing to start. That window has no app in it, so the
+    Day sidebar shows its empty state, and the way on from there is the same `Create a Day
+    Project` button a first-time user sees.
+
+    Passing several opens them in one window, each patched at `day/`:
 
         cd ~\src\daybrite; day-vscode\scripts\dev.ps1 Day-Sketch Day-Showcase
 
@@ -140,6 +146,7 @@ error: the 'code' CLI is not on PATH
 }
 
 $Projects = [System.Collections.Generic.List[string]]::new()
+$Welcome = $false
 if ($Project) {
     foreach ($candidate in $Project) {
         if (-not (Test-Path (Join-Path $candidate 'Day.toml'))) {
@@ -156,10 +163,15 @@ else {
     # and only the filesystem path can be walked upward.
     $here = $PWD.ProviderPath
     $found = Find-DayProjectUpward $here
-    if (-not $found) {
-        Fail "error: no Day project given, and no Day.toml in $here or any parent`n$(Get-Usage)" 2
+    if ($found) {
+        $Projects.Add((Resolve-Path $found).Path)
     }
-    $Projects.Add((Resolve-Path $found).Path)
+    else {
+        # Nothing to open is a legitimate starting point rather than an error: it is what a fresh
+        # clone looks like, and the welcome page exists for exactly that moment.
+        $Welcome = $true
+        Step "no Day project given, and none above $here - opening the welcome page"
+    }
 }
 
 # A day checkout, not just any folder called `day`: the patch table and the CLI fallback both
@@ -210,6 +222,19 @@ function Invoke-Day {
     }
 }
 
+# A fresh clone has no node_modules, and `npm run bundle` fails there with esbuild "not found" -
+# which reads like a broken repository rather than a missing install step. `npm ci` when the
+# lockfile is there (reproducible, and what CI runs), `npm install` when it is not.
+if (-not (Test-Path (Join-Path $ExtDir 'node_modules'))) {
+    Step 'installing extension dependencies (first run)'
+    Push-Location $ExtDir
+    try {
+        if (Test-Path (Join-Path $ExtDir 'package-lock.json')) { & npm ci } else { & npm install }
+        if ($LASTEXITCODE -ne 0) { Fail "error: npm install failed (exit $LASTEXITCODE)" $LASTEXITCODE }
+    }
+    finally { Pop-Location }
+}
+
 Step "building the extension from source ($ExtDir)"
 Push-Location $ExtDir
 try {
@@ -239,21 +264,44 @@ New-Item -ItemType Directory -Force -Path (Split-Path $Workspace -Parent) | Out-
 # good CLI sitting in the checkout. Workspace-scoped, in a generated machine-local file.
 # Appended one at a time to an array declared as such. `$a + $b` on two [ordered] maps MERGES them
 # (and throws on the duplicate `path` key) rather than making a two-element list, so the pipeline
-# spelling of this is a trap. The day checkout goes last, after the projects.
+# spelling of this is a trap. The day checkout goes last, after the projects - and in welcome mode
+# it is the ONLY folder, which is fine: ConvertTo-Json renders a one-element array that is a
+# property VALUE as an array (`-AsArray` is about top-level input, not nested properties).
 $folderList = @()
 foreach ($p in $Projects) { $folderList += [ordered]@{ path = $p } }
 $folderList += [ordered]@{ path = $DayRepo }
 # `day.cliSource` rather than the binary path: the window runs the CLI through `cargo run` against
 # the checkout, so a day-cli edit is compiled into the next build without rerunning this script.
 # The binary above is still what `day patch` uses, and it leaves the cargo cache warm.
+$settings = [ordered]@{ 'day.cliSource' = $DayRepo }
+# With no app to open, land on the extension's own welcome page.
+#
+# `code` has no flag that runs a command at startup, and it hands a new window to an
+# already-running VS Code - which does not inherit this shell's environment - so a setting in the
+# generated workspace is the only channel that works every time. The extension reads
+# `day.showWalkthroughOnStartup` when it activates and opens the walkthrough.
+#
+# `workbench.startupEditor` is the backstop for the case where it does not activate: the extension
+# activates on a Day.toml anywhere in the workspace, which the day checkout satisfies only because
+# it carries the scaffold TEMPLATE's Day.toml. That is incidental, so the Welcome page - which
+# lists the walkthrough whether or not anything activated - is what catches it.
+if ($Welcome) {
+    $settings['day.showWalkthroughOnStartup'] = $true
+    $settings['workbench.startupEditor'] = 'welcomePage'
+}
 $workspaceJson = [ordered]@{
     folders  = $folderList
-    settings = [ordered]@{ 'day.cliSource' = $DayRepo }
+    settings = $settings
 } | ConvertTo-Json -Depth 4
 # UTF-8 *without* a BOM - Set-Content -Encoding UTF8 writes one on Windows PowerShell 5.1, and a
 # BOM ahead of the opening brace makes the workspace file fail to parse.
 [System.IO.File]::WriteAllText($Workspace, $workspaceJson, [System.Text.UTF8Encoding]::new($false))
 
-Step "launching VS Code (Extension Development Host) on $($Projects -join ' ') + $DayRepo"
+if ($Welcome) {
+    Step "launching VS Code (Extension Development Host) on $DayRepo - welcome page"
+}
+else {
+    Step "launching VS Code (Extension Development Host) on $($Projects -join ' ') + $DayRepo"
+}
 & code --new-window "--extensionDevelopmentPath=$ExtDir" $Workspace
 exit $LASTEXITCODE

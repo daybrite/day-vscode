@@ -3,7 +3,9 @@
 //     node test/e2e/drive.mjs [--out DIR] [--no-run]
 //
 // The run ends with a set of PNGs under `--out` (default build/screenshots/<combo>/), named for
-// what they show, and a manifest.json describing them. They are evidence for CI and the source of
+// what they show, and a manifest.json describing them. It opens with the getting-started story —
+// the walkthrough, then the New Project wizard driven end to end until a scaffolded app appears
+// in the Day view beside the fixture — and then photographs the cockpit, a build, and the app. They are evidence for CI and the source of
 // the extension's README and Marketplace images, which is why the harness fixes the themes, the
 // window size, and the fixture: the same command on the same VS Code build should produce the
 // same picture.
@@ -14,7 +16,7 @@
 // `--no-run` stops after the UI captures and skips building the app, which takes minutes.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { fixtureParent, hostCombo, scaffold } from "./fixture.mjs";
@@ -152,6 +154,24 @@ async function command(win, title) {
   await win.waitForTimeout(900);
 }
 
+/**
+ * Wait for a quick input showing `title`, so a step cannot photograph the previous screen.
+ *
+ * The wizard's steps all render into the SAME `.quick-input-widget`, and they arrive one frame
+ * apart — without reading the title back, a capture races the transition and lands on whichever
+ * question was up a moment ago, which is invisible in a green run and wrong in the docs.
+ */
+async function quickInput(win, title, timeout = 15_000) {
+  const widget = win.locator(".quick-input-widget");
+  await widget.waitFor({ state: "visible", timeout });
+  await win
+    .locator(".quick-input-titlebar", { hasText: title })
+    .first()
+    .waitFor({ state: "visible", timeout });
+  await win.waitForTimeout(350); // let the list settle before the shutter
+  return widget;
+}
+
 /** The tree row whose label starts with `label` (targets carry a description after the name). */
 function row(win, label) {
   return win.locator(`.pane-body [role="treeitem"]`).filter({ hasText: label }).first();
@@ -220,6 +240,96 @@ const { app, win } = session;
 setTheme = session.setTheme;
 
 try {
+  enter("capturing the welcome page");
+  // ── Getting started ────────────────────────────────────────────────────────────────────────
+  // What someone sees before they have anything: the walkthrough, then the New Project flow that
+  // its first button starts. Photographed on every host because the answer differs — the target
+  // list offers what THAT machine can build.
+  await command(win, "Day: Get Started with Day");
+  await win
+    .locator(".gettingStartedContainer, .welcomePageContainer")
+    .first()
+    .waitFor({ state: "visible", timeout: 30_000 });
+  await win.waitForTimeout(800);
+  await shot(win, "01-welcome", "The walkthrough VS Code shows before there is a Day project");
+
+  // The wizard's steps are photographed over whatever is behind them, and VS Code's own Welcome
+  // tab puts a "Recent" list of temporary fixture paths in frame. The Day view is both tidier and
+  // the truer context for a picture of the Day wizard.
+  await command(win, "View: Close All Editors");
+  await command(win, "Day: Focus on Build & Run View");
+  await win.waitForTimeout(500);
+
+  enter("driving the New Project wizard");
+  const newProjectName = "hello-day";
+  await command(win, "Day: New Project"); // typed without the ellipsis; the match is a prefix
+
+  await quickInput(win, "what to create");
+  await shot(win, "02-new-kind", "New Project: an app, a piece, or a part");
+  await win.keyboard.press("Enter"); // App, the first row
+
+  await quickInput(win, "Project name");
+  await win.keyboard.type(newProjectName, { delay: 20 });
+  await win.waitForTimeout(400);
+  await shot(win, "03-new-name", "Naming the app, validated as you type");
+  await win.keyboard.press("Enter");
+
+  // Blank accepts the CLI's own default (`dev.example.<name>`), which is what the placeholder
+  // says — so this step is one keypress and needs no picture of its own.
+  await quickInput(win, "Application id");
+  await win.keyboard.press("Enter");
+
+  await quickInput(win, "Platform-toolkits");
+  await shot(
+    win,
+    "04-new-targets",
+    `Choosing the platforms to ship on — ${COMBO} is preselected as this host's own`,
+  );
+  await win.keyboard.press("Enter"); // the host default arrives ticked
+
+  await quickInput(win, "Window title");
+  await win.keyboard.press("Enter");
+
+  // The parent folder. An OS dialog here would be undrivable; `files.simpleDialog.enable` makes
+  // it a quick input, so the path can simply be typed.
+  const parent = fixtureParent(work);
+  await quickInput(win, "parent folder", 30_000);
+  await win.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+  await win.keyboard.type(parent.endsWith(sep) ? parent : parent + sep, { delay: 8 });
+  await win.waitForTimeout(600);
+  await win.keyboard.press("Enter");
+
+  enter("waiting for the scaffold");
+  // `day new` fetches nothing, but it writes a whole tree and then cargo metadata runs over it.
+  await win.waitForFunction(
+    (name) =>
+      [...document.querySelectorAll('.pane-body [role="treeitem"]')].some((el) =>
+        (el.textContent ?? "").includes(name),
+      ),
+    newProjectName,
+    { timeout: 180_000 },
+  );
+  await command(win, "Day: Focus on Build & Run View");
+  await win.waitForTimeout(800);
+  await shot(
+    win,
+    "05-new-created",
+    "The scaffolded app in the Day view, beside the one that was already open",
+  );
+
+  // The scaffolded app JOINS the workspace, so everything below now runs in a two-project
+  // window. The build steps act on the FOCUSED project, and focus follows the file being edited
+  // — an editor from the fixture is open, so the fixture is still it. Asserting that turns a
+  // future change which breaks it into a failure here, rather than a twenty-minute build of the
+  // wrong app.
+  const fixtureName = workspace.split(/[\\/]/).filter(Boolean).pop();
+  const focused = (await treeText(win)).find((t) => t.includes("focused"));
+  if (!focused?.startsWith(fixtureName)) {
+    throw new Error(
+      `after scaffolding, the focused project is ${JSON.stringify(focused)}, not ${fixtureName}`,
+    );
+  }
+
   enter("capturing the UI surfaces");
   // ── The cockpit ────────────────────────────────────────────────────────────────────────────
   await command(win, "Day: Focus on Build & Run View");
@@ -233,38 +343,38 @@ try {
   if (!tree.some((t) => t.startsWith(COMBO))) {
     throw new Error(`the cockpit does not list ${COMBO}: ${JSON.stringify(tree)}`);
   }
-  await shot(win, "01-cockpit", "The Day view: project, build mode, and every target in Day.toml");
+  await shot(win, "06-cockpit", "The Day view: project, build mode, and every target in Day.toml");
 
   // ── The command surface ────────────────────────────────────────────────────────────────────
   await win.keyboard.press(process.platform === "darwin" ? "Meta+Shift+P" : "Control+Shift+P");
   await win.waitForSelector(".quick-input-widget", { state: "visible" });
   await win.keyboard.type("Day: ", { delay: 12 });
   await win.waitForTimeout(900);
-  await shot(win, "02-commands", "Every Day command in the palette");
+  await shot(win, "07-commands", "Every Day command in the palette");
   await win.keyboard.press("Escape");
 
   // ── Target selection ───────────────────────────────────────────────────────────────────────
   await command(win, "Day: Select Targets");
   await win.waitForTimeout(1200);
-  await shot(win, "03-select-targets", "Picking which targets Run and Build act on");
+  await shot(win, "08-select-targets", "Picking which targets Run and Build act on");
   await win.keyboard.press("Escape");
 
   // ── Settings ───────────────────────────────────────────────────────────────────────────────
   await command(win, "Day: Open Settings");
   await win.waitForTimeout(1800);
-  await shot(win, "04-settings", "The extension's settings, from CLI path to agent access");
+  await shot(win, "09-settings", "The extension's settings, from CLI path to agent access");
   await command(win, "View: Close All Editors");
 
   // ── Toolchain check ────────────────────────────────────────────────────────────────────────
   await command(win, "Day: Doctor (check toolchains)");
   await win.waitForTimeout(12_000);
-  await shot(win, "05-doctor", `day doctor reporting this host's toolchains (${process.platform})`);
+  await shot(win, "10-doctor", `day doctor reporting this host's toolchains (${process.platform})`);
 
   if (RUN_APP) {
     // ── Build and run the host's own combo, through the extension ────────────────────────────
     await command(win, "Day: Focus on Build & Run View");
     await tickTarget(win, COMBO);
-    await shot(win, "06-target-ticked", `${COMBO} ticked for Run`);
+    await shot(win, "11-target-ticked", `${COMBO} ticked for Run`);
 
     enter(`building and running ${COMBO} (build timeout ${Math.round(BUILD_TIMEOUT_MS / 60000)}m)`);
     await command(win, "Day: Run Selected Targets");
@@ -285,7 +395,7 @@ try {
       const text = await terminalText(win);
       if (!shotBuilding && /Building|Compiling/.test(text)) {
         shotBuilding = true;
-        await shot(win, "07-building", "A build running as a VS Code task, with live diagnostics");
+        await shot(win, "12-building", "A build running as a VS Code task, with live diagnostics");
       }
       if (/^\s*error(\[|:)/m.test(text)) {
         throw new Error(`the build reported an error:\n${text.slice(-4000)}`);
@@ -299,13 +409,13 @@ try {
 
     // The app is a separate native window, so the editor screenshot cannot show it.
     await win.waitForTimeout(12_000);
-    await shot(win, "08-running", `${COMBO} running: the cockpit tracks the live process`);
+    await shot(win, "13-running", `${COMBO} running: the cockpit tracks the live process`);
     enter("capturing the desktop");
-    desktopShot("09-app", `The Day app running beside the editor that launched it (${COMBO})`);
+    desktopShot("14-app", `The Day app running beside the editor that launched it (${COMBO})`);
 
     await command(win, "Day: Stop All");
     await win.waitForTimeout(2500);
-    await shot(win, "10-stopped", "Back to idle after Stop All");
+    await shot(win, "15-stopped", "Back to idle after Stop All");
   }
 } finally {
   enter("writing the manifest and closing");
