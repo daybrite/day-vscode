@@ -429,11 +429,22 @@ try {
     )}\n`,
   );
   // Bounded like everything else: Electron shutdown is the one remaining call that could sit
-  // there forever, and the run's results are already on disk by this point.
+  // there forever, and the run's results are already on disk by this point. The loser of the race
+  // is cleared rather than left pending — an unref'd timer would not hold the loop, but this one
+  // is not unref'd, so a fast close still cost 30 seconds of "finished but not exited".
+  let bail;
   await Promise.race([
     app.close().catch(() => {}),
-    new Promise((r) => setTimeout(r, 30_000)),
+    new Promise((r) => {
+      bail = setTimeout(r, 30_000);
+    }),
   ]);
+  clearTimeout(bail);
 }
 
 console.log(`${shots.length} screenshot(s) → ${OUT} in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+// Explicit, because "the script finished" and "the process exited" have come apart here before:
+// everything this run produces is already on disk, and a stray handle — an Electron child that
+// outlived `close`, a socket Playwright kept — would otherwise leave the process alive with
+// nothing left to do. Anything that still needs to run belongs above this line.
+process.exit(0);

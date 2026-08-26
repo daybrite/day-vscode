@@ -266,6 +266,32 @@ jobs:
               "$@"
             fi
           }
+          # `day doctor` answers "is a device attached?" with `adb devices`, and any adb command
+          # forks a SERVER DAEMON that outlives it. The daemon inherits THIS step's stdout, and a
+          # step cannot finish while anything holds that pipe — so the harness printed its last
+          # line, the step sat idle, and 60 minutes later the job backstop cancelled it with the
+          # runner reporting `Terminate orphan process: (adb)`. Every macOS run from 32654426569
+          # to 33013290539 ended that way.
+          #
+          # On the trap rather than after the command, so a failing run is cleaned up too — and
+          # inside this step rather than a later one, because a step that runs after the hanging
+          # step never runs at all. Not in the harness itself: a developer running it locally has
+          # an adb session of their own, and stopping their server would be a rude side effect of
+          # taking screenshots. On a runner nothing else uses it.
+          # `if`, not `&&`: under `set -e` a failing `&&` compound aborts the shell, and the first
+          # candidate path is expected to miss on a host with no Android SDK. Always returns 0 so
+          # an EXIT trap cannot rewrite the step's own result.
+          stop_adb() {
+            for adb in "${ANDROID_HOME:-}/platform-tools/adb" "${ANDROID_SDK_ROOT:-}/platform-tools/adb" adb; do
+              if command -v "$adb" >/dev/null 2>&1; then
+                "$adb" kill-server >/dev/null 2>&1 || true
+                return 0
+              fi
+            done
+            return 0
+          }
+          trap stop_adb EXIT
+
           run node test/e2e/drive.mjs --vsix day-vscode.vsix
 
       - name: Upload the screenshots

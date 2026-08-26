@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Fixed: the macOS capture job idled for an hour after finishing its work. `day doctor` probes
+  Android with `adb devices`, which forks a server daemon that inherits the step's stdout — and a
+  GitHub step cannot finish while anything holds that pipe. The step now stops the daemon on the
+  way out, and the harness exits explicitly once its results are on disk rather than waiting on a
+  stray handle.
 - The capture harness now drives **New Project** end to end on each of the three host platforms
   and photographs it: the walkthrough, the kind picker, the name step, the platform-toolkit picker
   — where the host's own target arrives preselected and the ones it cannot build say so — and the
