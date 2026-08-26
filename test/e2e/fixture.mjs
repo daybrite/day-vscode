@@ -76,5 +76,41 @@ export function scaffold({ dayBin, parent, name = "day-fixture", targets = FIXTU
   );
   // `day new` leaves extension recommendations behind, which pop a toast over every screenshot.
   writeFileSync(join(dir, ".vscode", "extensions.json"), `{ "recommendations": [] }\n`);
+
+  // Resolve the dependency graph before VS Code ever asks for it.
+  //
+  // `day metadata --json` — the extension's first call against every project it finds — shells out
+  // to `cargo metadata`, which for a freshly scaffolded app must fetch the `day` git dependency and
+  // whatever of the crates.io index it still lacks. That is seconds when warm and minutes when
+  // cold, and the extension gives it 30 (src/project.ts). Losing that race means the sidebar finds
+  // NO projects, and the suite then fails six assertions that are really one: run 33022390184's
+  // windows-xaml leg, where both fixtures timed out in the same millisecond.
+  //
+  // Doing it here rather than lengthening the extension's timeout: 30 seconds is the right budget
+  // for a UI that must not hang, and a warm cache is the honest starting state for a test about
+  // the extension rather than about cargo's network.
+  const warm = spawnSync("cargo", ["metadata", "--format-version", "1", "--all-features"], {
+    cwd: dir,
+    encoding: "utf8",
+    // stdout DISCARDED, stderr kept. The document `cargo metadata` prints for a Day app is several
+    // megabytes — past spawnSync's 1 MB default, which fails the call with ENOBUFS and warms
+    // nothing. Only the side effect is wanted here: the graph resolved and the fetches done.
+    stdio: ["ignore", "ignore", "pipe"],
+    timeout: 600_000,
+    killSignal: "SIGKILL",
+  });
+  // Not fatal: a resolution failure here shows up as the real thing the suite is checking, with
+  // the extension's own message, rather than as a scaffold that refused to finish.
+  if (warm.status !== 0) {
+    // `status: null` means it never ran (spawn error) or was signalled — report which, because
+    // "exit null" alone tells the next reader nothing about where to look.
+    const why = warm.error
+      ? warm.error.message
+      : (warm.stderr ?? "").trim().split("\n").slice(-3).join("\n") ||
+        `signal ${warm.signal ?? "unknown"}`;
+    console.warn(
+      `warming cargo metadata for ${name} failed; the extension's own 30s call may time out: ${why}`,
+    );
+  }
   return dir;
 }

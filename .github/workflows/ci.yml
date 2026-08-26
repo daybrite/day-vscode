@@ -227,9 +227,37 @@ jobs:
       - name: Install the day CLI
         uses: daybrite/actions/.github/actions/setup-day-cli@main
         with:
-          # main, not latest: the CLI is not on crates.io yet (day DESIGN.md §1), so a release
-          # install has nothing to fetch.
+          # `main`, built from git — NOT `latest`. day-cli IS published now (0.3.0), so `latest`
+          # would install and quietly lag: this extension calls CLI surfaces as they land on main
+          # (`day lint --json`, `day new --describe`), and against a published build those come
+          # back as "unknown argument", which reads like an extension bug rather than a stale CLI.
           version: main
+
+      # Prove it, rather than trusting the input. `cargo install --list` records the exact source
+      # of what is on PATH — the git URL, the branch and the commit — which is the only
+      # authoritative answer. `day version` cannot serve here: the ref it bakes in is whatever
+      # cargo named its checkout branch, and a `--branch main` install reported "branch master" on
+      # the Windows runner while being a perfectly correct build of main.
+      - name: Verify the day CLI is a fresh build of day's main
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$(cargo install --list | grep -E '^day-cli ' || true)"
+          echo "installed: ${src:-<nothing>}"
+          case "$src" in
+            *"daybrite/day.git"*"branch=main"*) ;;
+            *)
+              echo "::error::the day CLI on PATH is not a git build of daybrite/day main: ${src:-<not installed>}"
+              exit 1
+              ;;
+          esac
+          # Advisory only: main legitimately moves while a job runs, and failing on that would make
+          # every leg a race against whoever pushed last.
+          head="$(git ls-remote https://github.com/daybrite/day.git refs/heads/main | cut -c1-8)"
+          case "$src" in
+            *"$head"*) echo "up to date with day main ($head)" ;;
+            *) echo "::warning::day main is now $head; this leg is building against the commit above" ;;
+          esac
 
       - run: npm ci
       - name: Bundle + compile

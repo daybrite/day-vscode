@@ -1,5 +1,10 @@
 ## Unreleased
 
+- Fixed a flaky capture/e2e run: the extension's first call against a project is
+  `day metadata --json`, which resolves the whole dependency graph through `cargo metadata`. On a
+  freshly scaffolded fixture that means fetching, which can outlast the 30-second budget the
+  extension gives it — and losing the race left the sidebar with no projects at all. The fixture
+  now resolves its graph while it is being scaffolded, so the timed call starts warm.
 - The screenshot gallery opens a capture full size, and moves in two directions from there: **←/→**
   show the same capture on another platform, **↑/↓** step through the run on the same one. Escape
   or the backdrop closes it, tiles open with Enter or Space, and a direction with nowhere to go is
