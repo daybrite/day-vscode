@@ -11,6 +11,7 @@
 // CSS pick. Those stay lazy, so the variant the reader's theme is not using costs nothing.
 import data from '../data/screenshots.json';
 import Shot from './Shot.astro';
+import { url } from '../lib/site';
 
 interface Props {
   /** Show only these capture slugs, in this order (the landing page wants a curated few). */
@@ -26,6 +27,15 @@ const when = captured
   : null;
 
 const shotsFor = (p: any) => (only ? p.shots.filter((s: any) => only.includes(s.slug)) : p.shots);
+
+// Coordinates for the viewer: a row is one CAPTURED SURFACE, a column is one platform. The step
+// numbers are the driver's own (test/e2e/drive.mjs names files `<combo>-NN-slug`), so the union of
+// them across platforms — sorted — is the row order, and a platform that missed a step simply has
+// no tile in that row.
+const steps = [
+  ...new Set(platforms.flatMap((p: any) => shotsFor(p).map((s: any) => s.step))),
+].sort((a: any, b: any) => a - b);
+const rowOf = (s: any) => steps.indexOf(s.step);
 ---
 
 {platforms.length === 0 ? (
@@ -46,9 +56,20 @@ const shotsFor = (p: any) => (only ? p.shots.filter((s: any) => only.includes(s.
     </div>
 
     <div class="shot-grid">
-      {platforms.flatMap((p: any) =>
+      {platforms.flatMap((p: any, c: number) =>
         shotsFor(p).map((s: any) => (
-          <figure class="shot" data-combo={p.combo}>
+          <figure
+            class="shot"
+            data-combo={p.combo}
+            data-r={rowOf(s)}
+            data-c={c}
+            data-caption={s.caption}
+            data-plat={`${p.os} · ${p.toolkit}`}
+            data-light={url(s.light)}
+            data-dark={url(s.dark)}
+            data-w={s.width}
+            data-h={s.height}
+          >
             <Shot shot={s} alt={`${s.caption} — ${p.os}, ${p.toolkit}`} />
             <figcaption>
               <b>{p.os} · {p.toolkit}</b>
@@ -57,6 +78,33 @@ const shotsFor = (p: any) => (only ? p.shots.filter((s: any) => only.includes(s.
           </figure>
         )),
       )}
+    </div>
+
+    {/* Full-size viewer. Its own markup rather than a gallery library, because navigation here is
+        two-dimensional: ←/→ show the SAME surface on another platform, ↑/↓ step through the run on
+        the SAME platform. Hidden and inert until a tile is opened. */}
+    <div
+      class="lightbox"
+      data-lightbox
+      hidden
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Screenshot viewer"
+    >
+      <div class="lb-backdrop" data-lb-close></div>
+      <button class="lb-btn lb-close" data-lb-close type="button" aria-label="Close (Esc)">✕</button>
+      <button class="lb-btn lb-arrow lb-up" data-lb-dir="up" type="button" aria-label="Previous capture (↑)">↑</button>
+      <button class="lb-btn lb-arrow lb-down" data-lb-dir="down" type="button" aria-label="Next capture (↓)">↓</button>
+      <button class="lb-btn lb-arrow lb-left" data-lb-dir="left" type="button" aria-label="Same capture, previous platform (←)">‹</button>
+      <button class="lb-btn lb-arrow lb-right" data-lb-dir="right" type="button" aria-label="Same capture, next platform (→)">›</button>
+      <figure class="lb-stage">
+        <img class="lb-img" data-lb-img alt="" />
+        <figcaption class="lb-cap">
+          <span class="lb-plat" data-lb-plat></span>
+          <span class="lb-shot" data-lb-shot></span>
+        </figcaption>
+      </figure>
     </div>
 
     {when && !compact && (
@@ -72,12 +120,108 @@ const shotsFor = (p: any) => (only ? p.shots.filter((s: any) => only.includes(s.
 <style>
   .empty { color: var(--muted); }
   .when { color: var(--faint); font-size: 0.9rem; margin-top: 24px; max-width: 70ch; }
+
+  /* A tile is a button in all but name. */
+  .shot :global(.shot-img) { cursor: zoom-in; }
+
+  /* ---- Full-size viewer ---- */
+  .lightbox { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; }
+  .lightbox[hidden] { display: none; }
+  .lightbox:not([hidden]) { animation: lb-fade 0.18s ease; }
+  @keyframes lb-fade { from { opacity: 0; } to { opacity: 1; } }
+  .lb-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(3, 6, 14, 0.86);
+    backdrop-filter: blur(6px);
+  }
+  .lb-stage {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    margin: 0;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+  }
+  .lb-img {
+    max-width: 92vw;
+    max-height: 82vh;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 12px;
+    background: var(--bg-2, var(--surface));
+    box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.7);
+    animation: lb-pop 0.18s ease;
+  }
+  @keyframes lb-pop {
+    from { transform: scale(0.985); opacity: 0.6; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  .lb-cap {
+    position: absolute;
+    left: 18px;
+    top: 18px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    max-width: min(56ch, 70vw);
+    padding: 8px 16px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
+    backdrop-filter: blur(6px);
+  }
+  .lb-plat {
+    color: var(--brand);
+    font-weight: 700;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .lb-shot { color: var(--muted); font-size: 0.98rem; }
+
+  .lb-btn {
+    position: absolute;
+    z-index: 2;
+    appearance: none;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    color: var(--text);
+    backdrop-filter: blur(8px);
+    display: grid;
+    place-items: center;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .lb-btn:hover { background: var(--surface-2, var(--surface)); color: var(--brand); }
+  /* A direction with nowhere to go says so rather than doing nothing when clicked. */
+  .lb-btn[disabled] { opacity: 0.28; cursor: default; }
+  .lb-btn[disabled]:hover { background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--text); }
+  .lb-close { top: 18px; right: 18px; width: 42px; height: 42px; font-size: 1.05rem; }
+  .lb-arrow { width: 52px; height: 52px; font-size: 1.7rem; line-height: 1; }
+  .lb-left { left: 20px; top: 50%; transform: translateY(-50%); }
+  .lb-right { right: 20px; top: 50%; transform: translateY(-50%); }
+  .lb-up { top: 18px; left: 50%; transform: translateX(-50%); }
+  .lb-down { bottom: 18px; left: 50%; transform: translateX(-50%); }
+  @media (max-width: 620px) {
+    .lb-arrow { width: 42px; height: 42px; font-size: 1.3rem; }
+    .lb-left { left: 8px; }
+    .lb-right { right: 8px; }
+    .lb-cap { max-width: 82vw; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lightbox:not([hidden]), .lb-img { animation: none; }
+  }
 </style>
 
 <script is:inline>
   for (const root of document.querySelectorAll('[data-gallery]')) {
     const buttons = root.querySelectorAll('.shot-tabs button');
-    const figures = root.querySelectorAll('.shot');
+    const figures = [...root.querySelectorAll('.shot')];
     for (const b of buttons) {
       b.addEventListener('click', () => {
         const want = b.dataset.combo;
@@ -85,5 +229,116 @@ const shotsFor = (p: any) => (only ? p.shots.filter((s: any) => only.includes(s.
         for (const f of figures) f.hidden = want !== 'all' && f.dataset.combo !== want;
       });
     }
+
+    // ---- Full-size viewer: two-dimensional navigation ----
+    //   ←/→  the SAME capture on another platform (move along the row)
+    //   ↑/↓  the previous/next capture on the SAME platform (move along the column)
+    // Absent cells are skipped rather than shown as an empty frame: the platforms capture the same
+    // run, so a gap means one leg failed a step, and landing on nothing is a worse answer than
+    // going to the next thing there is. When a direction has nowhere to go its button is disabled,
+    // so the reader can see the edge instead of pressing into it.
+    const box = root.querySelector('[data-lightbox]');
+    if (!box) continue;
+    const imgEl = box.querySelector('[data-lb-img]');
+    const platEl = box.querySelector('[data-lb-plat]');
+    const shotEl = box.querySelector('[data-lb-shot]');
+
+    const at = (r, c) => figures.find((f) => +f.dataset.r === r && +f.dataset.c === c);
+    const rows = [...new Set(figures.map((f) => +f.dataset.r))].sort((a, b) => a - b);
+    const cols = [...new Set(figures.map((f) => +f.dataset.c))].sort((a, b) => a - b);
+    let cur = null;
+    let lastFocus = null;
+
+    // The capture that matches the page's own colour scheme, which the nav toggle can change
+    // while the viewer is open.
+    const srcFor = (fig) =>
+      document.documentElement.dataset.theme === 'light' ? fig.dataset.light : fig.dataset.dark;
+
+    function step(dir) {
+      if (!cur) return null;
+      const along = dir === 'left' || dir === 'right';
+      const list = along ? cols : rows;
+      const from = list.indexOf(along ? cur.c : cur.r);
+      const delta = dir === 'right' || dir === 'down' ? 1 : -1;
+      for (let i = from + delta; i >= 0 && i < list.length; i += delta) {
+        const next = along ? at(cur.r, list[i]) : at(list[i], cur.c);
+        if (next) return along ? { r: cur.r, c: list[i] } : { r: list[i], c: cur.c };
+      }
+      return null;
+    }
+
+    function render() {
+      const fig = cur && at(cur.r, cur.c);
+      if (!fig) return;
+      imgEl.setAttribute('src', srcFor(fig));
+      imgEl.setAttribute('width', fig.dataset.w);
+      imgEl.setAttribute('height', fig.dataset.h);
+      imgEl.alt = `${fig.dataset.caption} — ${fig.dataset.plat}`;
+      platEl.textContent = fig.dataset.plat;
+      shotEl.textContent = fig.dataset.caption;
+      for (const btn of box.querySelectorAll('[data-lb-dir]')) {
+        btn.disabled = !step(btn.dataset.lbDir);
+      }
+    }
+
+    function open(fig) {
+      cur = { r: +fig.dataset.r, c: +fig.dataset.c };
+      lastFocus = document.activeElement;
+      box.hidden = false;
+      box.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      render();
+      box.querySelector('.lb-close').focus();
+    }
+    function close() {
+      box.hidden = true;
+      box.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+      cur = null;
+      // Back where the reader was, so closing does not lose their place in a long grid.
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }
+    function navigate(dir) {
+      const next = step(dir);
+      if (next) {
+        cur = next;
+        render();
+      }
+    }
+
+    for (const fig of figures) {
+      const img = fig.querySelector('.shot-img');
+      if (!img) continue;
+      fig.tabIndex = 0;
+      fig.setAttribute('role', 'button');
+      fig.setAttribute('aria-label', `View ${fig.dataset.caption} on ${fig.dataset.plat}`);
+      fig.addEventListener('click', () => open(fig));
+      fig.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open(fig);
+        }
+      });
+    }
+
+    for (const btn of box.querySelectorAll('[data-lb-dir]')) {
+      btn.addEventListener('click', () => navigate(btn.dataset.lbDir));
+    }
+    for (const el of box.querySelectorAll('[data-lb-close]')) {
+      el.addEventListener('click', close);
+    }
+    document.addEventListener('keydown', (e) => {
+      if (box.hidden) return;
+      if (e.key === 'Escape') return close();
+      const dir = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[e.key];
+      if (dir) {
+        e.preventDefault();
+        navigate(dir);
+      }
+    });
+    // The nav's theme toggle swaps the page's captures; the open viewer follows.
+    new MutationObserver(() => {
+      if (!box.hidden) render();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   }
 </script>

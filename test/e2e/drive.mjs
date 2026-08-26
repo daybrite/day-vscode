@@ -155,6 +155,49 @@ async function command(win, title) {
 }
 
 /**
+ * Open `<project>`'s `file` in the editor, through Quick Open.
+ *
+ * Quick Open indexes a file by its path RELATIVE TO ITS WORKSPACE FOLDER, so the folder's own name
+ * is not part of the query — searching "hello-day/src/lib.rs" finds nothing at all. With two
+ * projects in the window both offer a `lib.rs`, so the query is the file name and the right row is
+ * found by reading the descriptions back, the same way `command` checks the palette.
+ *
+ * Retried because a folder added to the workspace a moment ago is not in the file index yet, and
+ * the first attempt legitimately finds nothing.
+ */
+async function openFile(win, project, file) {
+  const chord = process.platform === "darwin" ? "Meta+P" : "Control+P";
+  for (let attempt = 1; ; attempt++) {
+    await win.keyboard.press("Escape");
+    await win.locator(".monaco-workbench").click({ position: { x: 5, y: 5 }, force: true });
+    await win.keyboard.press(chord);
+    await win.locator(".quick-input-widget").waitFor({ state: "visible", timeout: 10_000 });
+    await win.keyboard.type(file, { delay: 10 });
+    await win.waitForTimeout(900);
+    const rows = win.locator(".quick-input-list .monaco-list-row");
+    const count = Math.min(await rows.count(), 12);
+    const labels = [];
+    for (let i = 0; i < count; i++) {
+      labels.push((await rows.nth(i).innerText()).replace(/\s+/g, " ").trim());
+    }
+    const hit = labels.findIndex((l) => l.toLowerCase().includes(project.toLowerCase()));
+    if (hit >= 0) {
+      for (let i = 0; i < hit; i++) await win.keyboard.press("ArrowDown");
+      await win.keyboard.press("Enter");
+      await win.waitForTimeout(900);
+      return;
+    }
+    if (attempt >= 5) {
+      throw new Error(
+        `quick open has no ${file} under ${project}; offered: ${JSON.stringify(labels)}`,
+      );
+    }
+    await win.keyboard.press("Escape");
+    await win.waitForTimeout(2000); // the new folder is still being indexed
+  }
+}
+
+/**
  * Wait for a quick input showing `title`, so a step cannot photograph the previous screen.
  *
  * The wizard's steps all render into the SAME `.quick-input-widget`, and they arrive one frame
@@ -192,6 +235,21 @@ async function tickTarget(win, combo) {
   const checked = await box.getAttribute("aria-checked");
   if (checked !== "true") {
     throw new Error(`${combo} did not tick (aria-checked=${checked})`);
+  }
+}
+
+/**
+ * Make `name` the focused project by clicking its row, and prove it took.
+ *
+ * Focus follows the active editor, so opening a file from one project moves it — which is right
+ * for a person and wrong for a script that is about to build a different one.
+ */
+async function focusProject(win, name) {
+  await row(win, name).click();
+  await win.waitForTimeout(600);
+  const focused = (await treeText(win)).find((t) => t.includes("focused"));
+  if (!focused?.startsWith(name)) {
+    throw new Error(`clicking ${name} left the focus on ${JSON.stringify(focused)}`);
   }
 }
 
@@ -309,26 +367,26 @@ try {
     newProjectName,
     { timeout: 180_000 },
   );
+  // Open something from the app that was just made. Every capture from here on frames the editor,
+  // and an empty editor area photographs as VS Code's watermark — which says nothing about Day and
+  // takes up most of the picture. `View: Close All Editors` above cleared the fixture's own file
+  // to keep the wizard's backdrop tidy, so this is also what puts an editor back.
+  await openFile(win, newProjectName, "lib.rs");
   await command(win, "Day: Focus on Build & Run View");
   await win.waitForTimeout(800);
   await shot(
     win,
     "05-new-created",
-    "The scaffolded app in the Day view, beside the one that was already open",
+    "The scaffolded app open in the editor, listed in the Day view beside the one already there",
   );
 
-  // The scaffolded app JOINS the workspace, so everything below now runs in a two-project
-  // window. The build steps act on the FOCUSED project, and focus follows the file being edited
-  // — an editor from the fixture is open, so the fixture is still it. Asserting that turns a
-  // future change which breaks it into a failure here, rather than a twenty-minute build of the
-  // wrong app.
+  // The scaffolded app JOINS the workspace, and opening its `lib.rs` made it the focused project
+  // — focus follows the active editor. Everything below builds and runs, and it has to be the
+  // FIXTURE: that is the project the job's Rust cache is keyed to, so building the new one instead
+  // would be a cold compile of a different app on every run. Hand focus back explicitly, and prove
+  // it, rather than relying on which editor happened to be active.
   const fixtureName = workspace.split(/[\\/]/).filter(Boolean).pop();
-  const focused = (await treeText(win)).find((t) => t.includes("focused"));
-  if (!focused?.startsWith(fixtureName)) {
-    throw new Error(
-      `after scaffolding, the focused project is ${JSON.stringify(focused)}, not ${fixtureName}`,
-    );
-  }
+  await focusProject(win, fixtureName);
 
   enter("capturing the UI surfaces");
   // ── The cockpit ────────────────────────────────────────────────────────────────────────────

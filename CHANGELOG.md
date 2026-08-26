@@ -1,5 +1,15 @@
 ## Unreleased
 
+- The screenshot gallery opens a capture full size, and moves in two directions from there: **←/→**
+  show the same capture on another platform, **↑/↓** step through the run on the same one. Escape
+  or the backdrop closes it, tiles open with Enter or Space, and a direction with nowhere to go is
+  disabled rather than silently inert. A platform that missed a step is skipped rather than shown
+  as an empty frame.
+- The capture run now opens the scaffolded app's `lib.rs` in the editor, so the surfaces
+  photographed after it frame real code instead of VS Code's watermark.
+- Fixed: the macOS desktop capture sometimes framed a system permission panel — "Allow … to find
+  devices on local networks" — instead of the app it exists to show. The run clears any pending
+  system prompt before the shutter.
 - Fixed: the macOS capture job idled for an hour after finishing its work. `day doctor` probes
   Android with `adb devices`, which forks a server daemon that inherits the step's stdout — and a
   GitHub step cannot finish while anything holds that pipe. The step now stops the daemon on the

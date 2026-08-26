@@ -238,6 +238,20 @@ export function captureDesktop(path) {
     });
   let res;
   if (process.platform === "darwin") {
+    // Clear any system prompt before the shutter. A fresh runner answers the launched app's first
+    // loopback listener with macOS 15's "Allow … to find devices on local networks?", a floating
+    // TCC panel that lands in the middle of the ONLY capture framing the app — and it named the
+    // runner's hostname, so the published picture read as a permission dialog rather than as a Day
+    // app. Day asks for nothing of the sort: every listener it opens binds 127.0.0.1, and there is
+    // no multicast or Bonjour anywhere in the tree.
+    //
+    // A kill rather than a click: the panel belongs to UserNotificationCenter, not to anything
+    // this harness drives, and clicking it would need an Accessibility grant a runner has no way
+    // to give. The agent is stateless and relaunches on demand, so killing it dismisses the panel
+    // and answers nothing — which is the right outcome on a machine that is discarded minutes
+    // later. Best effort: no prompt, no panel, nothing killed, same picture.
+    run("killall", ["-q", "UserNotificationCenter"]);
+    run("sleep", ["1"]); // the panel is torn down a frame or two after its owner goes
     // -x no shutter sound, -m main display only (a second monitor is not part of the story).
     res = run("screencapture", ["-x", "-m", path]);
   } else if (process.platform === "linux") {
