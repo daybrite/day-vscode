@@ -35,8 +35,8 @@ filtered per target, and processes stop/restart through the standard task lifecy
   breakpoints in `.rs` files are real. See [Debugging](#debugging).
 - **Lint** — **Day: Lint Project** (sidebar toolbar, or right-click a project row) runs `day lint`
   on that project and draws the findings in the editor, on the lines they name. Findings that name
-  something that does not exist — a Fluent key with no message, a route nothing declares, an
-  undeclared permission — come through as errors; coverage gaps and store copy as warnings. Where
+  something that does not exist — a route nothing declares, an undeclared permission, an unknown
+  target — come through as errors; coverage gaps and store copy as warnings. Where
   the CLI proposed a repair that is safe and unambiguous, it is offered as a **quick fix**
   (`⌘.`), with **Fix all in file** when there is more than one.
 - **Doctor** — run `day doctor` to check your toolchains.

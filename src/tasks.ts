@@ -219,15 +219,27 @@ export function toolchainEnv(): Record<string, string> {
   }
   const developer = read("developerDir");
   if (developer) {
-    // Read by `xcrun`, `xcodebuild` and `simctl` themselves — Day never looks at it — so this is
-    // how a machine with several Xcodes points every Apple target at one of them. The `.app` is
-    // what a person picks in Finder, but the variable wants the Developer dir inside it; taking
-    // either spelling beats failing with "cannot find utility" over a trailing path segment.
-    env.DEVELOPER_DIR = developer.endsWith(".app")
-      ? path.join(developer, "Contents", "Developer")
-      : developer;
+    env.DEVELOPER_DIR = developerDir(developer);
   }
   return env;
+}
+
+/**
+ * `DEVELOPER_DIR` from whatever the setting points at.
+ *
+ * Read by `xcrun`, `xcodebuild` and `simctl` themselves — Day never looks at it — so this is how a
+ * machine with several Xcodes points every Apple target at one of them. The `.app` is what a person
+ * picks in Finder, but the variable wants the Developer dir inside it; taking either spelling beats
+ * failing with "cannot find utility" over a trailing path segment. A trailing separator, which
+ * shell completion adds, names the same bundle.
+ *
+ * Joined with `path.posix` rather than `path`: an Xcode path is a macOS path wherever the EDITOR
+ * happens to be running, and the host-sensitive join turned it into
+ * `\Applications\Xcode.app\Contents\Developer` on the Windows CI leg.
+ */
+function developerDir(setting: string): string {
+  const bundle = setting.replace(/[/\\]+$/, "");
+  return bundle.endsWith(".app") ? path.posix.join(bundle, "Contents", "Developer") : setting;
 }
 
 /** Prepend `dir` to the env's PATH, building on the process PATH the first time. */

@@ -3,8 +3,8 @@
 - **Lint in the editor.** `Day: Lint Project` — the sidebar toolbar, the palette, or a project
   row's right-click menu — runs `day lint` on that project and draws its findings on the lines
   they name, in the Problems panel and in the file. Findings that name something that does not
-  exist (a Fluent key with no message, a route nothing declares, an undeclared permission) come
-  through as errors; coverage gaps and store copy as warnings. Where the CLI proposed a repair
+  exist (a route nothing declares, an undeclared permission, an unknown target) come through as
+  errors; coverage gaps and store copy as warnings. Where the CLI proposed a repair
   that is safe and unambiguous, it is offered as a **quick fix**, with **Fix all in file** when a
   file has more than one; applying one re-lints, so a stale repair can't undo the one before it.
   Each project owns its own diagnostics, so linting one app never clears another's. Requires a

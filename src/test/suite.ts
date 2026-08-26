@@ -822,10 +822,36 @@ const checks: Check[] = [
         );
         assert.strictEqual(env.ANDROID_NDK_HOME, `${sdk}/ndk`);
         // An `.app` is what a person picks; the variable wants the Developer dir inside it.
+        // Asserted with forward slashes on EVERY host: an Xcode path is a macOS path wherever
+        // the editor runs, and joining it with the host separator handed `xcrun`
+        // `\Applications\Xcode.app\Contents\Developer` on the Windows leg.
         assert.strictEqual(
           env.DEVELOPER_DIR,
           "/Applications/Xcode.app/Contents/Developer",
           "an .app bundle must be resolved to its Developer dir",
+        );
+
+        // Shell completion adds the trailing slash, and it names the same bundle.
+        await cfg.update(
+          "developerDir",
+          "/Applications/Xcode.app/",
+          vscode.ConfigurationTarget.Workspace,
+        );
+        assert.strictEqual(
+          toolchainEnv().DEVELOPER_DIR,
+          "/Applications/Xcode.app/Contents/Developer",
+          "a trailing separator is the same bundle",
+        );
+
+        // A Developer dir given directly is already what the variable wants — passed through.
+        await cfg.update(
+          "developerDir",
+          "/Applications/Xcode-beta.app/Contents/Developer",
+          vscode.ConfigurationTarget.Workspace,
+        );
+        assert.strictEqual(
+          toolchainEnv().DEVELOPER_DIR,
+          "/Applications/Xcode-beta.app/Contents/Developer",
         );
       } finally {
         for (const key of [
