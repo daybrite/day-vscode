@@ -325,6 +325,50 @@ export function lintArgs(projectRoot: string): string[] {
   return [...projectArgs(projectRoot), "lint", "--json"];
 }
 
+/**
+ * The provider id `package.json` contributes under `mcpServerDefinitionProviders`, and the id
+ * `registerMcpServerDefinitionProvider` registers with. VS Code matches the two by string, and a
+ * mismatch is silent — the provider is simply never asked, and agent mode shows no Day tools with
+ * nothing logged anywhere — so both sides read it from here.
+ */
+export const MCP_PROVIDER_ID = "day";
+
+/** Args for `day mcp-server`, which serves one project to an agent over stdio (docs/agent.md). */
+export function mcpServerArgs(projectRoot: string): string[] {
+  return [...projectArgs(projectRoot), "mcp-server"];
+}
+
+/** How to spawn Day's MCP server. */
+export interface McpServerSpec {
+  command: string;
+  args: string[];
+  cwd?: string;
+}
+
+/**
+ * Resolve the MCP server an agent should talk to for `projectRoot`, or `undefined` when there is
+ * nothing to offer — the setting is off, or the window holds no Day project.
+ *
+ * Kept out of the provider registration in `extension.ts` because everything that can be wrong
+ * here is a plain value: which project the server reports on, the cwd a `day.cliSource` checkout
+ * needs, and whether the setting is honoured at all. The registration itself is then one
+ * constructor call over this.
+ */
+export function mcpServerSpec(projectRoot?: string): McpServerSpec | undefined {
+  const enabled = vscode.workspace
+    .getConfiguration("day")
+    .get<boolean>("mcp.enabled", true);
+  if (!enabled || !projectRoot) {
+    return undefined;
+  }
+  const cli = resolveCli(projectRoot);
+  return {
+    command: cli.command,
+    args: [...cli.baseArgs, ...mcpServerArgs(projectRoot)],
+    cwd: cli.cwd,
+  };
+}
+
 /** A shell-safe rendering of a command for display in a terminal/log line. */
 export function renderCommand(cli: DayCli, args: string[]): string {
   const all = [cli.command, ...cli.baseArgs, ...args];

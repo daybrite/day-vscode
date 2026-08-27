@@ -6,7 +6,13 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 
-import { renderCommand, resolveCli, setExtensionRoot } from "./cli";
+import {
+  MCP_PROVIDER_ID,
+  mcpServerSpec,
+  renderCommand,
+  resolveCli,
+  setExtensionRoot,
+} from "./cli";
 import { State } from "./config";
 import { DayConfigProvider, DayDebugAdapterFactory } from "./debug";
 import { promptToInstall } from "./install";
@@ -967,32 +973,16 @@ export async function activate(
   const lmAny = (vscode as any).lm;
   if (typeof lmAny?.registerMcpServerDefinitionProvider === "function") {
     context.subscriptions.push(
-      lmAny.registerMcpServerDefinitionProvider("day", {
+      lmAny.registerMcpServerDefinitionProvider(MCP_PROVIDER_ID, {
         provideMcpServerDefinitions: async () => {
-          if (
-            !vscode.workspace
-              .getConfiguration("day")
-              .get<boolean>("mcp.enabled", true)
-          ) {
-            return [];
-          }
-          const project = currentProject();
-          if (!project) {
-            return [];
-          }
-          const cli = resolveCli(project.root);
+          const spec = mcpServerSpec(currentProject()?.root);
           const DefCtor = (vscode as any).McpStdioServerDefinition;
-          if (typeof DefCtor !== "function") {
+          if (!spec || typeof DefCtor !== "function") {
             return [];
           }
-          const def = new DefCtor(
-            "Day",
-            cli.command,
-            [...cli.baseArgs, "--project", project.root, "mcp-server"],
-            {},
-          );
-          if (cli.cwd) {
-            def.cwd = vscode.Uri.file(cli.cwd);
+          const def = new DefCtor("Day", spec.command, spec.args, {});
+          if (spec.cwd) {
+            def.cwd = vscode.Uri.file(spec.cwd);
           }
           return [def];
         },

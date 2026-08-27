@@ -14,9 +14,17 @@
 import * as assert from "assert";
 import * as fs from "fs";
 import * as os from "os";
+import * as path from "path";
 import * as vscode from "vscode";
 
-import { findDayRepoRoot, launchArgs, lintArgs, resolveCli } from "../cli";
+import {
+  findDayRepoRoot,
+  launchArgs,
+  lintArgs,
+  MCP_PROVIDER_ID,
+  mcpServerSpec,
+  resolveCli,
+} from "../cli";
 import { State } from "../config";
 import {
   delegateByKey,
@@ -1160,6 +1168,150 @@ const checks: Check[] = [
           vscode.ConfigurationTarget.Workspace,
         );
       }
+    },
+  ],
+  [
+    "agent mode is offered Day's MCP server for the focused project",
+    () => {
+      const root = process.platform === "win32" ? "c:\\w\\app" : "/w/app";
+      const spec = mcpServerSpec(root);
+      assert.ok(spec, "a Day project must be offered to agent mode");
+      // The tail is what the server reports on. Drop `--project` and a CLI resolved from a
+      // checkout runs with THAT checkout as its cwd, so the agent inspects, builds and drives the
+      // wrong tree — the same trap `lintArgs` exists to close.
+      assert.deepStrictEqual(spec.args.slice(-3), [
+        "--project",
+        root,
+        "mcp-server",
+      ]);
+      const cli = resolveCli(root);
+      assert.strictEqual(spec.command, cli.command);
+      assert.deepStrictEqual(
+        spec.args.slice(0, cli.baseArgs.length),
+        cli.baseArgs,
+        "the resolved CLI's own args have to come before the day subcommand",
+      );
+    },
+  ],
+  [
+    "an MCP server resolved from a checkout runs in that checkout",
+    async () => {
+      // The cwd only exists when the CLI resolves to `cargo run`, and neither CI nor a plain
+      // install has a day checkout to produce one — so the checkout is synthesised. `isDayCheckout`
+      // asks for exactly these two manifests, which is all that is needed to reach the cargo path.
+      const checkout = fs.mkdtempSync(`${os.tmpdir()}/day-checkout-`);
+      fs.mkdirSync(path.join(checkout, "crates", "day-cli"), {
+        recursive: true,
+      });
+      fs.writeFileSync(path.join(checkout, "Cargo.toml"), "");
+      fs.writeFileSync(
+        path.join(checkout, "crates", "day-cli", "Cargo.toml"),
+        "",
+      );
+      const root = process.platform === "win32" ? "c:\\w\\app" : "/w/app";
+      const cfg = vscode.workspace.getConfiguration("day");
+      try {
+        await cfg.update(
+          "cliSource",
+          checkout,
+          vscode.ConfigurationTarget.Workspace,
+        );
+        const spec = mcpServerSpec(root);
+        assert.ok(spec);
+        if (spec.command === "cargo") {
+          // Without this the agent's server would run cargo in the APP, reading its
+          // `.cargo/config` and building whatever that resolves to instead of the CLI.
+          assert.strictEqual(
+            spec.cwd,
+            checkout,
+            "a cargo-run MCP server must run in the checkout, not the app",
+          );
+          assert.ok(
+            spec.args.includes("--manifest-path"),
+            `expected a manifest-path invocation in ${spec.args}`,
+          );
+        } else {
+          // `cargo` is not spawnable from this extension host, so resolveCli deliberately fell
+          // back; the fallback is a plain binary, which needs no cwd.
+          assert.match(
+            spec.command,
+            /day(\.exe)?$/,
+            `unexpected ${spec.command}`,
+          );
+        }
+        // Either way the project still has to ride the command line.
+        assert.deepStrictEqual(spec.args.slice(-3), [
+          "--project",
+          root,
+          "mcp-server",
+        ]);
+      } finally {
+        await cfg.update(
+          "cliSource",
+          undefined,
+          vscode.ConfigurationTarget.Workspace,
+        );
+        fs.rmSync(checkout, { recursive: true, force: true });
+      }
+    },
+  ],
+  [
+    "the MCP server is withheld when there is nothing to serve",
+    async () => {
+      const root = process.platform === "win32" ? "c:\\w\\app" : "/w/app";
+      assert.strictEqual(
+        mcpServerSpec(undefined),
+        undefined,
+        "a window with no Day project has nothing to serve",
+      );
+      const cfg = vscode.workspace.getConfiguration("day");
+      try {
+        await cfg.update(
+          "mcp.enabled",
+          false,
+          vscode.ConfigurationTarget.Workspace,
+        );
+        assert.strictEqual(
+          mcpServerSpec(root),
+          undefined,
+          "day.mcp.enabled must actually withhold the server",
+        );
+      } finally {
+        await cfg.update(
+          "mcp.enabled",
+          undefined,
+          vscode.ConfigurationTarget.Workspace,
+        );
+      }
+      assert.ok(
+        mcpServerSpec(root),
+        "clearing the setting restores the server",
+      );
+    },
+  ],
+  [
+    "the contributed MCP provider id is the one the extension registers",
+    () => {
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const providers = (ext.packageJSON?.contributes
+        ?.mcpServerDefinitionProviders ?? []) as {
+        id: string;
+        label?: string;
+      }[];
+      assert.strictEqual(
+        providers.length,
+        1,
+        "one MCP provider is contributed",
+      );
+      // VS Code pairs the manifest's id with the id passed to
+      // registerMcpServerDefinitionProvider. A mismatch raises nothing anywhere: the provider is
+      // simply never consulted, and agent mode quietly offers no Day tools.
+      assert.strictEqual(providers[0].id, MCP_PROVIDER_ID);
+      assert.ok(
+        providers[0].label,
+        "the provider needs a label to name it in VS Code's MCP servers list",
+      );
     },
   ],
   [
