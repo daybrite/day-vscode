@@ -2,7 +2,7 @@
   "name": "day-vscode",
   "displayName": "Day",
   "description": "Build and run Day apps (cross-platform native UI in Rust) across one or more targets from VS Code.",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "publisher": "daybrite",
   "repository": {
     "type": "git",
