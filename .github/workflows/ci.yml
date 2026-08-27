@@ -480,7 +480,7 @@ jobs:
       # token scoped to the Azure DevOps resource. Microsoft documents this flow for Azure
       # Pipelines only, but the same two steps are what github/vscode-codeql publishes with.
       - name: Azure login (OIDC workload-identity federation)
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}

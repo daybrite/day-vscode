@@ -15,3 +15,6 @@ test/**
 .vscode-test/**
 build/**
 website/**
+# README screenshots: the Marketplace fetches them from the repo over HTTPS, so they
+# never need to ride along in the package.
+media/screenshot-*.png
