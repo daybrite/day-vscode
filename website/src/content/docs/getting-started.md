@@ -9,7 +9,7 @@ section: Extension
 
 This page walks the whole first run: make a project, look at what the extension shows you, and
 launch it. It assumes the extension is installed and the `day` CLI is on your PATH — if not, start
-with [Install and update](./install).
+with [Install and update](/docs/install).
 
 New to Day itself? [What Day is](https://daybrite.dev/docs/overview/) explains the framework in a
 few minutes, and this page will still make sense without it.
@@ -40,7 +40,7 @@ actually supports.
   offered — an app can ship to platforms you build on CI.</figcaption>
 </figure>
 
-[Creating a project](./new-project) covers every question, and what a piece and a part are.
+[Creating a project](/docs/new-project) covers every question, and what a piece and a part are.
 
 Already have a Day project? Just open its folder. The extension activates on `Day.toml`.
 
@@ -81,7 +81,7 @@ buttons, and the status bar shows how many are live.
 **Build** does the same without launching, which is what you want when you only care about compile
 errors. They arrive through the `$rustc` problem matcher and land in the Problems panel.
 
-Running a mobile target? [Simulators, emulators and devices](./devices) covers choosing which one
+Running a mobile target? [Simulators, emulators and devices](/docs/devices) covers choosing which one
 it lands on.
 
 ## 5. When something is missing
@@ -101,11 +101,11 @@ building today is not fully set up, which is fine until you build it.
 
 ## What to look at next
 
-- **[Creating a project](./new-project)** — the wizard, in full
-- **[Simulators, emulators and devices](./devices)** — running on mobile
-- **[Linting](./linting)** — findings in the editor, with quick fixes
-- **[Commands and settings](./reference)** — everything the extension adds
-- **[Troubleshooting](./troubleshooting)** — when the view is empty or a build will not start
+- **[Creating a project](/docs/new-project)** — the wizard, in full
+- **[Simulators, emulators and devices](/docs/devices)** — running on mobile
+- **[Linting](/docs/linting)** — findings in the editor, with quick fixes
+- **[Commands and settings](/docs/reference)** — everything the extension adds
+- **[Troubleshooting](/docs/troubleshooting)** — when the view is empty or a build will not start
 
 And on the framework itself:
 

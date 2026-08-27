@@ -58,7 +58,7 @@ minors are pre-release** (0.5.x). The version alone tells you which one you are 
 
 Open a folder containing a `Day.toml` and look for the Day icon in the activity bar. The view lists
 your project and its targets. If it says *No Day project found* or reports a CLI error instead, the
-[troubleshooting page](./troubleshooting) starts with those two cases.
+[troubleshooting page](/docs/troubleshooting) starts with those two cases.
 
 To confirm which CLI the extension resolved, run **Day: Show Log** from the command palette — the
 Day output channel prints the full command line it uses.

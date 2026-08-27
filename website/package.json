@@ -12,7 +12,9 @@
     "build": "astro build",
     "preview": "astro preview",
     "assemble": "node scripts/assemble-screenshots.mjs",
-    "astro": "astro"
+    "astro": "astro",
+    "linkcheck": "node scripts/linkcheck.mjs",
+    "check": "astro build && node scripts/linkcheck.mjs"
   },
   "dependencies": {
     "astro": "^7.0.6"

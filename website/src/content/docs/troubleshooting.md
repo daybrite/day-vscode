@@ -144,7 +144,7 @@ findings simply reports none — check the Day output channel to tell the two ap
 An empty picker usually means a missing SDK rather than a missing device: the extension shows what
 the CLI can see. Run **Day: Doctor (check toolchains)** for that platform, and set the toolchain
 location if doctor cannot find it — `day.developerDir` for Xcode, `day.androidSdkHome` for the
-Android SDK, `day.ohosNdkHome` for OpenHarmony. [Simulators, emulators and devices](./devices)
+Android SDK, `day.ohosNdkHome` for OpenHarmony. [Simulators, emulators and devices](/docs/devices)
 covers what each one needs.
 
 ## Still stuck

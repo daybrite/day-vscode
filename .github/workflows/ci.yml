@@ -385,6 +385,15 @@ jobs:
           npm ci
           npm run build
 
+      # Every docs page is emitted as `<slug>/index.html`, so a relative `./sibling` link resolves
+      # one level too deep and 404s — invisibly, since the Markdown reads fine and the build is
+      # clean. Thirteen of them shipped that way. This resolves every internal href and fragment
+      # against the files actually built. External links are not fetched: they fail for reasons
+      # unrelated to the commit, and a check that cries wolf gets ignored.
+      - name: Check internal links
+        working-directory: website
+        run: npm run linkcheck
+
       - name: Upload the Pages artifact
         if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
         uses: actions/upload-pages-artifact@v5

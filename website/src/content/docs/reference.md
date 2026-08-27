@@ -40,9 +40,9 @@ All of these are under the **Day** category in the command palette.
 
 | Command | What it does |
 |---|---|
-| New Project… | The [scaffolding wizard](./new-project) — an app, a piece or a part |
+| New Project… | The [scaffolding wizard](/docs/new-project) — an app, a piece or a part |
 | Get Started with Day | Opens the walkthrough |
-| Lint Project | Runs [`day lint`](./linting) and shows the findings in the editor |
+| Lint Project | Runs [`day lint`](/docs/linting) and shows the findings in the editor |
 | Doctor (check toolchains) | Runs `day doctor` in a terminal |
 | Refresh | Re-reads every project |
 | Install the day CLI… | Offers the install routes for your platform |
@@ -59,7 +59,7 @@ commands.
 
 | Setting | Default | What it controls |
 |---|---|---|
-| `day.cliPath` | `day` | Path to the CLI. See [how it resolves](./troubleshooting#how-the-cli-is-resolved) when left at the default. |
+| `day.cliPath` | `day` | Path to the CLI. See [how it resolves](/docs/troubleshooting#how-the-cli-is-resolved) when left at the default. |
 | `day.cliSource` | `""` | Path to a `day` **source checkout**. Every CLI call becomes `cargo run` against it, so edits to the CLI reach the next build with no rebuild step. Takes precedence over `day.cliPath`. |
 
 ### Defaults for a run
