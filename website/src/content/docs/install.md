@@ -11,28 +11,29 @@ The extension drives the `day` CLI. Install the CLI first — [Getting started o
 daybrite.dev](https://daybrite.dev/docs/getting-started/) covers that and the toolchains each
 target needs.
 
+## From the Marketplace
+
+Search for **Day** in the Extensions view, or install it in one line:
+
+```bash
+code --install-extension daybrite.day-vscode
+```
+
+VS Code keeps it current from there. The listing is
+[daybrite.day-vscode](https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode).
+
 ## From a release build
 
-The extension is not on the Marketplace yet, so the `.vsix` attached to each release is the way in.
-Its URL stays the same across versions:
+Every tagged build also attaches a `.vsix`, which is the way to try something before it is
+published. Its URL stays the same across versions:
 
 ```bash
 curl -fLO https://github.com/daybrite/day-vscode/releases/latest/download/day-vscode.vsix
 code --install-extension day-vscode.vsix
 ```
 
-Every tagged build attaches one, and CI validates on every push that the package would pass the
-Marketplace's own checks — so a release `.vsix` is the same artifact that will be published when
-the listing goes live.
-
-## Updating
-
-A `.vsix` install does **not** auto-update. Re-run the two commands above to move to a newer build;
-`--install-extension` replaces the installed copy in place. Watch
-[Releases](https://github.com/daybrite/day-vscode/releases) to hear about new ones.
-
-Once the Marketplace listing is live, VS Code will keep the extension current on its own, and this
-page will say so.
+A `.vsix` install does **not** auto-update — re-run those two commands to move to a newer build,
+and `--install-extension` replaces the installed copy in place.
 
 ## From source
 

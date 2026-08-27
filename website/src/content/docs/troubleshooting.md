@@ -1,7 +1,7 @@
 ---
 title: Troubleshooting
 description: What to check when the Day view is empty, the CLI isn't found, a target is disabled, or a build won't start.
-order: 3
+order: 7
 section: Extension
 ---
 
@@ -46,13 +46,15 @@ it checks.
 
 Knowing the order helps when the wrong binary is picked up:
 
-1. `day.cliPath` set to anything other than the default `day` is used verbatim.
-2. Otherwise, if the workspace is inside the Day repository, `cargo run -q -p day-cli --`.
-3. Otherwise, if a `day/` checkout sits beside the extension's own source, that repo via
+1. `day.cliSource`, if set, wins outright: every call becomes
+   `cargo run --manifest-path <path>/Cargo.toml -q -p day-cli --`.
+2. `day.cliPath` set to anything other than the default `day` is used verbatim.
+3. Otherwise, if the workspace is inside the Day repository, `cargo run -q -p day-cli --`.
+4. Otherwise, if a `day/` checkout sits beside the extension's own source, that repo via
    `--manifest-path`.
-4. Otherwise `day`, expected on `PATH`.
+5. Otherwise `day`, expected on `PATH`.
 
-Steps 2 and 3 build from source on the first run, which takes minutes and looks like a hang. The
+Steps 1, 3 and 4 build from source on the first run, which takes minutes and looks like a hang. The
 output channel shows the `cargo` invocation, so you can tell that case apart.
 
 ## A target is greyed out
@@ -98,6 +100,39 @@ launch, a crashed session — `day stop --all` clears the session file the CLI k
 your build. The tools come from `day mcp-server`, so the CLI has to resolve first: fix any CLI
 error above and the tools follow. [Day for agents](https://daybrite.dev/docs/for-agents/) lists what
 they do.
+
+## Run does nothing, and asks me to tick targets
+
+Run acts on the **focused** project — the one marked `focused` in the Day view. With several
+projects open, focus follows the file you are editing, so opening a file from another project moves
+it. If you ticked targets in one project and then clicked into a file from another, Run finds
+nothing ticked *in the focused one* and says so.
+
+Click the project's row in the Day view to focus it, then Run. Turn the following off with
+`day.followActiveEditor` if you would rather focus only ever change when you click.
+
+## New Project says the CLI cannot describe its options
+
+The wizard asks your `day` CLI what to ask, using `day new --describe`. A CLI older than that flag
+cannot answer, and the command reports it rather than guessing. Update the CLI:
+
+```bash
+cargo install day-cli --force
+```
+
+## Lint reports nothing, or the command errors
+
+`Day: Lint Project` uses `day lint --json`. On an older CLI the command reports that it could not
+run and the output channel has the detail; updating the CLI fixes it. A project with genuinely no
+findings simply reports none — check the Day output channel to tell the two apart.
+
+## The device list is empty
+
+An empty picker usually means a missing SDK rather than a missing device: the extension shows what
+the CLI can see. Run **Day: Doctor (check toolchains)** for that platform, and set the toolchain
+location if doctor cannot find it — `day.developerDir` for Xcode, `day.androidSdkHome` for the
+Android SDK, `day.ohosNdkHome` for OpenHarmony. [Simulators, emulators and devices](./devices)
+covers what each one needs.
 
 ## Still stuck
 

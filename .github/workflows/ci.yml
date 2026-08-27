@@ -348,14 +348,6 @@ jobs:
     permissions:
       contents: read
       actions: read # list and download artifacts from earlier runs
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    concurrency:
-      group: day-vscode-pages
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -399,8 +391,34 @@ jobs:
         with:
           path: website/dist
 
+  # Deployment is its own job for one reason: an environment's protection rules are evaluated when
+  # the JOB STARTS, before any step-level `if` is read. The `github-pages` environment admits only
+  # `main`, so the build job — which merely CONTAINED a main-gated deploy step — was rejected
+  # outright on a tag push: "Tag v0.4.7 is not allowed to deploy to github-pages due to environment
+  # protection rules" (run 33042935539). Keeping `environment:` on a job that cannot start unless
+  # the ref is `main` is what makes the guard and the rule agree.
+  #
+  # The build above still runs on every event, so a change that breaks the site fails the pull
+  # request that broke it, and a tagged release builds the site without trying to publish it.
+  website-deploy:
+    name: website deploy
+    needs: [website]
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    # A job-level block REPLACES the workflow-level one rather than adding to it, so `contents`
+    # has to be restated here — the same trio GitHub's own Pages starter grants.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: day-vscode-pages
+      cancel-in-progress: false
+    steps:
       - name: Deploy to GitHub Pages
-        if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
         id: deploy
         uses: actions/deploy-pages@v5
 

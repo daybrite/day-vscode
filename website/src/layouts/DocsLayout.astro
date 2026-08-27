@@ -46,3 +46,31 @@ const dayLinks: [string, string][] = [
     <article class="prose"><slot /></article>
   </div>
 </BaseLayout>
+
+<style is:global>
+  /* Screenshots in a docs page come as a light/dark pair and CSS picks — the same arrangement the
+     gallery's <Shot> uses, spelled here because a markdown page cannot reach for a component.
+     Dark is the base, so the dark capture is what shows until told otherwise, including when
+     nothing has stamped `data-theme` because scripting is off. */
+  .prose figure.shot {
+    margin: 28px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .prose figure.shot img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .prose figure.shot img.only-light { display: none; }
+  :root[data-theme='light'] .prose figure.shot img.only-light { display: block; }
+  :root[data-theme='light'] .prose figure.shot img.only-dark { display: none; }
+  .prose figure.shot figcaption {
+    color: var(--faint);
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+</style>

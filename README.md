@@ -29,9 +29,9 @@
 <br />
 
 [Day](https://daybrite.dev) builds one app in Rust and ships it as a real native app on macOS,
-Windows, Linux, iOS, Android, HarmonyOS and the web — platform widgets, not a webview. This
-extension puts that loop in your editor: pick the platforms, press Run, and watch them build and
-launch side by side.
+Windows, Linux, iOS, Android, HarmonyOS and the web, each one drawn with that platform's own
+widgets. This extension puts that loop in your editor: pick the platforms, press Run, and watch
+them build and launch side by side.
 
 <br />
 
@@ -58,7 +58,7 @@ ones you want and press Run.
 every step.
 
 - The questions come from the CLI itself, so the platforms offered are exactly the ones your `day`
-  supports — never a stale list baked into an editor plugin.
+  supports.
 - Your own machine's platform arrives preselected.
 - New to Day? The **Get started with Day** walkthrough on VS Code's Welcome page takes it from the
   top.
