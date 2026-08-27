@@ -1,5 +1,12 @@
 ## Unreleased
 
+- Fixed the capture run on all three platforms: it scaffolded a project, opened its `lib.rs`, and
+  then closed every editor — which handed the cockpit to the NEW project on the way out, because
+  focus follows the active editor. Run acts on the focused project, that one had nothing ticked,
+  and the run silently never started. The fixture is made focused again at the moment it matters,
+  and a run that never starts now fails in three minutes with the cockpit's contents in the
+  message, rather than after thirty minutes of silence. The wizard also clears a scaffold left by
+  a previous run, which `day new` otherwise refuses to overwrite.
 - Fixed a flaky capture/e2e run: the extension's first call against a project is
   `day metadata --json`, which resolves the whole dependency graph through `cargo metadata`. On a
   freshly scaffolded fixture that means fetching, which can outlast the 30-second budget the

@@ -15,7 +15,7 @@
 //
 // `--no-run` stops after the UI captures and skips building the app, which takes minutes.
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -320,6 +320,11 @@ try {
 
   enter("driving the New Project wizard");
   const newProjectName = "hello-day";
+  // A leftover from a previous run makes `day new` refuse with `"hello-day" already exists`, and
+  // the wizard then hangs waiting for a project that will never appear. The fixture parent is
+  // deliberately stable — CI keys a cache to it and a local run reuses the build — so the
+  // scaffold target has to be cleared, exactly as `scaffold()` clears the fixture's own.
+  rmSync(join(fixtureParent(work), newProjectName), { recursive: true, force: true });
   await command(win, "Day: New Project"); // typed without the ellipsis; the match is a prefix
 
   await quickInput(win, "what to create");
@@ -431,6 +436,11 @@ try {
   if (RUN_APP) {
     // ── Build and run the host's own combo, through the extension ────────────────────────────
     await command(win, "Day: Focus on Build & Run View");
+    // Re-assert focus HERE, not once after scaffolding: it drifts. Focus follows the active
+    // editor, and `View: Close All Editors` above makes the scaffolded app's `lib.rs` active on
+    // its way out — which quietly hands the cockpit to `hello-day`. Run then acts on that project,
+    // whose targets nobody ticked, and does nothing at all.
+    await focusProject(win, fixtureName);
     await tickTarget(win, COMBO);
     await shot(win, "11-target-ticked", `${COMBO} ticked for Run`);
 
@@ -444,6 +454,19 @@ try {
     const stopAction = row(win, COMBO).locator('a[aria-label="Stop"]');
     let built = false;
     let shotBuilding = false;
+    // Two budgets. The long one is how long a BUILD may take; the short one is how long it may
+    // take to START, and it exists because the failure mode that cost half an hour was a run that
+    // never began — `Run Selected Targets` acting on a project with nothing ticked reports that in
+    // a toast and returns. Silence is the symptom, so silence gets its own, much shorter, clock.
+    //
+    // Keyed on the SAME signal the loop already exits by, which is why a slow build cannot trip
+    // it: the runner registers a target as running the moment `executeTask` returns (runner.ts),
+    // long before anything compiles, and the row's Stop action appears with it. Still being here
+    // after the short budget therefore means no task was ever started. Terminal text is NOT a
+    // usable signal for this — a local run built and launched without ever matching
+    // /Building|Compiling/ in the DOM.
+    const STARTED_MS = 180_000;
+    const startedBy = Date.now() + STARTED_MS;
     const deadline = Date.now() + BUILD_TIMEOUT_MS;
     while (Date.now() < deadline) {
       if ((await stopAction.count()) > 0) {
@@ -454,6 +477,14 @@ try {
       if (!shotBuilding && /Building|Compiling/.test(text)) {
         shotBuilding = true;
         await shot(win, "12-building", "A build running as a VS Code task, with live diagnostics");
+      }
+      if (Date.now() > startedBy) {
+        throw new Error(
+          `${COMBO} never entered the running state within ${STARTED_MS / 1000}s, so the run did ` +
+            `not start. Most likely the ticked target and the FOCUSED project are different ` +
+            `projects — Run acts on the focused one. The cockpit reads:\n  ` +
+            `${(await treeText(win)).join("\n  ")}\nTerminal tail:\n${text.slice(-1200)}`,
+        );
       }
       if (/^\s*error(\[|:)/m.test(text)) {
         throw new Error(`the build reported an error:\n${text.slice(-4000)}`);
