@@ -8,7 +8,7 @@ import * as vscode from "vscode";
 
 import {
   MCP_PROVIDER_ID,
-  mcpServerSpec,
+  mcpServerSpecs,
   renderCommand,
   resolveCli,
   setExtensionRoot,
@@ -80,6 +80,10 @@ export async function activate(
 
   let projects: DayProject[] = [];
   let loadFailures: ProjectLoadFailure[] = [];
+  // Tells VS Code to re-ask for MCP servers. One server is spawned per Day project, so the set
+  // changes whenever the discovered projects do.
+  const mcpServersChanged = new vscode.EventEmitter<void>();
+  context.subscriptions.push(mcpServersChanged);
   // The last failure set we notified about, so a re-scan with the same problem doesn't nag.
   let lastFailureKey = "";
 
@@ -195,8 +199,14 @@ export async function activate(
 
   const refreshProjects = async (): Promise<void> => {
     const scan = await findProjects();
+    const before = projects.map((p) => p.root).join("\n");
     projects = scan.projects;
     loadFailures = scan.failures;
+    // Only on a real change: a re-scan that found the same projects must not churn agent mode's
+    // server list, which re-resolves (and restarts servers) on every event.
+    if (projects.map((p) => p.root).join("\n") !== before) {
+      mcpServersChanged.fire();
+    }
     const root = state.focusedRoot;
     if (
       (!root || !projects.find((p) => p.root === root)) &&
@@ -974,17 +984,26 @@ export async function activate(
   if (typeof lmAny?.registerMcpServerDefinitionProvider === "function") {
     context.subscriptions.push(
       lmAny.registerMcpServerDefinitionProvider(MCP_PROVIDER_ID, {
+        // Without this, VS Code resolves the server list once and keeps it: opening a second Day
+        // app would leave agent mode unable to reach it until the window was reloaded.
+        onDidChangeMcpServerDefinitions: mcpServersChanged.event,
         provideMcpServerDefinitions: async () => {
-          const spec = mcpServerSpec(currentProject()?.root);
           const DefCtor = (vscode as any).McpStdioServerDefinition;
-          if (!spec || typeof DefCtor !== "function") {
+          if (typeof DefCtor !== "function") {
             return [];
           }
-          const def = new DefCtor("Day", spec.command, spec.args, {});
-          if (spec.cwd) {
-            def.cwd = vscode.Uri.file(spec.cwd);
-          }
-          return [def];
+          return mcpServerSpecs(allProjects()).map((spec) => {
+            const def = new DefCtor(
+              spec.label,
+              spec.command,
+              spec.args,
+              spec.env,
+            );
+            if (spec.cwd) {
+              def.cwd = vscode.Uri.file(spec.cwd);
+            }
+            return def;
+          });
         },
       }),
     );

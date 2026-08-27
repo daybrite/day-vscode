@@ -101,6 +101,19 @@ your build. The tools come from `day mcp-server`, so the CLI has to resolve firs
 error above and the tools follow. [Day for agents](https://daybrite.dev/docs/for-agents/) lists what
 they do.
 
+## An agent keeps acting on the wrong project
+
+Each Day project in the window gets its own MCP server, named for the app it drives — **Day: Day
+Rise**, **Day: Day Sketch**. A server is bound to one project for its whole life and the tools take
+no project argument, so picking the right server is how an agent reaches the right app. Every tool
+result opens with a line naming that project, which is the quickest way to see which one you have.
+
+If a plain **Day** server is offered alongside the named ones, it is a leftover: VS Code caches
+each server's tools under a key derived from its label, and an extension update that renames a
+server leaves the old entry behind. It still works, but it is pinned to whichever project was
+focused when it was cached — so an agent that picks it acts on that app whatever you asked for.
+Clear it with **MCP: Reset Cached Tools** from the command palette.
+
 ## Run does nothing, and asks me to tick targets
 
 Run acts on the **focused** project — the one marked `focused` in the Day view. With several

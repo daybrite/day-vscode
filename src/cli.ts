@@ -338,35 +338,101 @@ export function mcpServerArgs(projectRoot: string): string[] {
   return [...projectArgs(projectRoot), "mcp-server"];
 }
 
-/** How to spawn Day's MCP server. */
+/** How to spawn one Day MCP server. */
 export interface McpServerSpec {
+  /** What names this server in VS Code's MCP list — and how an agent picks between projects. */
+  label: string;
   command: string;
   args: string[];
   cwd?: string;
+  /** Extra environment for the server process. */
+  env: Record<string, string>;
+}
+
+/** As much of a Day project's identity as the MCP wiring needs. */
+export interface McpProject {
+  root: string;
+  name: string;
+  title?: string;
+}
+
+/** Last path segment, on either separator — `path.basename` returns the whole string when handed
+ *  a Windows path on a POSIX host, which is exactly the case a test exercises. */
+function baseName(p: string): string {
+  return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 }
 
 /**
- * Resolve the MCP server an agent should talk to for `projectRoot`, or `undefined` when there is
- * nothing to offer — the setting is off, or the window holds no Day project.
+ * Server labels, one per project, disambiguated when two apps share a display name.
+ *
+ * Two identically-named entries in the MCP list would reintroduce the very ambiguity these labels
+ * exist to remove, and it is not hypothetical — a window can hold two checkouts of the same app.
+ */
+function mcpLabels(projects: McpProject[]): string[] {
+  const display = projects.map((p) => p.title?.trim() || p.name);
+  const counts = new Map<string, number>();
+  for (const d of display) {
+    counts.set(d, (counts.get(d) ?? 0) + 1);
+  }
+  return projects.map((p, i) =>
+    (counts.get(display[i]) ?? 0) > 1
+      ? `Day: ${display[i]} (${baseName(p.root)})`
+      : `Day: ${display[i]}`,
+  );
+}
+
+/**
+ * One MCP server per Day project in the window — empty when `day.mcp.enabled` is off, or when the
+ * window holds no Day project.
+ *
+ * Every server is bound to a single project at spawn, because `day mcp-server` takes `--project`
+ * and its tools take no project argument. Serving only the FOCUSED project therefore silently
+ * misdirects any agent asked about a second app in the same window: `day_launch` builds the
+ * focused app instead, and `day_running` reports no sessions for an app the user can see running,
+ * because the session registry lives at `<root>/build/day/sessions.json` and is read under the
+ * bound root. Naming each server after its project is what lets an agent pick the right one.
  *
  * Kept out of the provider registration in `extension.ts` because everything that can be wrong
- * here is a plain value: which project the server reports on, the cwd a `day.cliSource` checkout
- * needs, and whether the setting is honoured at all. The registration itself is then one
- * constructor call over this.
+ * here is a plain value: which project each server reports on, the labels that tell them apart,
+ * the cwd a `day.cliSource` checkout needs, and whether the setting is honoured at all.
  */
-export function mcpServerSpec(projectRoot?: string): McpServerSpec | undefined {
+export function mcpServerSpecs(projects: McpProject[]): McpServerSpec[] {
   const enabled = vscode.workspace
     .getConfiguration("day")
     .get<boolean>("mcp.enabled", true);
-  if (!enabled || !projectRoot) {
-    return undefined;
+  if (!enabled) {
+    return [];
   }
-  const cli = resolveCli(projectRoot);
-  return {
-    command: cli.command,
-    args: [...cli.baseArgs, ...mcpServerArgs(projectRoot)],
-    cwd: cli.cwd,
-  };
+  const labels = mcpLabels(projects);
+  return projects.map((project, i) => {
+    const cli = resolveCli(project.root);
+    return {
+      label: labels[i],
+      command: cli.command,
+      args: [...cli.baseArgs, ...mcpServerArgs(project.root)],
+      cwd: cli.cwd,
+      env: selfCommandEnv(cli),
+    };
+  });
+}
+
+/**
+ * How the server should re-invoke the CLI for each tool call, when that is not simply the binary
+ * it is already running as.
+ *
+ * `day mcp-server` shells back into the CLI for every tool, and by default that means its own
+ * executable. In a `day.cliSource` window the CLI is `cargo run` against the open `day/` checkout,
+ * and the server's executable is the `target/debug/day` cargo produced when the server STARTED —
+ * so without this, a day-cli edit would reach the editor's Build and Run commands but not the
+ * agent's tools, and the same window would be running two different CLIs. Working on `day/` and an
+ * app together in one session is exactly what `scripts/dev.sh` sets up, so the two must agree.
+ *
+ * Empty for a plain binary, where the server's own executable is already the right answer.
+ */
+function selfCommandEnv(cli: DayCli): Record<string, string> {
+  return cli.baseArgs.length > 0
+    ? { DAY_SELF_COMMAND: JSON.stringify([cli.command, ...cli.baseArgs]) }
+    : {};
 }
 
 /** A shell-safe rendering of a command for display in a terminal/log line. */

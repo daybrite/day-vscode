@@ -22,7 +22,7 @@ import {
   launchArgs,
   lintArgs,
   MCP_PROVIDER_ID,
-  mcpServerSpec,
+  mcpServerSpecs,
   resolveCli,
 } from "../cli";
 import { State } from "../config";
@@ -1171,25 +1171,66 @@ const checks: Check[] = [
     },
   ],
   [
-    "agent mode is offered Day's MCP server for the focused project",
+    "agent mode is offered one MCP server per Day project, each naming its own",
     () => {
-      const root = process.platform === "win32" ? "c:\\w\\app" : "/w/app";
-      const spec = mcpServerSpec(root);
-      assert.ok(spec, "a Day project must be offered to agent mode");
-      // The tail is what the server reports on. Drop `--project` and a CLI resolved from a
-      // checkout runs with THAT checkout as its cwd, so the agent inspects, builds and drives the
-      // wrong tree — the same trap `lintArgs` exists to close.
-      assert.deepStrictEqual(spec.args.slice(-3), [
-        "--project",
-        root,
-        "mcp-server",
+      const win = process.platform === "win32";
+      const rise = win ? "c:\\w\\Day-Rise" : "/w/Day-Rise";
+      const sketch = win ? "c:\\w\\Day-Sketch" : "/w/Day-Sketch";
+      const specs = mcpServerSpecs([
+        { root: rise, name: "day-rise", title: "Day Rise" },
+        { root: sketch, name: "day-sketch", title: "Day Sketch" },
       ]);
-      const cli = resolveCli(root);
-      assert.strictEqual(spec.command, cli.command);
+
+      // One per project, not one for the focused project. A window holding several apps otherwise
+      // gives an agent no way to reach the others: the tools take no project argument, so a server
+      // bound to the wrong root builds the wrong app and reports no sessions for one that is
+      // plainly running.
+      assert.strictEqual(specs.length, 2, "every Day project needs a server");
       assert.deepStrictEqual(
-        spec.args.slice(0, cli.baseArgs.length),
-        cli.baseArgs,
-        "the resolved CLI's own args have to come before the day subcommand",
+        specs.map((s) => s.label),
+        ["Day: Day Rise", "Day: Day Sketch"],
+        "each server has to name its project, or the list is unpickable",
+      );
+
+      for (const [i, root] of [rise, sketch].entries()) {
+        // The tail is what each server reports on. Drop `--project` and a CLI resolved from a
+        // checkout runs with THAT checkout as its cwd, so the agent inspects, builds and drives
+        // the wrong tree — the same trap `lintArgs` exists to close.
+        assert.deepStrictEqual(specs[i].args.slice(-3), [
+          "--project",
+          root,
+          "mcp-server",
+        ]);
+        const cli = resolveCli(root);
+        assert.strictEqual(specs[i].command, cli.command);
+        assert.deepStrictEqual(
+          specs[i].args.slice(0, cli.baseArgs.length),
+          cli.baseArgs,
+          "the resolved CLI's own args have to come before the day subcommand",
+        );
+      }
+    },
+  ],
+  [
+    "MCP servers for identically-titled projects stay tellable apart",
+    () => {
+      // Not hypothetical: two checkouts of the same app in one window carry the same title, and
+      // two entries reading "Day: Day Rise" would restore exactly the ambiguity labels remove.
+      const win = process.platform === "win32";
+      const a = win ? "c:\\w\\rise" : "/w/rise";
+      const b = win ? "c:\\w\\rise-fork" : "/w/rise-fork";
+      const specs = mcpServerSpecs([
+        { root: a, name: "day-rise", title: "Day Rise" },
+        { root: b, name: "day-rise", title: "Day Rise" },
+      ]);
+      assert.deepStrictEqual(
+        specs.map((s) => s.label),
+        ["Day: Day Rise (rise)", "Day: Day Rise (rise-fork)"],
+      );
+      // A project with no title falls back to its crate name rather than going unnamed.
+      assert.deepStrictEqual(
+        mcpServerSpecs([{ root: a, name: "day-rise" }]).map((s) => s.label),
+        ["Day: day-rise"],
       );
     },
   ],
@@ -1216,8 +1257,9 @@ const checks: Check[] = [
           checkout,
           vscode.ConfigurationTarget.Workspace,
         );
-        const spec = mcpServerSpec(root);
-        assert.ok(spec);
+        const specs = mcpServerSpecs([{ root, name: "app" }]);
+        assert.strictEqual(specs.length, 1);
+        const spec = specs[0];
         if (spec.command === "cargo") {
           // Without this the agent's server would run cargo in the APP, reading its
           // `.cargo/config` and building whatever that resolves to instead of the CLI.
@@ -1245,6 +1287,30 @@ const checks: Check[] = [
           root,
           "mcp-server",
         ]);
+
+        // The server shells back into the CLI for every tool call, and by default that is its own
+        // executable — the `target/debug/day` cargo produced when it started. In a cliSource
+        // window that is NOT the CLI the editor uses, so a day-cli edit would reach Build and Run
+        // but not the agent's tools, and one window would be running two different CLIs.
+        if (spec.command === "cargo") {
+          const self = spec.env.DAY_SELF_COMMAND;
+          assert.ok(
+            self,
+            "a cargo-run MCP server must tell the server how to re-invoke the CLI",
+          );
+          // Everything before `--project <root> mcp-server` is the CLI invocation itself.
+          assert.deepStrictEqual(
+            JSON.parse(self),
+            [spec.command, ...spec.args.slice(0, -3)],
+            "DAY_SELF_COMMAND must name the very invocation the editor resolved",
+          );
+        } else {
+          assert.deepStrictEqual(
+            spec.env,
+            {},
+            "a plain binary needs no override — the server already runs it",
+          );
+        }
       } finally {
         await cfg.update(
           "cliSource",
@@ -1256,12 +1322,13 @@ const checks: Check[] = [
     },
   ],
   [
-    "the MCP server is withheld when there is nothing to serve",
+    "MCP servers are withheld when there is nothing to serve",
     async () => {
       const root = process.platform === "win32" ? "c:\\w\\app" : "/w/app";
-      assert.strictEqual(
-        mcpServerSpec(undefined),
-        undefined,
+      const one = [{ root, name: "app" }];
+      assert.deepStrictEqual(
+        mcpServerSpecs([]),
+        [],
         "a window with no Day project has nothing to serve",
       );
       const cfg = vscode.workspace.getConfiguration("day");
@@ -1271,10 +1338,10 @@ const checks: Check[] = [
           false,
           vscode.ConfigurationTarget.Workspace,
         );
-        assert.strictEqual(
-          mcpServerSpec(root),
-          undefined,
-          "day.mcp.enabled must actually withhold the server",
+        assert.deepStrictEqual(
+          mcpServerSpecs(one),
+          [],
+          "day.mcp.enabled must actually withhold the servers",
         );
       } finally {
         await cfg.update(
@@ -1283,8 +1350,9 @@ const checks: Check[] = [
           vscode.ConfigurationTarget.Workspace,
         );
       }
-      assert.ok(
-        mcpServerSpec(root),
+      assert.strictEqual(
+        mcpServerSpecs(one).length,
+        1,
         "clearing the setting restores the server",
       );
     },

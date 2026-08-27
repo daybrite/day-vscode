@@ -104,7 +104,7 @@ environment.
 | `day.newProject.openAfterCreate` | `ask` | What to do with a scaffolded project: `ask`, `open`, `openNewWindow` or `addToWorkspace` |
 | `day.showWalkthroughOnStartup` | `false` | Open the walkthrough every time a window opens, rather than once per install |
 | `day.debug.adapter` | `auto` | Which Rust debugger <kbd>F5</kbd> hands the binary to, or `none` to disable delegation |
-| `day.mcp.enabled` | `true` | Register Day's MCP server for agent mode |
+| `day.mcp.enabled` | `true` | Register an MCP server for agent mode — one per Day project in the window, labelled `Day: <app title>` |
 
 ## Task properties
 
