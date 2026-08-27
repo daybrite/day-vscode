@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Fixed the capture run on Windows: focusing a project by clicking its row left the pointer on it,
+  and VS Code's hover for that row — the project's full path — then covered the target checkboxes
+  beneath. Ticking a target clicked the tooltip instead, for thirty seconds. The pointer is parked
+  away after a row click, and a blocked click now retries rather than waiting out its timeout.
 - Fixed the capture run on all three platforms: it scaffolded a project, opened its `lib.rs`, and
   then closed every editor — which handed the cockpit to the NEW project on the way out, because
   focus follows the active editor. Run acts on the focused project, that one had nothing ticked,

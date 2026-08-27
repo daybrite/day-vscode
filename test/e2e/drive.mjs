@@ -229,13 +229,47 @@ function row(win, label) {
  * failure at the step that caused it.
  */
 async function tickTarget(win, combo) {
+  // Whatever was clicked before this may still be showing its hover over the tree.
+  await dismissHover(win);
   const box = row(win, combo).locator('[role="checkbox"]').first();
-  await box.click();
+  // Retried, with a SHORT first attempt. What blocks the click is an overlay, and Playwright's own
+  // retrying does not help against one: it re-attempts into the same obstruction until the full
+  // timeout expires. The windows-xaml leg spent thirty seconds being told
+  // `<p>D:\…\day-fixture</p> from <div class="context-view …"> intercepts pointer events` — the
+  // hover for the project row clicked a moment earlier. Moving the pointer away closes it, so a
+  // failed attempt is worth a second look rather than a longer wait.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await box.click({ timeout: attempt === 1 ? 8000 : 30_000 });
+      break;
+    } catch (e) {
+      if (attempt >= 3) throw e;
+      await dismissHover(win);
+      await win.keyboard.press("Escape");
+    }
+  }
   await win.waitForTimeout(500);
   const checked = await box.getAttribute("aria-checked");
   if (checked !== "true") {
     throw new Error(`${combo} did not tick (aria-checked=${checked})`);
   }
+}
+
+/**
+ * Park the pointer somewhere harmless and wait for any hover it leaves behind to close.
+ *
+ * Clicking a tree row leaves the cursor ON it, and VS Code then opens that row's hover — for a
+ * project row, its full path — as a `.context-view` overlay drawn OVER the rows beneath. The next
+ * click lands on the tooltip instead of the checkbox, which Playwright reports as an interception
+ * and retries until it times out thirty seconds later.
+ */
+async function dismissHover(win) {
+  await win.mouse.move(2, 2);
+  const overlay = win.locator(".context-view").first();
+  // Waiting for it to go beats a fixed sleep: the hover closes on pointer-leave, and how long
+  // that takes is the animation's business, not ours.
+  await overlay.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+  await win.waitForTimeout(150);
 }
 
 /**
@@ -247,6 +281,7 @@ async function tickTarget(win, combo) {
 async function focusProject(win, name) {
   await row(win, name).click();
   await win.waitForTimeout(600);
+  await dismissHover(win);
   const focused = (await treeText(win)).find((t) => t.includes("focused"));
   if (!focused?.startsWith(name)) {
     throw new Error(`clicking ${name} left the focus on ${JSON.stringify(focused)}`);
