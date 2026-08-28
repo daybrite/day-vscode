@@ -1016,17 +1016,17 @@ const checks: Check[] = [
       const sdk = os.tmpdir();
       try {
         await cfg.update(
-          "androidSdkHome",
+          "androidSDKHome",
           sdk,
           vscode.ConfigurationTarget.Workspace,
         );
         await cfg.update(
-          "androidNdkHome",
+          "androidNDKHome",
           `${sdk}/ndk`,
           vscode.ConfigurationTarget.Workspace,
         );
         await cfg.update(
-          "developerDir",
+          "xcodeDeveloperDirectory",
           "/Applications/Xcode.app",
           vscode.ConfigurationTarget.Workspace,
         );
@@ -1059,7 +1059,7 @@ const checks: Check[] = [
 
         // Shell completion adds the trailing slash, and it names the same bundle.
         await cfg.update(
-          "developerDir",
+          "xcodeDeveloperDirectory",
           "/Applications/Xcode.app/",
           vscode.ConfigurationTarget.Workspace,
         );
@@ -1071,7 +1071,7 @@ const checks: Check[] = [
 
         // A Developer dir given directly is already what the variable wants — passed through.
         await cfg.update(
-          "developerDir",
+          "xcodeDeveloperDirectory",
           "/Applications/Xcode-beta.app/Contents/Developer",
           vscode.ConfigurationTarget.Workspace,
         );
@@ -1081,9 +1081,9 @@ const checks: Check[] = [
         );
       } finally {
         for (const key of [
-          "androidSdkHome",
-          "androidNdkHome",
-          "developerDir",
+          "androidSDKHome",
+          "androidNDKHome",
+          "xcodeDeveloperDirectory",
         ]) {
           await cfg.update(
             key,
@@ -1380,6 +1380,57 @@ const checks: Check[] = [
         providers[0].label,
         "the provider needs a label to name it in VS Code's MCP servers list",
       );
+    },
+  ],
+  [
+    "every setting is on one page, common ones first and SDK paths last",
+    () => {
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const cats = ext.packageJSON.contributes.configuration as {
+        title: string;
+        properties: Record<string, { order?: number }>;
+      }[];
+      // One category. Several would split the settings across sub-entries in the settings tree,
+      // which is how a handful of them ended up filed under Scripts / Debugging / AI · Agents
+      // where nobody looking at the Day page would find them.
+      assert.strictEqual(
+        cats.length,
+        1,
+        `expected a single Day settings page, got ${cats.map((c) => c.title).join(", ")}`,
+      );
+
+      const entries = Object.entries(cats[0].properties);
+      const orders = entries.map(([, v]) => v.order);
+      assert.ok(
+        orders.every((o) => typeof o === "number"),
+        "every setting needs an explicit order — VS Code sorts the page by it",
+      );
+      assert.deepStrictEqual(
+        [...orders].sort((a, b) => a! - b!),
+        entries.map((_, i) => i + 1),
+        "orders must be unique and contiguous from 1, or the page order is not what it reads as",
+      );
+
+      // The platform SDK locations are the least-touched settings here — most people never set
+      // one, and the ones who do set it once. They belong after everything else.
+      const byOrder = entries
+        .slice()
+        .sort((a, b) => a[1].order! - b[1].order!)
+        .map(([k]) => k);
+      const paths = [
+        "day.xcodeDeveloperDirectory",
+        "day.androidSDKHome",
+        "day.androidNDKHome",
+        "day.harmonyNDKHome",
+      ];
+      assert.deepStrictEqual(
+        byOrder.slice(-paths.length),
+        paths,
+        "the toolchain paths must sit at the bottom of the page",
+      );
+      // And the everyday one is at the top.
+      assert.strictEqual(byOrder[0], "day.defaultProfile");
     },
   ],
   [

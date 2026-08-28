@@ -148,7 +148,7 @@ function expandHome(p: string): string {
  * Process environment for the task itself (NOT the launched app — that's `extraEnv`/`--env`).
  * The `harmony-arkui` target needs `OHOS_NDK_HOME` at BUILD time (day-arkui-sys compiles its C++ shim
  * with the NDK clang), and a GUI-launched VS Code usually doesn't carry it. Resolve it from the
- * `day.ohosNdkHome` setting or the common install locations, and put the SDK's sibling
+ * `day.harmonyNDKHome` setting or the common install locations, and put the SDK's sibling
  * `toolchains/` (hdc) on the task PATH. Returns {} for non-OHOS targets, deferring to the parent
  * environment.
  */
@@ -170,7 +170,7 @@ export function taskEnv(target: string): Record<string, string> {
  * being handed a path that does not exist.
  */
 function ohosNdk(): string | undefined {
-  const configured = vscode.workspace.getConfiguration("day").get<string>("ohosNdkHome") ?? "";
+  const configured = vscode.workspace.getConfiguration("day").get<string>("harmonyNDKHome") ?? "";
   return [
     expandHome(configured),
     process.env.OHOS_NDK_HOME ?? "",
@@ -201,7 +201,7 @@ export function toolchainEnv(): Record<string, string> {
     return v.length > 0 ? expandHome(v) : undefined;
   };
 
-  const sdk = read("androidSdkHome");
+  const sdk = read("androidSDKHome");
   if (sdk) {
     // BOTH spellings: `ANDROID_HOME` is what day-toolchain reads first, `ANDROID_SDK_ROOT` is
     // what Google's own tooling prefers, and a machine where the two disagree is a machine where
@@ -213,11 +213,11 @@ export function toolchainEnv(): Record<string, string> {
     prependPath(env, path.join(sdk, "platform-tools"));
     prependPath(env, path.join(sdk, "emulator"));
   }
-  const ndk = read("androidNdkHome");
+  const ndk = read("androidNDKHome");
   if (ndk) {
     env.ANDROID_NDK_HOME = ndk;
   }
-  const developer = read("developerDir");
+  const developer = read("xcodeDeveloperDirectory");
   if (developer) {
     env.DEVELOPER_DIR = developerDir(developer);
   }

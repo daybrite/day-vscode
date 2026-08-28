@@ -358,12 +358,12 @@
         {
           "command": "day.lintProject",
           "when": "view == dayTargets && viewItem =~ /^dayProject/",
-          "group": "inline@2"
+          "group": "2_tools@0"
         },
         {
           "command": "day.clean",
           "when": "view == dayTargets && viewItem =~ /^dayProject/",
-          "group": "2_tools@0"
+          "group": "2_tools@1"
         }
       ],
       "commandPalette": [
@@ -428,18 +428,7 @@
     "configuration": [
       {
         "title": "Day",
-        "order": 1,
         "properties": {
-          "day.cliPath": {
-            "type": "string",
-            "default": "day",
-            "markdownDescription": "Path to the `day` CLI binary. If it is left as `day`, a local Day checkout is preferred over `PATH`: the Day repository itself when the workspace is inside one, otherwise a `day/` checkout sitting beside this extension's own `day-vscode/` source. That checkout's `target/debug/day` is used when it has been built, and `cargo run` against it (via `--manifest-path` for the sibling case) when it has not — so a dev host needs no installed CLI."
-          },
-          "day.cliSource": {
-            "type": "string",
-            "default": "",
-            "markdownDescription": "Path to a `day` **source checkout** (the folder holding `Cargo.toml` and `crates/day-cli/`). When set, every CLI invocation runs as `cargo run --manifest-path <path>/Cargo.toml -q -p day-cli --`, so an edit to the CLI is compiled into the very next build, launch or project scan — no rebuild step to remember. Takes precedence over `#day.cliPath#`. Costs roughly a second per invocation for cargo's freshness check, and needs `cargo` on the PATH the editor was started with; without it the checkout's already-built binary is used instead. Leave empty for normal use."
-          },
           "day.defaultProfile": {
             "type": "string",
             "enum": [
@@ -447,38 +436,27 @@
               "release"
             ],
             "default": "debug",
-            "description": "Default build mode for new workspaces."
+            "description": "Default build mode for new workspaces.",
+            "order": 1
           },
           "day.defaultLocale": {
             "type": "string",
             "default": "",
-            "description": "Default BCP-47 locale passed to `--locale` (empty = the app/system default)."
+            "description": "Default BCP-47 locale passed to `--locale` (empty = the app/system default).",
+            "order": 2
           },
-          "day.followActiveEditor": {
+          "day.script.keepAppRunning": {
             "type": "boolean",
             "default": true,
-            "markdownDescription": "Focus the Day project that the active editor's file belongs to. With several apps open in one window, opening a file in one of them points the Configuration rows, the Run button, and the status bar at that project. Turn this off to change focus only from the Day sidebar or `Day: Select Project`."
-          },
-          "day.androidSdkHome": {
-            "type": "string",
-            "default": "",
-            "markdownDescription": "Path to the Android SDK (the directory holding `platform-tools/` and `emulator/`). Exported as both `ANDROID_HOME` and `ANDROID_SDK_ROOT` for every `day` command this extension runs — builds, launches, `day doctor` and device listing — and its `platform-tools/` and `emulator/` are added to the task `PATH`, which is what lets `adb` and the emulator be found when the editor was launched from the Dock and inherited no shell environment. Empty = whatever the environment already provides.\n\nNote: `ANDROID_SDK_HOME` is a different, legacy variable naming the `.android` user directory — it does not select an SDK, so this setting does not export it."
-          },
-          "day.androidNdkHome": {
-            "type": "string",
-            "default": "",
-            "markdownDescription": "Path to the Android NDK used to cross-compile the Rust cdylib for `android-mdc`. Exported as `ANDROID_NDK_HOME`. Empty = the CLI picks the newest NDK inside the SDK."
-          },
-          "day.developerDir": {
-            "type": "string",
-            "default": "",
-            "markdownDescription": "Path to the Xcode installation to build Apple targets with — the `.app` itself, or its `Contents/Developer`. Exported as `DEVELOPER_DIR`, which `xcrun`, `xcodebuild` and `simctl` read directly, so this is how a machine with several Xcodes points `macos-appkit` and `ios-uikit` at one of them. Empty = whatever `xcode-select` points to."
+            "markdownDescription": "Keep the app **running** after a dayscript completes, so you can extend the script and re-drive the live app (`day drive`). Turn off to terminate the app when its script ends, as CI does. Per-task override: the `keepAlive` property on a `day` task in `tasks.json`. Toggle quickly with **Day: Toggle Keep App Running After Script**.",
+            "order": 3
           },
           "day.verbose": {
             "type": "boolean",
             "default": false,
             "markdownDescription": "Run `day build` and `day launch` with `--verbose`, so the terminal shows every sub-command they execute (cargo, gradle, xcodebuild, hvigor, adb, codesign, …) and its raw output, instead of Day's own status lines alone. Useful when a build fails inside one of those tools and the summary does not say why.\n\nSet per project: put it in that app's `.vscode/settings.json` and it applies to that app alone, which is what lets several Day apps in one window run with different settings.",
-            "scope": "resource"
+            "scope": "resource",
+            "order": 4
           },
           "day.logLevel": {
             "type": "string",
@@ -500,7 +478,14 @@
             ],
             "default": "trace",
             "markdownDescription": "Log level for launched apps, passed to every launch as `--env DAY_LOG=<level>`. A native app's lines land in the task terminal; a `web-dom` launch carries the level on the page URL and its lines land in the browser console. A `DAY_LOG` entry in `day.extraEnv` overrides this setting.\n\nSet per project: put it in that app's `.vscode/settings.json` and it applies to that app alone, which is what lets several Day apps in one window run with different settings.",
-            "scope": "resource"
+            "scope": "resource",
+            "order": 5,
+            "keywords": [
+              "DAY_LOG",
+              "logging",
+              "trace",
+              "debug"
+            ]
           },
           "day.extraEnv": {
             "type": "object",
@@ -509,12 +494,19 @@
               "type": "string"
             },
             "description": "Extra environment variables passed to every launch as `--env KEY=VALUE`.\n\nSet per project: put it in that app's `.vscode/settings.json` and it applies to that app alone, which is what lets several Day apps in one window run with different settings.",
-            "scope": "resource"
+            "scope": "resource",
+            "order": 6,
+            "keywords": [
+              "environment",
+              "variables",
+              "env"
+            ]
           },
-          "day.ohosNdkHome": {
-            "type": "string",
-            "default": "",
-            "markdownDescription": "Path to the OpenHarmony NDK `native` directory (e.g. `~/ohos-sdk/native`), exported as `OHOS_NDK_HOME` when building/launching the `harmony-arkui` target. Leave empty to auto-detect: the existing `OHOS_NDK_HOME`, then `~/ohos/ndk-extract/native`, then `~/ohos-sdk/native`. The SDK's sibling `toolchains/` directory (which carries `hdc`) is added to the task `PATH` as well."
+          "day.followActiveEditor": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Focus the Day project that the active editor's file belongs to. With several apps open in one window, opening a file in one of them points the Configuration rows, the Run button, and the status bar at that project. Turn this off to change focus only from the Day sidebar or `Day: Select Project`.",
+            "order": 7
           },
           "day.newProject.openAfterCreate": {
             "type": "string",
@@ -532,31 +524,29 @@
             ],
             "default": "ask",
             "scope": "window",
-            "markdownDescription": "What to do with a project after `Day: New Project` scaffolds it."
+            "markdownDescription": "What to do with a project after `Day: New Project` scaffolds it.",
+            "order": 8
           },
           "day.showWalkthroughOnStartup": {
             "type": "boolean",
             "default": false,
             "scope": "window",
-            "markdownDescription": "Open the **Get started with Day** walkthrough every time a window opens, rather than once per install. `scripts/dev.sh` sets this in the workspace it generates when there is no project to open, so the welcome page is what you land on."
-          }
-        }
-      },
-      {
-        "title": "Scripts",
-        "order": 2,
-        "properties": {
-          "day.script.keepAppRunning": {
+            "markdownDescription": "Open the **Get started with Day** walkthrough every time a window opens, rather than once per install. `scripts/dev.sh` sets this in the workspace it generates when there is no project to open, so the welcome page is what you land on.",
+            "order": 9
+          },
+          "day.mcp.enabled": {
             "type": "boolean",
             "default": true,
-            "markdownDescription": "Keep the app **running** after a dayscript completes, so you can extend the script and re-drive the live app (`day drive`). Turn off to terminate the app when its script ends, as CI does. Per-task override: the `keepAlive` property on a `day` task in `tasks.json`. Toggle quickly with **Day: Toggle Keep App Running After Script**."
-          }
-        }
-      },
-      {
-        "title": "Debugging",
-        "order": 3,
-        "properties": {
+            "description": "Expose Day to AI agents via the Model Context Protocol (`day mcp-server`): build, launch, relaunch, and drive running apps, with screenshots agents can see.",
+            "order": 10,
+            "keywords": [
+              "MCP",
+              "agent",
+              "Model Context Protocol",
+              "Copilot",
+              "tools"
+            ]
+          },
           "day.debug.adapter": {
             "type": "string",
             "enum": [
@@ -574,18 +564,92 @@
               "Never delegate: Start Debugging runs the app without breakpoints."
             ],
             "default": "auto",
-            "markdownDescription": "Which Rust debugger **Start Debugging** hands a desktop target to. Day ships no debug adapter of its own — it builds the app and passes the binary, working directory, and environment to the debugger you already use. Device and browser targets always run without a debugger."
-          }
-        }
-      },
-      {
-        "title": "AI · Agents",
-        "order": 4,
-        "properties": {
-          "day.mcp.enabled": {
-            "type": "boolean",
-            "default": true,
-            "description": "Expose Day to AI agents via the Model Context Protocol (`day mcp-server`): build, launch, relaunch, and drive running apps, with screenshots agents can see."
+            "markdownDescription": "Which Rust debugger **Start Debugging** hands a desktop target to. Day ships no debug adapter of its own — it builds the app and passes the binary, working directory, and environment to the debugger you already use. Device and browser targets always run without a debugger.",
+            "order": 11,
+            "keywords": [
+              "debugger",
+              "LLDB",
+              "CodeLLDB",
+              "breakpoints"
+            ]
+          },
+          "day.cliPath": {
+            "type": "string",
+            "default": "day",
+            "markdownDescription": "Path to the `day` CLI binary. If it is left as `day`, a local Day checkout is preferred over `PATH`: the Day repository itself when the workspace is inside one, otherwise a `day/` checkout sitting beside this extension's own `day-vscode/` source. That checkout's `target/debug/day` is used when it has been built, and `cargo run` against it (via `--manifest-path` for the sibling case) when it has not — so a dev host needs no installed CLI.",
+            "order": 12,
+            "keywords": [
+              "CLI",
+              "day",
+              "binary",
+              "PATH"
+            ]
+          },
+          "day.cliSource": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Path to a `day` **source checkout** (the folder holding `Cargo.toml` and `crates/day-cli/`). When set, every CLI invocation runs as `cargo run --manifest-path <path>/Cargo.toml -q -p day-cli --`, so an edit to the CLI is compiled into the very next build, launch or project scan — no rebuild step to remember. Takes precedence over `#day.cliPath#`. Costs roughly a second per invocation for cargo's freshness check, and needs `cargo` on the PATH the editor was started with; without it the checkout's already-built binary is used instead. Leave empty for normal use.",
+            "order": 13,
+            "keywords": [
+              "CLI",
+              "cargo",
+              "checkout",
+              "development"
+            ]
+          },
+          "day.xcodeDeveloperDirectory": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Sets `DEVELOPER_DIR` for every `day` command this extension runs — the Xcode to build Apple targets with, named either as the `.app` itself or as its `Contents/Developer`. `xcrun`, `xcodebuild` and `simctl` read that variable directly, so this is how a machine with several Xcodes points `macos-appkit` and `ios-uikit` at one of them. Empty = whatever `xcode-select` points to.",
+            "order": 14,
+            "keywords": [
+              "DEVELOPER_DIR",
+              "Xcode",
+              "xcrun",
+              "xcodebuild",
+              "simctl",
+              "iOS",
+              "macOS"
+            ]
+          },
+          "day.androidSDKHome": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Path to the Android SDK (the directory holding `platform-tools/` and `emulator/`). Exported as both `ANDROID_HOME` and `ANDROID_SDK_ROOT` for every `day` command this extension runs — builds, launches, `day doctor` and device listing — and its `platform-tools/` and `emulator/` are added to the task `PATH`, which is what lets `adb` and the emulator be found when the editor was launched from the Dock and inherited no shell environment. Empty = whatever the environment already provides.",
+            "order": 15,
+            "keywords": [
+              "ANDROID_HOME",
+              "ANDROID_SDK_ROOT",
+              "adb",
+              "emulator",
+              "Android"
+            ]
+          },
+          "day.androidNDKHome": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Path to the Android NDK used to cross-compile the Rust cdylib for `android-mdc`. Exported as `ANDROID_NDK_HOME`. Empty = the CLI picks the newest NDK inside the SDK.",
+            "order": 16,
+            "keywords": [
+              "ANDROID_NDK_HOME",
+              "NDK",
+              "Android",
+              "cross-compile"
+            ]
+          },
+          "day.harmonyNDKHome": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Sets `OHOS_NDK_HOME` for the `harmony-arkui` target — the path to the HarmonyOS (OpenHarmony) NDK `native` directory, e.g. `~/ohos-sdk/native`. The SDK's sibling `toolchains/` directory, which carries `hdc`, joins the task `PATH` as well. Leave empty to auto-detect: an existing `OHOS_NDK_HOME`, then `~/ohos/ndk-extract/native`, then `~/ohos-sdk/native`.",
+            "order": 17,
+            "keywords": [
+              "HarmonyOS",
+              "OpenHarmony",
+              "OHOS",
+              "OHOS_NDK_HOME",
+              "hdc",
+              "harmony-arkui"
+            ]
           }
         }
       }

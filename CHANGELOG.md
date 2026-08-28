@@ -1,10 +1,31 @@
 ## Unreleased
 
+- **Breaking — four toolchain settings were renamed.** VS Code builds a setting's title from its
+  key and offers no way to override it, so the titles could only be fixed by renaming:
+
+  | Old | New | Now reads |
+  |---|---|---|
+  | `day.developerDir` | `day.xcodeDeveloperDirectory` | Day: Xcode Developer Directory |
+  | `day.androidSdkHome` | `day.androidSDKHome` | Day: Android SDK Home |
+  | `day.androidNdkHome` | `day.androidNDKHome` | Day: Android NDK Home |
+  | `day.ohosNdkHome` | `day.harmonyNDKHome` | Day: Harmony NDK Home |
+
+  The old keys are gone rather than deprecated, and VS Code ignores a setting it does not know —
+  so a `settings.json` still naming one loses that toolchain path silently. Rename it and the
+  export returns.
+- Every Day setting now sits on one settings page, ordered from the ones people change often to
+  the platform SDK paths most never touch. The **Scripts**, **Debugging** and **AI · Agents**
+  sub-entries are gone: they hid three settings from anyone reading the Day page.
+- Settings carry `keywords`, so searching for what a setting *does* finds it — `DEVELOPER_DIR`,
+  `ANDROID_HOME`, `HarmonyOS`, `hdc`, `adb`, `DAY_LOG` — including the terms that cannot fit in a
+  title.
 - **Day: Clean Project** removes every build artifact of the selected project — `build/`,
   `target/`, and the platform scaffolds' generated outputs (gradle, hvigor, SwiftPM scratch) —
   by calling the new `day clean`, after a modal confirmation and after stopping the project's
   running targets. On the Projects rows' context menu, the panel's overflow menu, and the
   command palette; the status bar reports what was reclaimed.
+- **Day: Lint Project** moved off the project row's inline buttons and into that same
+  context menu, leaving Run and Stop as the row's only inline actions.
 - Fixed the capture run on Windows: focusing a project by clicking its row left the pointer on it,
   and VS Code's hover for that row — the project's full path — then covered the target checkboxes
   beneath. Ticking a target clicked the tooltip instead, for thirty seconds. The pointer is parked

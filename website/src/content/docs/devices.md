@@ -52,9 +52,9 @@ missing device:
 
 | Target | Needs | Where to set it |
 |---|---|---|
-| `ios-uikit` | Xcode, and a booted simulator or a trusted device | `day.developerDir` |
-| `android-mdc` | The Android SDK, with `platform-tools` | `day.androidSdkHome` |
-| `harmony-arkui` | The OpenHarmony SDK, with `hdc` | `day.ohosNdkHome` |
+| `ios-uikit` | Xcode, and a booted simulator or a trusted device | `day.xcodeDeveloperDirectory` |
+| `android-mdc` | The Android SDK, with `platform-tools` | `day.androidSDKHome` |
+| `harmony-arkui` | The OpenHarmony SDK, with `hdc` | `day.harmonyNDKHome` |
 
 Those settings are exported for every `day` command the extension runs, including
 **Day: Doctor** — so Doctor reports on the same toolchains your builds will use. That matters most

@@ -91,10 +91,10 @@ environment.
 
 | Setting | Default | What it controls |
 |---|---|---|
-| `day.androidSdkHome` | `""` | Android SDK directory. Exported as `ANDROID_HOME` **and** `ANDROID_SDK_ROOT`, with its `platform-tools/` and `emulator/` added to the task PATH. (`ANDROID_SDK_HOME` is a different, legacy variable and is deliberately not set.) |
-| `day.androidNdkHome` | `""` | Android NDK directory for the `android-mdc` cross-compile. Exported as `ANDROID_NDK_HOME`. |
-| `day.developerDir` | `""` | The Xcode to build Apple targets with — the `.app` or its `Contents/Developer`. Exported as `DEVELOPER_DIR`, which `xcrun`, `xcodebuild` and `simctl` read directly. |
-| `day.ohosNdkHome` | `""` | OpenHarmony NDK `native` directory for `harmony-arkui`; empty auto-detects. Its `toolchains/` joins the task PATH so `hdc` is found. |
+| `day.androidSDKHome` | `""` | Android SDK directory. Exported as `ANDROID_HOME` **and** `ANDROID_SDK_ROOT`, with its `platform-tools/` and `emulator/` added to the task PATH. (`ANDROID_SDK_HOME` is a different, legacy variable and is deliberately not set.) |
+| `day.androidNDKHome` | `""` | Android NDK directory for the `android-mdc` cross-compile. Exported as `ANDROID_NDK_HOME`. |
+| `day.xcodeDeveloperDirectory` | `""` | The Xcode to build Apple targets with — the `.app` or its `Contents/Developer`. Exported as `DEVELOPER_DIR`, which `xcrun`, `xcodebuild` and `simctl` read directly. |
+| `day.harmonyNDKHome` | `""` | OpenHarmony NDK `native` directory for `harmony-arkui`; empty auto-detects. Its `toolchains/` joins the task PATH so `hdc` is found. |
 
 ### The editor
 

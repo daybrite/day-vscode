@@ -325,6 +325,12 @@ export function lintArgs(projectRoot: string): string[] {
   return [...projectArgs(projectRoot), "lint", "--json"];
 }
 
+/** Args for `day clean` — `--project` explicit, because dev-mode (`cargo run` in the day
+ *  checkout) runs with the CHECKOUT as cwd, where ancestor Day.toml discovery finds nothing. */
+export function cleanArgs(projectRoot: string): string[] {
+  return [...projectArgs(projectRoot), "clean"];
+}
+
 /**
  * The provider id `package.json` contributes under `mcpServerDefinitionProviders`, and the id
  * `registerMcpServerDefinitionProvider` registers with. VS Code matches the two by string, and a

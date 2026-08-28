@@ -68,7 +68,7 @@ requires.
 
 Run **Day: Doctor (check toolchains)**. It reports each toolkit's tools with install instructions
 for whatever is missing, which is faster than reading a linker error. For HarmonyOS specifically,
-set `day.ohosNdkHome` if the NDK isn't in one of the paths doctor probes.
+set `day.harmonyNDKHome` if the NDK isn't in one of the paths doctor probes.
 
 ## The run starts and immediately stops
 
@@ -143,8 +143,8 @@ findings simply reports none — check the Day output channel to tell the two ap
 
 An empty picker usually means a missing SDK rather than a missing device: the extension shows what
 the CLI can see. Run **Day: Doctor (check toolchains)** for that platform, and set the toolchain
-location if doctor cannot find it — `day.developerDir` for Xcode, `day.androidSdkHome` for the
-Android SDK, `day.ohosNdkHome` for OpenHarmony. [Simulators, emulators and devices](/docs/devices)
+location if doctor cannot find it — `day.xcodeDeveloperDirectory` for Xcode, `day.androidSDKHome` for the
+Android SDK, `day.harmonyNDKHome` for OpenHarmony. [Simulators, emulators and devices](/docs/devices)
 covers what each one needs.
 
 ## Still stuck

@@ -7,6 +7,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 import {
+  cleanArgs,
   MCP_PROVIDER_ID,
   mcpServerSpecs,
   renderCommand,
@@ -773,7 +774,7 @@ export async function activate(
       await runner.stop(root, target);
     }
     const cli = resolveCli(root);
-    const args = [...cli.baseArgs, "clean"];
+    const args = [...cli.baseArgs, ...cleanArgs(root)];
     const summary = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Window, title: "Day: cleaning" },
       () =>
@@ -791,7 +792,7 @@ export async function activate(
               output.appendLine(stdout.trim());
               if (err) {
                 output.appendLine(
-                  `✗ ${renderCommand(cli, ["clean"])}: ${stderr.trim() || err.message}`,
+                  `✗ ${renderCommand(cli, args.slice(cli.baseArgs.length))}: ${stderr.trim() || err.message}`,
                 );
                 resolve(undefined);
                 return;
