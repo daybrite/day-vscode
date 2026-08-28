@@ -750,6 +750,83 @@ export async function activate(
     }),
   );
 
+  // Destructive, so it confirms first (a modal, not a toast — the whole point is that a
+  // misclick removes nothing). The CLI owns the artifact list (`day clean` stops recorded
+  // sessions and removes build/, target/, and the platform scaffolds' generated outputs);
+  // the extension only stops ITS tracked runs first so terminals and tree state agree.
+  const cleanProject = async (root: string): Promise<void> => {
+    const pick = await vscode.window.showWarningMessage(
+      `Remove all build artifacts in ${path.basename(root)}?`,
+      {
+        modal: true,
+        detail:
+          "Deletes build/, target/, and the platform scaffolds' generated outputs " +
+          "(gradle, hvigor, SwiftPM scratch), and stops anything running. " +
+          "Sources, IDE state, and machine-local config stay.",
+      },
+      "Clean",
+    );
+    if (pick !== "Clean") {
+      return;
+    }
+    for (const target of runner.runningIn(root)) {
+      await runner.stop(root, target);
+    }
+    const cli = resolveCli(root);
+    const args = [...cli.baseArgs, "clean"];
+    const summary = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Window, title: "Day: cleaning" },
+      () =>
+        new Promise<string | undefined>((resolve) => {
+          childProcess.execFile(
+            cli.command,
+            args,
+            {
+              cwd: cli.cwd ?? root,
+              // Tens of gigabytes of build trees take a while to unlink.
+              timeout: 600_000,
+              env: { ...process.env, ...toolchainEnv() },
+            },
+            (err, stdout, stderr) => {
+              output.appendLine(stdout.trim());
+              if (err) {
+                output.appendLine(
+                  `✗ ${renderCommand(cli, ["clean"])}: ${stderr.trim() || err.message}`,
+                );
+                resolve(undefined);
+                return;
+              }
+              // The CLI's closing status line ("Cleaned 5 director(ies), 3.6 GiB
+              // reclaimed") is the summary; strip the alignment padding and any color.
+              // eslint-disable-next-line no-control-regex -- stripping ANSI color IS matching the ESC byte
+              const ansi = /\u001b\[[0-9;]*m/g;
+              const lines = stdout.replace(ansi, "").trim().split("\n");
+              resolve(lines[lines.length - 1]?.trim());
+            },
+          );
+        }),
+    );
+    if (!summary) {
+      vscode.window.showErrorMessage(
+        "Day: `day clean` failed — see the Day output channel.",
+      );
+      output.show(true);
+      return;
+    }
+    vscode.window.setStatusBarMessage(`Day: ${summary}`, 6000);
+  };
+
+  register("day.clean", (node?: Node) =>
+    guard(async () => {
+      const root = configRoot(node);
+      if (!root) {
+        vscode.window.showInformationMessage("Open a Day project first.");
+        return;
+      }
+      await cleanProject(root);
+    }),
+  );
+
   // Runs after a quick fix's edit has been applied. The CLI reads files from DISK, so the buffer
   // has to be saved before re-checking or the next run would report what the fix just removed.
   register("day.relintAfterFix", (uri?: vscode.Uri) =>

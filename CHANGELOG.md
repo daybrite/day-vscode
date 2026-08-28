@@ -1,5 +1,10 @@
 ## Unreleased
 
+- **Day: Clean Project** removes every build artifact of the selected project — `build/`,
+  `target/`, and the platform scaffolds' generated outputs (gradle, hvigor, SwiftPM scratch) —
+  by calling the new `day clean`, after a modal confirmation and after stopping the project's
+  running targets. On the Projects rows' context menu, the panel's overflow menu, and the
+  command palette; the status bar reports what was reclaimed.
 - Fixed the capture run on Windows: focusing a project by clicking its row left the pointer on it,
   and VS Code's hover for that row — the project's full path — then covered the target checkboxes
   beneath. Ticking a target clicked the tooltip instead, for thirty seconds. The pointer is parked

@@ -154,6 +154,12 @@
         "icon": "$(search-fuzzy)"
       },
       {
+        "command": "day.clean",
+        "title": "Clean Project",
+        "category": "Day",
+        "icon": "$(trash)"
+      },
+      {
         "command": "day.doctor",
         "title": "Doctor (check toolchains)",
         "category": "Day",
@@ -293,6 +299,11 @@
           "group": "2_tools@0"
         },
         {
+          "command": "day.clean",
+          "when": "view == dayTargets",
+          "group": "2_tools@1"
+        },
+        {
           "command": "day.doctor",
           "when": "view == dayTargets",
           "group": "2_tools@1"
@@ -348,6 +359,11 @@
           "command": "day.lintProject",
           "when": "view == dayTargets && viewItem =~ /^dayProject/",
           "group": "inline@2"
+        },
+        {
+          "command": "day.clean",
+          "when": "view == dayTargets && viewItem =~ /^dayProject/",
+          "group": "2_tools@0"
         }
       ],
       "commandPalette": [

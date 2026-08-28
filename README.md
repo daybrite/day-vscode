@@ -73,6 +73,9 @@ every step.
   whatever is missing.
 - **Day: Lint Project** draws findings on the lines they name — a missing translation, a route
   nothing declares, an undeclared permission — with quick fixes where the repair is unambiguous.
+- **Day: Clean Project** removes every build artifact — `build/`, `target/`, and the platform
+  scaffolds' generated outputs — via `day clean`, confirming first and reporting the space it
+  reclaimed.
 - **F5** builds a desktop target and hands the binary to a Rust debugger you already have, so
   breakpoints in `.rs` files are real ones.
 
