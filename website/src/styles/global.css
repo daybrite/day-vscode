@@ -28,7 +28,6 @@
   --hover: rgba(255, 255, 255, 0.05);
   --hover-strong: rgba(255, 255, 255, 0.09);
 
-  --grad-day: linear-gradient(115deg, #ffc861 0%, #ff8f5e 38%, #6aa4ff 100%);
 
   /* Per-target platform accents, used wherever the site names a platform (landing grid,
      gallery captions, hero carousel, docs prose). The palette is the iOS system palette
@@ -194,12 +193,6 @@ code, pre { font-family: var(--mono); }
   white-space: nowrap;
 }
 .btn:hover { transform: translateY(-1px); }
-.btn-primary {
-  background: var(--grad-day);
-  color: #14120c;
-  box-shadow: 0 12px 30px -12px rgba(255, 160, 90, 0.6);
-}
-.btn-primary:hover { color: #14120c; box-shadow: 0 16px 40px -12px rgba(255, 160, 90, 0.75); }
 .btn-ghost {
   background: var(--hover);
   border-color: var(--border);
