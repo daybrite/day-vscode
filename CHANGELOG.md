@@ -1,5 +1,17 @@
 ## Unreleased
 
+- **An installed `day` is no longer a prerequisite.** **Day: Install the day CLI…** — and the
+  walkthrough's new first step — can build one from source with `cargo install --git`, into the
+  extension's own storage. Nothing joins your `PATH`, a `day` you installed yourself is untouched,
+  and deleting the storage folder undoes it. `resolveCli` finds it after the checkouts and ahead of
+  `PATH`.
+- **`day.cliVersion`** decides what that builds: `main`, or any git tag or revision. It defaults to
+  `main`, because releases still trail the branch and the extension regularly needs a CLI change
+  before one ships — version skew becomes a setting rather than a support thread. Selecting the
+  newest tagged release is implemented and tested but switched off behind
+  `DEFAULT_TO_NEWEST_RELEASE`; it becomes the default once releases are regular enough to be the
+  better starting point. The build needs a Rust toolchain, which every Day app needs anyway; the
+  prebuilt-binary routes are still offered for anyone who would rather not compile.
 - **Breaking — four toolchain settings were renamed.** VS Code builds a setting's title from its
   key and offers no way to override it, so the titles could only be fixed by renaming:
 

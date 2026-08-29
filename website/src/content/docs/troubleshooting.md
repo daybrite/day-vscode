@@ -52,7 +52,12 @@ Knowing the order helps when the wrong binary is picked up:
 3. Otherwise, if the workspace is inside the Day repository, `cargo run -q -p day-cli --`.
 4. Otherwise, if a `day/` checkout sits beside the extension's own source, that repo via
    `--manifest-path`.
-5. Otherwise `day`, expected on `PATH`.
+5. Otherwise, a CLI this extension built from source (**Day: Install the day CLI…**), which lives
+   in its own storage and is pinned by `day.cliVersion`.
+6. Otherwise `day`, expected on `PATH`.
+
+Step 5 sits ahead of `PATH` deliberately: it is the version you asked for by setting. If you would
+rather a `day` of your own won, name it in `day.cliPath`, which beats both.
 
 Steps 1, 3 and 4 build from source on the first run, which takes minutes and looks like a hang. The
 output channel shows the `cargo` invocation, so you can tell that case apart.

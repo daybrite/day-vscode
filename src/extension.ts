@@ -13,6 +13,7 @@ import {
   renderCommand,
   resolveCli,
   setExtensionRoot,
+  setGlobalStorage,
 } from "./cli";
 import { State } from "./config";
 import { DayConfigProvider, DayDebugAdapterFactory } from "./debug";
@@ -59,6 +60,9 @@ export async function activate(
   // Record where the extension is loaded from, so the CLI resolver can find a peer `day/` repo
   // when running from a source checkout (see cli.ts `findPeerDayRepo`). Must precede any scan.
   setExtensionRoot(context.extensionPath);
+  // Where a CLI this extension builds from source lives, so `resolveCli` can find it with no
+  // installed `day` anywhere. Must also precede any scan.
+  setGlobalStorage(context.globalStorageUri.fsPath);
 
   const state = new State(context.workspaceState);
   const runner = new Runner(state);
@@ -191,7 +195,7 @@ export async function activate(
       if (choice === "Show Log") {
         output.show(true);
       } else if (choice === "Install the day CLI") {
-        void promptToInstall();
+        void promptToInstall(context.globalStorageUri.fsPath);
       } else if (choice === "Set the path" || choice === "Open Settings") {
         void vscode.commands.executeCommand("day.openSettings");
       }
@@ -380,7 +384,9 @@ export async function activate(
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   };
 
-  register("day.installCli", () => promptToInstall());
+  register("day.installCli", () =>
+    promptToInstall(context.globalStorageUri.fsPath),
+  );
 
   register("day.run", () =>
     guard(async () => {

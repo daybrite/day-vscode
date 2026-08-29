@@ -573,11 +573,27 @@
               "breakpoints"
             ]
           },
+          "day.cliVersion": {
+            "type": "string",
+            "default": "main",
+            "markdownDescription": "Which day-cli **Day: Install the day CLI…** builds when it installs one from source.\n\n- `main` — the tip of the development branch, and the default for now. Day's tagged releases still trail the branch, and the extension regularly needs a CLI change before it is released.\n- A git tag or revision, e.g. `v0.3.0` — pins the build to exactly that.\n- Empty follows the default, which is `main` today and will become the newest tagged release once releases are regular enough to be the better starting point.\n\nThe build goes into this extension's own storage, so it changes nothing on your `PATH` and leaves a `day` you installed yourself alone — that one still wins if `#day.cliPath#` names it. Changing this does not rebuild anything; run the install command again.",
+            "keywords": [
+              "version",
+              "main",
+              "tag",
+              "release",
+              "source",
+              "cargo",
+              "git",
+              "CLI"
+            ],
+            "order": 12
+          },
           "day.cliPath": {
             "type": "string",
             "default": "day",
             "markdownDescription": "Path to the `day` CLI binary. If it is left as `day`, a local Day checkout is preferred over `PATH`: the Day repository itself when the workspace is inside one, otherwise a `day/` checkout sitting beside this extension's own `day-vscode/` source. That checkout's `target/debug/day` is used when it has been built, and `cargo run` against it (via `--manifest-path` for the sibling case) when it has not — so a dev host needs no installed CLI.",
-            "order": 12,
+            "order": 13,
             "keywords": [
               "CLI",
               "day",
@@ -589,7 +605,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Path to a `day` **source checkout** (the folder holding `Cargo.toml` and `crates/day-cli/`). When set, every CLI invocation runs as `cargo run --manifest-path <path>/Cargo.toml -q -p day-cli --`, so an edit to the CLI is compiled into the very next build, launch or project scan — no rebuild step to remember. Takes precedence over `#day.cliPath#`. Costs roughly a second per invocation for cargo's freshness check, and needs `cargo` on the PATH the editor was started with; without it the checkout's already-built binary is used instead. Leave empty for normal use.",
-            "order": 13,
+            "order": 14,
             "keywords": [
               "CLI",
               "cargo",
@@ -601,7 +617,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Sets `DEVELOPER_DIR` for every `day` command this extension runs — the Xcode to build Apple targets with, named either as the `.app` itself or as its `Contents/Developer`. `xcrun`, `xcodebuild` and `simctl` read that variable directly, so this is how a machine with several Xcodes points `macos-appkit` and `ios-uikit` at one of them. Empty = whatever `xcode-select` points to.",
-            "order": 14,
+            "order": 15,
             "keywords": [
               "DEVELOPER_DIR",
               "Xcode",
@@ -616,7 +632,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Path to the Android SDK (the directory holding `platform-tools/` and `emulator/`). Exported as both `ANDROID_HOME` and `ANDROID_SDK_ROOT` for every `day` command this extension runs — builds, launches, `day doctor` and device listing — and its `platform-tools/` and `emulator/` are added to the task `PATH`, which is what lets `adb` and the emulator be found when the editor was launched from the Dock and inherited no shell environment. Empty = whatever the environment already provides.",
-            "order": 15,
+            "order": 16,
             "keywords": [
               "ANDROID_HOME",
               "ANDROID_SDK_ROOT",
@@ -629,7 +645,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Path to the Android NDK used to cross-compile the Rust cdylib for `android-mdc`. Exported as `ANDROID_NDK_HOME`. Empty = the CLI picks the newest NDK inside the SDK.",
-            "order": 16,
+            "order": 17,
             "keywords": [
               "ANDROID_NDK_HOME",
               "NDK",
@@ -641,7 +657,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Sets `OHOS_NDK_HOME` for the `harmony-arkui` target — the path to the HarmonyOS (OpenHarmony) NDK `native` directory, e.g. `~/ohos-sdk/native`. The SDK's sibling `toolchains/` directory, which carries `hdc`, joins the task `PATH` as well. Leave empty to auto-detect: an existing `OHOS_NDK_HOME`, then `~/ohos/ndk-extract/native`, then `~/ohos-sdk/native`.",
-            "order": 17,
+            "order": 18,
             "keywords": [
               "HarmonyOS",
               "OpenHarmony",
@@ -831,6 +847,17 @@
         "title": "Get started with Day",
         "description": "Build one app in Rust and ship it natively on every desktop and mobile platform. [daybrite.dev](https://daybrite.dev)",
         "steps": [
+          {
+            "id": "install-cli",
+            "title": "Get the day CLI",
+            "description": "Every build, launch and check runs through the `day` CLI. If you have not got one, this builds it from source at the version `day.cliVersion` names — into this extension's own storage, so nothing on your PATH changes.\n[Install the day CLI](command:day.installCli)",
+            "media": {
+              "markdown": "walkthroughs/new-project.md"
+            },
+            "completionEvents": [
+              "onCommand:day.installCli"
+            ]
+          },
           {
             "id": "new-project",
             "title": "Create a Day project",

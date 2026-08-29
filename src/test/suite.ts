@@ -36,7 +36,12 @@ import { editFor, Lint, mapFindings } from "../lint";
 import { composeArgs, describeSpec, visibleFields } from "../newproject";
 import { catalog } from "../targets";
 import { toolchainEnv } from "../tasks";
-import { installRoutes } from "../install";
+import {
+  installRoutes,
+  managedCliDir,
+  resolveSourceVersion,
+  sourceInstallCommand,
+} from "../install";
 
 /** An in-memory Memento, so the selection store can be exercised without touching the real one. */
 function fakeMemento(): vscode.Memento {
@@ -1379,6 +1384,72 @@ const checks: Check[] = [
       assert.ok(
         providers[0].label,
         "the provider needs a label to name it in VS Code's MCP servers list",
+      );
+    },
+  ],
+  [
+    "the CLI can be built from source at the version the setting names",
+    async () => {
+      const root =
+        process.platform === "win32" ? "c:\\store\\cli" : "/store/cli";
+      const tags = async () => ["v0.9.1", "v0.9.0", "v0.3.0"];
+
+      // Unset follows the default, which is `main` today. Asserted against the DECLARED default
+      // rather than a literal, so the two cannot drift apart: the setting's default and what an
+      // empty value resolves to have to agree, or clearing the field changes what gets built.
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const declared = ext.packageJSON.contributes.configuration[0].properties[
+        "day.cliVersion"
+      ].default as string;
+      assert.strictEqual(declared, "main");
+      assert.deepStrictEqual((await resolveSourceVersion("", tags)).ref, [
+        "--branch",
+        "main",
+      ]);
+
+      // The newest-release path is switched off, not deleted — Day's releases still trail `main`.
+      // Exercised here so it still works on the day the flag flips; see DEFAULT_TO_NEWEST_RELEASE.
+      const latest = await resolveSourceVersion("", tags, true);
+      assert.deepStrictEqual(latest.ref, ["--tag", "v0.9.1"]);
+
+      // `main` is a BRANCH — passing it as `--tag main` would fail, since no such tag exists.
+      assert.deepStrictEqual((await resolveSourceVersion("main", tags)).ref, [
+        "--branch",
+        "main",
+      ]);
+      // Anything else is taken literally, so a tag and a bare revision both work.
+      assert.deepStrictEqual((await resolveSourceVersion("v0.3.0", tags)).ref, [
+        "--tag",
+        "v0.3.0",
+      ]);
+      assert.deepStrictEqual((await resolveSourceVersion(" main ", tags)).ref, [
+        "--branch",
+        "main",
+      ]);
+
+      // On the release path, no reachable tags must say so rather than build something arbitrary.
+      await assert.rejects(() =>
+        resolveSourceVersion("", async () => [], true),
+      );
+
+      const command = sourceInstallCommand(latest, root);
+      assert.ok(command.startsWith("cargo install --git "));
+      assert.ok(command.includes("--tag v0.9.1"));
+      // `--root` is what keeps this out of ~/.cargo/bin and off the user's PATH; `--force` is what
+      // lets a second install replace the first, which is how changing the version takes effect.
+      assert.ok(command.includes("--force"), command);
+      assert.ok(
+        command.includes(root) || command.includes(JSON.stringify(root)),
+        command,
+      );
+      assert.ok(command.trim().endsWith("day-cli"), command);
+
+      // The binary the install produces is the one resolveCli looks for.
+      assert.strictEqual(
+        managedCliDir(root),
+        path.join(root, "cli"),
+        "the managed CLI lives under the extension's storage, not beside it",
       );
     },
   ],

@@ -59,6 +59,7 @@ commands.
 
 | Setting | Default | What it controls |
 |---|---|---|
+| `day.cliVersion` | `main` | Which day-cli **Day: Install the day CLI…** builds from source. `main` = the development branch, anything else = that git tag or revision, empty = the default. `main` for now because releases still trail the branch; the default becomes the newest release once they do not. The build goes into the extension's own storage, not onto your `PATH`. |
 | `day.cliPath` | `day` | Path to the CLI. See [how it resolves](/docs/troubleshooting#how-the-cli-is-resolved) when left at the default. |
 | `day.cliSource` | `""` | Path to a `day` **source checkout**. Every CLI call becomes `cargo run` against it, so edits to the CLI reach the next build with no rebuild step. Takes precedence over `day.cliPath`. |
 

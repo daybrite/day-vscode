@@ -21,6 +21,8 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 
+import { managedCliBinary } from "./install";
+
 // Where this extension is loaded from, captured once at activation. When it runs from source
 // beside a `day/` checkout (an `--extensionDevelopmentPath` dev host in the daybrite monorepo),
 // `resolveCli` can build the CLI straight from that peer repo — see `findPeerDayRepo`.
@@ -29,6 +31,15 @@ let extensionRoot: string | undefined;
 /** Record the extension's own directory (call once from `activate`). */
 export function setExtensionRoot(dir: string): void {
   extensionRoot = dir;
+}
+
+// The extension's global storage, where `Day: Install the day CLI…` puts a CLI it built from
+// source. Recorded at activation so `resolveCli` can fall back to it with no installed `day`.
+let globalStorage: string | undefined;
+
+/** Record the extension's global storage directory (call once from `activate`). */
+export function setGlobalStorage(dir: string): void {
+  globalStorage = dir;
 }
 
 export interface DayCli {
@@ -142,7 +153,7 @@ function isDayCheckout(dir: string): boolean {
  *  Checking up front lets `day.cliSource` fall back to the checkout's built binary instead of
  *  failing every CLI call with ENOENT. */
 let cargoOnPath: boolean | undefined;
-function hasCargo(): boolean {
+export function hasCargo(): boolean {
   if (cargoOnPath === undefined) {
     const exe = process.platform === "win32" ? "cargo.exe" : "cargo";
     const dirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
@@ -233,6 +244,14 @@ export function resolveCli(projectDir?: string): DayCli {
       ["run", "--manifest-path", manifest, "-q", "-p", "day-cli", "--"],
       `cargo run --manifest-path ${manifest} -q -p day-cli --`,
     );
+  }
+
+  // A CLI this extension built from source (Day: Install the day CLI…). After the checkouts,
+  // which are a deliberate local override, but ahead of PATH: it is pinned to `day.cliVersion`,
+  // and it is what lets the extension work on a machine with no `day` installed at all.
+  const managed = globalStorage && managedCliBinary(globalStorage);
+  if (managed) {
+    return { command: managed, baseArgs: [], display: managed };
   }
 
   return { command: "day", baseArgs: [], display: "day" };
