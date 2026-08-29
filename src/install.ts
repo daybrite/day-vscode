@@ -121,8 +121,11 @@ export function sourceInstallCommand(
 export interface InstallRoute {
   /** Short label for a quick pick. */
   label: string;
-  /** What it does and what it needs, one line. */
+  /** What it does and what it needs. ONE SHORT LINE: a quick pick truncates the rest. */
   detail: string;
+  /** The dimmed column beside the label — a name, not the command, which is long enough to be
+   *  cut mid-flag and reads as noise when it is. The terminal shows the real thing. */
+  description: string;
   /** The command, exactly as it would be typed. */
   command: string;
   /** Shell to run it in, when the platform's default is wrong for the command. */
@@ -137,8 +140,6 @@ const PS_INSTALLER =
   'powershell -ExecutionPolicy Bypass -c "irm ' +
   'https://github.com/daybrite/day/releases/latest/download/day-installer.ps1 | iex"';
 
-const CARGO = "cargo install day-cli";
-
 /**
  * The PATH routes for a platform, best first.
  *
@@ -149,31 +150,27 @@ const CARGO = "cargo install day-cli";
 export function installRoutes(
   platform: NodeJS.Platform = process.platform,
 ): InstallRoute[] {
-  const cargo: InstallRoute = {
-    label: "cargo install day-cli",
-    detail: "From crates.io. Needs a Rust toolchain, and compiles the CLI (a few minutes).",
-    command: CARGO,
-  };
-
-  if (platform === "win32") {
-    return [
-      {
-        label: "Run the Windows installer",
-        detail: "Downloads a prebuilt binary and adds it to your PATH. No Rust toolchain needed.",
-        command: PS_INSTALLER,
-      },
-      cargo,
-    ];
-  }
-
-  const routes: InstallRoute[] = [
-    {
-      label: "Run the install script",
-      detail: "Downloads a prebuilt binary into ~/.cargo/bin or ~/.local/bin. No Rust needed.",
-      command: SH_INSTALLER,
-    },
-  ];
-  return [...routes, cargo];
+  // Only the prebuilt installer. `cargo install day-cli` used to sit here too, but its one
+  // distinction from the managed release row above it was landing on PATH — and this route does
+  // that without a Rust toolchain and without a multi-minute compile, so it was strictly worse at
+  // the only job that made it a separate choice.
+  return platform === "win32"
+    ? [
+        {
+          label: "Run the Windows installer",
+          detail: "Prebuilt binary onto your PATH. No Rust needed.",
+          description: "day-installer.ps1",
+          command: PS_INSTALLER,
+        },
+      ]
+    : [
+        {
+          label: "Run the install script",
+          detail: "Prebuilt binary onto your PATH. No Rust needed.",
+          description: "day-installer.sh",
+          command: SH_INSTALLER,
+        },
+      ];
 }
 
 /** The docs page that explains all of this at length. */
@@ -395,7 +392,7 @@ export function installChoices(
     out.push({
       label: "Install the latest release (crates.io)",
       detail:
-        "The newest published day-cli, into this extension's own storage. Nothing joins your PATH, and a `day` you installed yourself is left alone.",
+        "Managed by this extension. Nothing joins your PATH.",
       description: "cargo install day-cli",
       version: "",
     });
@@ -405,7 +402,7 @@ export function installChoices(
       out.push({
         label: `Install ${pinned} (day.cliVersion)`,
         detail:
-          "The revision `day.cliVersion` pins, built from the repository into this extension's own storage.",
+          "The revision `day.cliVersion` pins, managed here.",
         description: "cargo install --git … --tag",
         version: pinned,
       });
@@ -415,8 +412,7 @@ export function installChoices(
     out.push({
       label: r.label,
       detail: r.detail,
-      description:
-        r.command.length > 60 ? `${r.command.slice(0, 57)}…` : r.command,
+      description: r.description,
       route: r,
     });
   }
@@ -424,14 +420,14 @@ export function installChoices(
     out.push({
       label: "Install from Source (main branch)",
       detail:
-        "Builds day-cli from the development branch into this extension's own storage — for a CLI change that has not been released yet. Needs a Rust toolchain.",
+        "The development branch. Needs Rust, and a few minutes.",
       description: "cargo install --git … --branch main",
       version: "main",
     });
   }
   out.push({
     label: "Open the install instructions",
-    detail: "Read them on daybrite.dev instead of running anything now.",
+    detail: "Read them on daybrite.dev instead.",
     description: DOCS_URL,
   });
   return out;

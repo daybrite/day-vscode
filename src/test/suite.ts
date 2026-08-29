@@ -287,7 +287,7 @@ const checks: Check[] = [
     },
   ],
   [
-    "day.logLevel rides every run task as --env DAY_LOG, trace by default, extraEnv winning",
+    "day.logLevel rides every run task as --env DAY_LOG, debug by default, extraEnv winning",
     async () => {
       const cfg = vscode.workspace.getConfiguration("day");
       const runTasks = async () =>
@@ -295,13 +295,13 @@ const checks: Check[] = [
           t.name.startsWith("run "),
         );
       try {
-        // Default: trace, so a fresh install shows everything (the per-statement SQL firehose
-        // included) without any setup. `detail` is the rendered command line, so this covers
-        // the whole path from the setting to the process argv.
+        // Default: debug — the framework's own diagnostics, without day-persistence's
+        // per-statement SQL firehose, which `trace` adds and few people want unasked. `detail` is
+        // the rendered command line, so this covers the whole path from the setting to argv.
         for (const t of await runTasks()) {
           assert.ok(
-            (t.detail ?? "").includes("--env DAY_LOG=trace"),
-            `task "${t.name}" should carry --env DAY_LOG=trace by default: ${t.detail}`,
+            (t.detail ?? "").includes("--env DAY_LOG=debug"),
+            `task "${t.name}" should carry --env DAY_LOG=debug by default: ${t.detail}`,
           );
         }
         // A chosen level replaces the default…
@@ -828,6 +828,14 @@ const checks: Check[] = [
         "Homebrew was dropped from the picker",
       );
 
+      // Exactly ONE row installs from crates.io. There were two — the managed one and a plain
+      // `cargo install day-cli` onto PATH — which differed only in where the binary landed.
+      assert.strictEqual(
+        labels.filter((l) => /crates\.io|cargo install day-cli/.test(l)).length,
+        1,
+        `expected one crates.io row, got ${labels.join(" | ")}`,
+      );
+
       // The rows the extension installs itself are exactly the two version-bearing ones.
       assert.deepStrictEqual(
         choices.filter((c) => c.version !== undefined).map((c) => c.version),
@@ -848,42 +856,56 @@ const checks: Check[] = [
     },
   ],
   [
-    "the install routes put a Rust-free option first on every platform",
+    "every PATH route is Rust-free, and no row is long enough to be truncated",
     () => {
-      // The ordering is the whole point of the table: someone without the CLI usually has no Rust
-      // toolchain either, so `cargo install` must never be the first thing offered.
+      // The routes that touch PATH exist for someone who has no Rust toolchain — that is the
+      // whole reason they are separate from the managed rows. `cargo install day-cli` used to sit
+      // among them and needed one, which is what made it the wrong thing to offer here.
       for (const platform of [
         "darwin",
         "linux",
         "win32",
       ] as NodeJS.Platform[]) {
         const routes = installRoutes(platform);
+        assert.ok(routes.length > 0, `${platform}: no route at all`);
+        for (const r of routes) {
+          assert.ok(
+            !/cargo/.test(r.command),
+            `${platform}: a PATH route needs no toolchain, got ${r.command}`,
+          );
+          assert.match(
+            r.command,
+            /curl|irm/,
+            `${platform}: expected a prebuilt download, got ${r.command}`,
+          );
+        }
         assert.ok(
-          routes.length >= 2,
-          `${platform}: expected more than one route`,
-        );
-        assert.match(
-          routes[0].command,
-          /curl|irm/,
-          `${platform}: the first route should download a prebuilt binary, got ${routes[0].command}`,
-        );
-        assert.strictEqual(
-          routes[routes.length - 1].command,
-          "cargo install day-cli",
-          `${platform}: cargo should be the last resort`,
-        );
-      }
-      // Homebrew was dropped: it fetched the same prebuilt binary the install script does, so it
-      // was a second way to say one thing in a list where every row costs a decision.
-      for (const platform of [
-        "darwin",
-        "linux",
-        "win32",
-      ] as NodeJS.Platform[]) {
-        assert.ok(
-          !installRoutes(platform).some((r) => r.command.includes("brew")),
+          !routes.some((r) => r.command.includes("brew")),
           `${platform} still offers Homebrew`,
         );
+      }
+
+      // A quick pick truncates a long `detail` with an ellipsis, and the description column shows
+      // whatever it is given — a raw install command is long enough to be cut mid-flag. Both are
+      // bounded here because both looked wrong in the picker before they were.
+      for (const platform of ["darwin", "win32"] as NodeJS.Platform[]) {
+        for (const c of installChoices(
+          installRoutes(platform),
+          true,
+          "v0.3.0",
+        )) {
+          assert.ok(
+            c.detail.length <= 70,
+            `"${c.label}" detail is ${c.detail.length} chars: ${c.detail}`,
+          );
+          // Bounded rather than ellipsis-free: one row elides a long flag list on purpose
+          // (`cargo install --git … --tag`), which is not the same as a command cut mid-flag by
+          // a width limit. Length is what the picker actually punishes.
+          assert.ok(
+            c.description.length <= 50,
+            `"${c.label}" description is ${c.description.length} chars: ${c.description}`,
+          );
+        }
       }
     },
   ],
@@ -1735,7 +1757,7 @@ const checks: Check[] = [
       assert.strictEqual(cfg.get("script.keepAppRunning"), true);
       assert.strictEqual(cfg.get("debug.adapter"), "auto");
       assert.strictEqual(cfg.get("verbose"), false);
-      assert.strictEqual(cfg.get("logLevel"), "trace");
+      assert.strictEqual(cfg.get("logLevel"), "debug");
       assert.strictEqual(cfg.get("followActiveEditor"), true);
       // Both default OFF: the walkthrough shows itself once per install without a setting, and
       // `scripts/dev.sh` turns this on only inside the workspace it generates.
