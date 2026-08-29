@@ -6,9 +6,11 @@
 // build `macos-appkit`: keyed by target alone, launching one app's macos-appkit read as "that is
 // already running", stopped the other app's, and left one Stop button for two processes.
 
+import * as childProcess from "child_process";
 import * as vscode from "vscode";
 
 import { State } from "./config";
+import { renderCommand, resolveCli, stopArgs } from "./cli";
 import { buildDayTask, DayTaskDefinition } from "./tasks";
 
 /** One launch, identified the way the rest of the extension addresses it. */
@@ -39,7 +41,11 @@ export class Runner implements vscode.Disposable {
   readonly onDidChange = this.emitter.event;
   private subs: vscode.Disposable[] = [];
 
-  constructor(private readonly state: State) {
+  constructor(
+    private readonly state: State,
+    /** Where a failed `day stop` is reported; silent is wrong, a modal is too loud. */
+    private readonly output?: vscode.OutputChannel,
+  ) {
     this.subs.push(
       vscode.tasks.onDidStartTaskProcess((e) => {
         const ref = this.taskRef(e.execution.task.definition as DayTaskDefinition);
@@ -184,6 +190,33 @@ export class Runner implements vscode.Disposable {
       this.debug.delete(k);
       this.emitter.fire();
     }
+    // Then ask the CLI to stop the APP. Ending the task only kills what `day` launched as its own
+    // child, which is the whole story on a desktop and none of it on a device: an Android app is
+    // started with `am start` and outlives its launcher, so Stop left it on screen. `day stop`
+    // also drops the session, without which `day running` keeps reporting a launch that is gone.
+    await this.stopViaCli(root, target);
+  }
+
+  /** `day stop -p <target>`, best effort: Stop has already done what it can locally, so a CLI
+   *  that cannot be resolved must not turn a stopped app into an error dialog. */
+  private async stopViaCli(root: string, target: string): Promise<void> {
+    const cli = resolveCli(root);
+    const args = [...cli.baseArgs, ...stopArgs(root, target)];
+    await new Promise<void>((resolve) => {
+      childProcess.execFile(
+        cli.command,
+        args,
+        { cwd: cli.cwd ?? root, timeout: 60_000 },
+        (err, _stdout, stderr) => {
+          if (err) {
+            this.output?.appendLine(
+              `✗ ${renderCommand(cli, args.slice(cli.baseArgs.length))}: ${stderr.trim() || err.message}`,
+            );
+          }
+          resolve();
+        },
+      );
+    });
   }
 
   async stopAll(): Promise<void> {

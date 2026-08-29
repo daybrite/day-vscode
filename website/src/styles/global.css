@@ -29,7 +29,6 @@
   --hover-strong: rgba(255, 255, 255, 0.09);
 
   --grad-day: linear-gradient(115deg, #ffc861 0%, #ff8f5e 38%, #6aa4ff 100%);
-  --grad-text: linear-gradient(115deg, #ffd07a 0%, #ff9e73 42%, #7fb2ff 100%);
 
   /* Per-target platform accents, used wherever the site names a platform (landing grid,
      gallery captions, hero carousel, docs prose). The palette is the iOS system palette
@@ -89,8 +88,6 @@
 
   --hover: rgba(15, 25, 48, 0.05);
   --hover-strong: rgba(15, 25, 48, 0.09);
-
-  --grad-text: linear-gradient(115deg, #e08a00 0%, #f9703e 42%, #2f6fde 100%);
   --shadow: 0 18px 46px -22px rgba(20, 33, 66, 0.26);
 
   /* The iOS palette's LIGHT variants — the shades Apple tuned for white backgrounds. */
@@ -165,22 +162,21 @@ code, pre { font-family: var(--mono); }
 }
 .lead { color: var(--muted); font-size: 1.12rem; max-width: 62ch; }
 
-/* Gradient text. Guarded with @supports so engines that can't clip a background to the glyphs
-   (some older Chromium-based WebView / QtWebEngine builds) fall back to a solid, readable colour
-   instead of painting the gradient as a filled rectangle over now-invisible text. The gradient
-   background and the transparent fill are applied ONLY inside the @supports block, so a
-   non-supporting engine never receives a background to mis-paint. */
-.grad-text {
-  color: var(--brand-strong);
+/* Headline accents. Flat colour rather than a gradient clipped to the glyphs: one punchy fill
+   per headline reads at any size, needs no `background-clip: text` — which some Chromium-based
+   WebView and QtWebEngine builds paint as a filled rectangle over now-invisible text, and which
+   the CSS minifier mishandles besides — and lets each section carry its own colour instead of
+   every headline wearing the same sweep. The three are the colours day/website builds its
+   gradient out of, so the two sites stay recognisably related without this one copying that
+   one's treatment. Every token has a light variant, so both themes are covered. */
+.ink-sun {
+  color: var(--sun);
 }
-@supports ((-webkit-background-clip: text) or (background-clip: text)) {
-  .grad-text {
-    background-image: var(--grad-text);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
-  }
+.ink-flame {
+  color: var(--sun-2);
+}
+.ink-brand {
+  color: var(--brand);
 }
 
 /* ---- buttons ---- */

@@ -64,12 +64,12 @@ export async function activate(
   // installed `day` anywhere. Must also precede any scan.
   setGlobalStorage(context.globalStorageUri.fsPath);
 
-  const state = new State(context.workspaceState);
-  const runner = new Runner(state);
-  context.subscriptions.push(runner);
-
   const output = vscode.window.createOutputChannel("Day");
   context.subscriptions.push(output);
+
+  const state = new State(context.workspaceState);
+  const runner = new Runner(state, output);
+  context.subscriptions.push(runner);
 
   const lint = new Lint(output);
   context.subscriptions.push(lint);

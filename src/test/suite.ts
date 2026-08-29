@@ -24,6 +24,7 @@ import {
   MCP_PROVIDER_ID,
   mcpServerSpecs,
   resolveCli,
+  stopArgs,
 } from "../cli";
 import { State } from "../config";
 import {
@@ -711,6 +712,33 @@ const checks: Check[] = [
       } finally {
         output.dispose();
       }
+    },
+  ],
+  [
+    "Stop asks the CLI to stop the app, not just the task that launched it",
+    () => {
+      // Ending the task kills what `day` launched as its own child — the whole story on a
+      // desktop, and none of it on a device. An Android app is started with `am start` and lives
+      // in the device's process table, so terminating the launcher (which is what VS Code does,
+      // without letting it clean up) left the app on screen and its session in the registry.
+      // Verified against a real emulator: SIGKILL the launcher and the app keeps its pid;
+      // `day stop -p android-mdc` is what ends it.
+      const args = stopArgs("/w/Day-Rise", "android-mdc");
+      assert.deepStrictEqual(args, [
+        "--project",
+        "/w/Day-Rise",
+        "stop",
+        "-p",
+        "android-mdc",
+      ]);
+      assert.strictEqual(
+        args.indexOf("--project"),
+        0,
+        "--project is a global flag and must precede the subcommand",
+      );
+      // One target, never everything: Stop is a per-row button, and `--all` would take down the
+      // other apps in a multi-project window.
+      assert.ok(!args.includes("--all"), args.join(" "));
     },
   ],
   [

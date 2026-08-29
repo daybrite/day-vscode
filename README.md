@@ -13,9 +13,18 @@
   <a aria-label="Build status" href="https://github.com/daybrite/day-vscode/actions" target="_blank">
     <img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/daybrite/day-vscode/ci.yml?branch=main&style=flat-square&labelColor=49505A" />
   </a>
-  <a aria-label="Install from the VS Code Marketplace" href="https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode" target="_blank">
-    <img alt="Install from the VS Code Marketplace" src="https://img.shields.io/badge/vscode-marketplace-25292E?style=flat-square&label=%20&logoColor=BCC3CD&labelColor=49505A&logo=Visual%20Studio%20Code" />
+  <a aria-label="VS Code Marketplace version" href="https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode" target="_blank">
+    <img alt="VS Code Marketplace version" src="https://vsmarketplacebadges.dev/version-short/daybrite.day-vscode.svg?style=flat-square&color=1C6E7E" />
   </a>
+  <a aria-label="VS Code Marketplace installs" href="https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode" target="_blank">
+    <img alt="VS Code Marketplace installs" src="https://vsmarketplacebadges.dev/installs-short/daybrite.day-vscode.svg?style=flat-square&color=1C6E7E" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode"><b>Install from the VS Code Marketplace</b></a>
+  <br />
+  <sub>or <code>code --install-extension daybrite.day-vscode</code></sub>
 </p>
 
 <p align="center">

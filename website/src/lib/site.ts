@@ -31,8 +31,15 @@ export const site = {
   description:
     'The VS Code extension for Day: pick your targets, build and run them from the sidebar, and read the output in the editor. A thin wrapper over the day CLI.',
   repo: 'https://github.com/daybrite/day-vscode',
-  // The current install channel. There is no Marketplace listing yet — publication is wired in
-  // CI but switched off, so linking it would 404.
+  // Where the extension is published, and the install route every page leads with.
+  marketplace:
+    'https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode',
+  // The one-click handler: a browser hands `vscode:` to the editor, which opens the extension
+  // page ready to install. Offered BESIDE the Marketplace link, never instead of it — a visitor
+  // whose browser has no handler registered gets nothing from it.
+  vscodeInstall: 'vscode:extension/daybrite.day-vscode',
+  // Still attached to every tagged release, for trying a build before it reaches the Marketplace.
+  // No longer the headline route.
   vsix: 'https://github.com/daybrite/day-vscode/releases/latest/download/day-vscode.vsix',
   day: 'https://daybrite.dev',
 };

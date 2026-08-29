@@ -1,6 +1,6 @@
 ---
 title: Install and update
-description: Install the Day extension from a release .vsix or from source, keep it current, and check that it found your day CLI.
+description: Install the Day extension from the VS Code Marketplace — or a release .vsix, or source — keep it current, and check that it found your day CLI.
 order: 1
 section: Extension
 ---
@@ -14,14 +14,24 @@ length, and the toolchains each target needs.
 
 ## From the Marketplace
 
-Search for **Day** in the Extensions view, or install it in one line:
+**[Get it on the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode)** — the route to take unless you have a
+reason not to. VS Code updates it from there without you doing anything.
+
+[![VS Code Marketplace version](https://vsmarketplacebadges.dev/version-short/daybrite.day-vscode.svg?style=flat-square&color=1C6E7E)](https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode)
+[![VS Code Marketplace installs](https://vsmarketplacebadges.dev/installs-short/daybrite.day-vscode.svg?style=flat-square&color=1C6E7E)](https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode)
+
+Three ways in, all the same extension:
+
+- Search for **Day** in the Extensions view (<kbd>⇧⌘X</kbd> / <kbd>Ctrl+Shift+X</kbd>)
+- Open the listing: [daybrite.day-vscode](https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode)
+- One line in a terminal:
 
 ```bash
 code --install-extension daybrite.day-vscode
 ```
 
-VS Code keeps it current from there. The listing is
-[daybrite.day-vscode](https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode).
+The two routes below exist for trying a build the Marketplace does not have yet, and for working
+on the extension itself. Neither auto-updates.
 
 ## From a release build
 

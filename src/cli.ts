@@ -351,6 +351,19 @@ export function cleanArgs(projectRoot: string): string[] {
 }
 
 /**
+ * Args for `day stop -p <target>`, the CLI's own verb for ending a launch.
+ *
+ * Terminating the task is not enough for a target whose app does not run as a child of `day`. On
+ * Android the app is started with `am start` and lives in the device's own process table; killing
+ * the launcher — which is what VS Code does to a task, without letting it clean up — leaves the
+ * app on screen and its session in the registry. `day stop` does the platform-appropriate thing
+ * (`am force-stop`, `simctl terminate`, `aa force-stop`, pkill) and drops the session.
+ */
+export function stopArgs(projectRoot: string, target: string): string[] {
+  return [...projectArgs(projectRoot), "stop", "-p", target];
+}
+
+/**
  * The provider id `package.json` contributes under `mcpServerDefinitionProviders`, and the id
  * `registerMcpServerDefinitionProvider` registers with. VS Code matches the two by string, and a
  * mismatch is silent — the provider is simply never asked, and agent mode shows no Day tools with
