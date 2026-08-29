@@ -1454,6 +1454,71 @@ const checks: Check[] = [
     },
   ],
   [
+    "the Marketplace listing claims real categories, and each is earned",
+    () => {
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const pkg = ext.packageJSON;
+      // VS Code's own enum (workbench `AB`). The Marketplace ignores anything outside it and
+      // files the extension under "Other" — silently, which is how the listing sat there
+      // reading "Other" without anyone noticing.
+      const LEGAL = [
+        "AI",
+        "Azure",
+        "Chat",
+        "Data Science",
+        "Debuggers",
+        "Extension Packs",
+        "Education",
+        "Formatters",
+        "Keymaps",
+        "Language Packs",
+        "Linters",
+        "Machine Learning",
+        "Notebooks",
+        "Programming Languages",
+        "SCM Providers",
+        "Snippets",
+        "Testing",
+        "Themes",
+        "Visualization",
+        "Other",
+      ];
+      const categories = pkg.categories as string[];
+      assert.ok(categories?.length, "the manifest must claim a category");
+      for (const c of categories) {
+        assert.ok(LEGAL.includes(c), `${c} is not a Marketplace category`);
+      }
+      assert.ok(
+        !categories.includes("Other"),
+        "Other is the fallback for claiming nothing — name what this extension does",
+      );
+
+      // Each category is a claim about a contribution, so the two are checked against each other:
+      // a category that stops being true is worse than one that was never there.
+      if (categories.includes("Debuggers")) {
+        assert.ok(
+          (pkg.contributes?.debuggers ?? []).length > 0,
+          "Debuggers claims a debug adapter",
+        );
+      }
+      if (categories.includes("AI")) {
+        assert.ok(
+          (pkg.contributes?.mcpServerDefinitionProviders ?? []).length > 0,
+          "AI claims the MCP server it offers agent mode",
+        );
+      }
+      if (categories.includes("Linters")) {
+        assert.ok(
+          (pkg.contributes?.commands ?? []).some(
+            (c: { command: string }) => c.command === "day.lintProject",
+          ),
+          "Linters claims the lint command",
+        );
+      }
+    },
+  ],
+  [
     "every setting is on one page, common ones first and SDK paths last",
     () => {
       const ext = vscode.extensions.getExtension("daybrite.day-vscode");
