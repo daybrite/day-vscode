@@ -17,7 +17,7 @@ import {
 } from "./cli";
 import { State } from "./config";
 import { DayConfigProvider, DayDebugAdapterFactory } from "./debug";
-import { promptToInstall } from "./install";
+import { checkVersions, CliVersions, promptToInstall } from "./install";
 import { editFor, Lint, LintActions } from "./lint";
 import { askAll, composeArgs, describeSpec } from "./newproject";
 import * as devices from "./devices";
@@ -87,6 +87,8 @@ export async function activate(
   let loadFailures: ProjectLoadFailure[] = [];
   // Tells VS Code to re-ask for MCP servers. One server is spawned per Day project, so the set
   // changes whenever the discovered projects do.
+  // What the last version check found, for the CLI row in the Day view.
+  let cliVersions: CliVersions = {};
   const mcpServersChanged = new vscode.EventEmitter<void>();
   context.subscriptions.push(mcpServersChanged);
   // The last failure set we notified about, so a re-scan with the same problem doesn't nag.
@@ -226,6 +228,13 @@ export async function activate(
       loadFailures.length > 0 && projects.length === 0,
     );
     reportLoadFailures();
+    // Publishes `day.cliUpdateAvailable` for the walkthrough's update step, and logs both
+    // versions. Deliberately not awaited: it reaches the network, and a project scan must not
+    // wait on crates.io.
+    void checkVersions(projects[0]?.root, output).then((v) => {
+      cliVersions = v;
+      tree.refresh();
+    });
   };
 
   await refreshProjects();
@@ -268,6 +277,7 @@ export async function activate(
     runner,
     project: currentProject,
     projects: allProjects,
+    versions: () => cliVersions,
     refreshDevices,
   });
   const view = vscode.window.createTreeView("dayTargets", {
@@ -384,9 +394,12 @@ export async function activate(
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   };
 
-  register("day.installCli", () =>
-    promptToInstall(context.globalStorageUri.fsPath),
-  );
+  register("day.installCli", async () => {
+    const versions = await checkVersions(currentProject()?.root, output);
+    await promptToInstall(context.globalStorageUri.fsPath, versions);
+    // The install runs in a terminal we do not wait on, so this only re-reads what is
+    // known now; `day.refresh` re-checks once the CLI has actually changed.
+  });
 
   register("day.run", () =>
     guard(async () => {

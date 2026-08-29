@@ -44,6 +44,24 @@ actually supports.
 
 Already have a Day project? Just open its folder. The extension activates on `Day.toml`.
 
+### Take the recommended extensions
+
+Opening a scaffolded project, VS Code offers the extensions its `.vscode/extensions.json` names.
+Take them — a Day app is a Rust crate, and this extension does not do that part:
+
+| Extension | What it gives you |
+|---|---|
+| [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) | The Rust language service — completion, go-to-definition, and errors as you type. Your `root()` is Rust; without it you are editing in the dark. |
+| [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml) | Validation and completion in `Day.toml` and `Cargo.toml`. |
+
+This extension deliberately does not require them. It drives the `day` CLI — building, running,
+linting, packaging — and none of that needs a language server, so nothing here forces one on a
+machine that only has to run a Day app. The scaffold recommends them because *writing* one is
+much better with them.
+
+A bare `cargo check` works with no flags in a scaffolded app: the crate's default `mock` backend is
+what lets rust-analyzer resolve the whole tree without you choosing a target first.
+
 ## 3. Read the Day view
 
 Open the **Day** icon in the activity bar. It lists every Day project in the window, and under each

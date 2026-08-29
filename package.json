@@ -262,7 +262,7 @@
       },
       {
         "command": "day.installCli",
-        "title": "Install the day CLI…",
+        "title": "Install/Update the Day CLI…",
         "category": "Day",
         "icon": "$(cloud-download)"
       },
@@ -487,7 +487,7 @@
               "Failures only.",
               "Nothing."
             ],
-            "default": "trace",
+            "default": "debug",
             "markdownDescription": "Log level for launched apps, passed to every launch as `--env DAY_LOG=<level>`. A native app's lines land in the task terminal; a `web-dom` launch carries the level on the page URL and its lines land in the browser console. A `DAY_LOG` entry in `day.extraEnv` overrides this setting.\n\nSet per project: put it in that app's `.vscode/settings.json` and it applies to that app alone, which is what lets several Day apps in one window run with different settings.",
             "scope": "resource",
             "order": 5,
@@ -586,8 +586,8 @@
           },
           "day.cliVersion": {
             "type": "string",
-            "default": "main",
-            "markdownDescription": "Which day-cli **Day: Install the day CLI…** builds when it installs one from source.\n\n- `main` — the tip of the development branch, and the default for now. Day's tagged releases still trail the branch, and the extension regularly needs a CLI change before it is released.\n- A git tag or revision, e.g. `v0.3.0` — pins the build to exactly that.\n- Empty follows the default, which is `main` today and will become the newest tagged release once releases are regular enough to be the better starting point.\n\nThe build goes into this extension's own storage, so it changes nothing on your `PATH` and leaves a `day` you installed yourself alone — that one still wins if `#day.cliPath#` names it. Changing this does not rebuild anything; run the install command again.",
+            "default": "",
+            "markdownDescription": "Which day-cli **Day: Install/Update the Day CLI…** installs when it builds one itself.\n\n- Empty — the newest release on crates.io. This is the default, and it is the same version the Day view compares your installed CLI against.\n- `main` — the tip of the development branch, built from the repository. Use it when this extension needs a CLI change that has not been released yet.\n- Anything else is a git tag or revision, e.g. `v0.3.0`.\n\nThe install goes into this extension's own storage, so it changes nothing on your `PATH` and leaves a `day` you installed yourself alone — that one still wins if `#day.cliPath#` names it. Changing this does not reinstall anything; run the command again.",
             "keywords": [
               "version",
               "main",
@@ -860,11 +860,23 @@
         "steps": [
           {
             "id": "install-cli",
-            "title": "Get the day CLI",
-            "description": "Every build, launch and check runs through the `day` CLI. If you have not got one, this builds it from source at the version `day.cliVersion` names — into this extension's own storage, so nothing on your PATH changes.\n[Install the day CLI](command:day.installCli)",
+            "title": "Get the Day CLI",
+            "description": "Every build, launch and check runs through the `day` CLI. If you have not got one, this builds it from source at the version `day.cliVersion` names — into this extension's own storage, so nothing on your PATH changes.\n[Install/Update the Day CLI](command:day.installCli)",
             "media": {
-              "markdown": "walkthroughs/new-project.md"
+              "markdown": "walkthroughs/install-cli.md"
             },
+            "completionEvents": [
+              "onCommand:day.installCli"
+            ]
+          },
+          {
+            "id": "update-cli",
+            "title": "A newer Day CLI is available",
+            "description": "The `day` CLI on this machine is behind the newest release on crates.io. Updating re-runs the same routes that installed it, replacing it in place.\n[Install/Update the Day CLI](command:day.installCli)",
+            "media": {
+              "markdown": "walkthroughs/update-cli.md"
+            },
+            "when": "day.cliUpdateAvailable",
             "completionEvents": [
               "onCommand:day.installCli"
             ]
@@ -918,8 +930,7 @@
             "title": "Read the docs",
             "description": "The guides cover pieces, layout, navigation, localization, packaging and the CLI.\n\n[Open the documentation](https://daybrite.dev/docs)",
             "media": {
-              "image": "media/day-icon.png",
-              "altText": "The Day logo"
+              "markdown": "walkthroughs/docs.md"
             },
             "completionEvents": [
               "onLink:https://daybrite.dev/docs"

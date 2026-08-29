@@ -107,8 +107,8 @@ export type LogLevel = (typeof LOG_LEVELS)[number];
 
 /** The `DAY_LOG` level a project's launches pass (`day.logLevel`). */
 export function logLevel(root?: string): LogLevel {
-  const v = dayConfig(root).get<string>("logLevel", "trace");
-  return (LOG_LEVELS as readonly string[]).includes(v) ? (v as LogLevel) : "trace";
+  const v = dayConfig(root).get<string>("logLevel", "debug");
+  return (LOG_LEVELS as readonly string[]).includes(v) ? (v as LogLevel) : "debug";
 }
 
 /** Set `day.logLevel` for one project (or the window, with no project). */

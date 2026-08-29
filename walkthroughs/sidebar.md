@@ -1,11 +1,11 @@
 ## The Day view
 
-Every Day app in the window is listed, each expanding to its own targets.
+Every Day project in the window, each with its build mode, locale, dayscript and log level, and
+every target its `Day.toml` declares. Tick the targets you want and press Run: each launches as its
+own VS Code task, so output stays separated per target.
 
-- **Tick** the platform-toolkits you want, then **Run** or **Build**.
-- Each target runs in its own terminal and stops and restarts on its own.
-- Mobile targets expand to a **Device** row: a booted simulator, a plugged-in phone, an
-  emulator, or **All connected**.
-- Targets your host cannot build — `windows-*` on macOS — are shown disabled rather than hidden.
+Targets this machine cannot build stay visible and say why, rather than disappearing.
 
-Build mode, locale, dayscript and log level live under **Configuration**, per project.
+- [Getting started](https://vscode.daybrite.dev/docs/getting-started) — the view, and a first run
+- [Simulators, emulators and devices](https://vscode.daybrite.dev/docs/devices) — where a mobile target lands
+- [Platforms](https://daybrite.dev/docs/platforms/) — what each target builds and needs

@@ -24,7 +24,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 
-import { hasCargo } from "./cli";
+import { hasCargo, resolveCli } from "./cli";
 
 /** The repository every source install builds from. */
 export const DAY_REPO = "https://github.com/daybrite/day.git";
@@ -51,83 +51,38 @@ export function managedCliBinary(globalStorage: string): string | undefined {
 
 /** Which source revision to build, as git flags plus something to show a human. */
 export interface SourceVersion {
-  /** e.g. `["--tag", "v0.3.0"]` or `["--branch", "main"]`. */
+  /** Git ref flags, e.g. `["--tag", "v0.3.0"]`. Empty for a crates.io release. */
   ref: string[];
   /** What to call this version in a message. */
   label: string;
+  /** Whether it comes from the git repository rather than from crates.io. */
+  fromGit: boolean;
 }
 
-const MAIN: SourceVersion = { ref: ["--branch", "main"], label: "main" };
+const MAIN: SourceVersion = {
+  ref: ["--branch", "main"],
+  label: "main",
+  fromGit: true,
+};
 
 /**
- * Whether an unset `day.cliVersion` means the newest tagged release.
+ * Read `day.cliVersion` into an install target.
  *
- * OFF for now, so the default is `main`. Day's tagged releases still trail the branch by more than
- * an app author wants — the extension regularly needs a CLI change before it is released, and this
- * whole feature exists partly to make that a setting rather than a support thread. Until releases
- * are frequent enough to be the better default, pointing everyone at `main` is the honest choice.
- *
- * FUTURE: flip this to `true` once releases are regular and stable, and change the `day.cliVersion`
- * default in package.json to `""` in the same commit — the two have to agree, since the empty
- * string is what an unset setting resolves to. The release path below is not dead in the meantime:
- * it is exercised by the integration suite through this function's third argument, so it will
- * still work on the day it is switched on.
+ * Empty — the default — is the newest RELEASE, taken from crates.io rather than from the git tags:
+ * that is the same answer the CLI's own update check gives, so the version the Day view calls
+ * "latest" and the version an install produces are one thing rather than two that can disagree.
+ * `main` is the development branch, for when this extension needs a CLI change that has not been
+ * released yet. Anything else is a git tag or revision, taken literally.
  */
-const DEFAULT_TO_NEWEST_RELEASE = false;
-
-/**
- * Read `day.cliVersion` as git flags.
- *
- * `main` is the development branch; anything else is a tag or revision, taken literally so a
- * `v0.3.0` and a bare commit both work. Empty follows whatever the current default is — today
- * `main`, eventually the newest release, which is the only value that has to ask the network since
- * a tag list is not something the extension can know offline.
- */
-export async function resolveSourceVersion(
-  setting: string,
-  listTags: () => Promise<string[]> = listRemoteTags,
-  newestReleaseByDefault: boolean = DEFAULT_TO_NEWEST_RELEASE,
-): Promise<SourceVersion> {
+export function resolveSourceVersion(setting: string): SourceVersion {
   const want = setting.trim();
   if (want === "main") {
     return MAIN;
   }
   if (want !== "") {
-    return { ref: ["--tag", want], label: want };
+    return { ref: ["--tag", want], label: want, fromGit: true };
   }
-  if (!newestReleaseByDefault) {
-    return MAIN;
-  }
-  const tags = await listTags();
-  if (tags.length === 0) {
-    throw new Error(
-      `could not list releases of ${DAY_REPO} — check the network, or set day.cliVersion to a tag or to "main"`,
-    );
-  }
-  return { ref: ["--tag", tags[0]], label: `${tags[0]} (newest release)` };
-}
-
-/** Release tags, newest first. `--sort=-v:refname` orders them as versions rather than strings. */
-function listRemoteTags(): Promise<string[]> {
-  return new Promise((resolve) => {
-    cp.execFile(
-      "git",
-      ["ls-remote", "--tags", "--refs", "--sort=-v:refname", DAY_REPO],
-      { timeout: 30_000 },
-      (err, stdout) => {
-        if (err) {
-          resolve([]);
-          return;
-        }
-        resolve(
-          stdout
-            .split("\n")
-            .map((l) => l.split("refs/tags/")[1]?.trim())
-            .filter((t): t is string => !!t),
-        );
-      },
-    );
-  });
+  return { ref: [], label: "the newest release", fromGit: false };
 }
 
 /**
@@ -142,6 +97,15 @@ export function sourceInstallCommand(
   root: string,
 ): string {
   const quote = (s: string) => (/[\s"']/.test(s) ? JSON.stringify(s) : s);
+  if (!version.fromGit) {
+    // The published crate. No `--locked`: a released crate is resolved against the registry as
+    // any dependency is, and pinning to whatever lock happened to be packaged is how an install
+    // fails on a yanked transitive version months later.
+    return `cargo install day-cli --force --root ${quote(root)}`;
+  }
+  // From the repository. `--force` because switching versions replaces what is in that root and
+  // cargo refuses otherwise; `--locked` because a revision's own `Cargo.lock` is what its CI built
+  // and tested with, and resolving fresh is how a pinned build stops matching it.
   return [
     "cargo install",
     "--git",
@@ -173,19 +137,18 @@ const PS_INSTALLER =
   'powershell -ExecutionPolicy Bypass -c "irm ' +
   'https://github.com/daybrite/day/releases/latest/download/day-installer.ps1 | iex"';
 
-const BREW =
-  "curl -LO https://github.com/daybrite/day/releases/latest/download/day.rb && " +
-  "brew install --formula ./day.rb";
-
 const CARGO = "cargo install day-cli";
 
 /**
- * The install routes for a platform, best first.
+ * The PATH routes for a platform, best first.
  *
- * The release installers come first because they download a prebuilt binary: no Rust toolchain,
- * no compile. On macOS, Homebrew ranks second for people who keep everything in it.
+ * The release installer comes first because it downloads a prebuilt binary: no Rust toolchain, no
+ * compile. `cargo install` is last — it needs a toolchain, and someone who has not got the CLI
+ * often has not got Rust either.
  */
-export function installRoutes(platform: NodeJS.Platform = process.platform): InstallRoute[] {
+export function installRoutes(
+  platform: NodeJS.Platform = process.platform,
+): InstallRoute[] {
   const cargo: InstallRoute = {
     label: "cargo install day-cli",
     detail: "From crates.io. Needs a Rust toolchain, and compiles the CLI (a few minutes).",
@@ -210,18 +173,92 @@ export function installRoutes(platform: NodeJS.Platform = process.platform): Ins
       command: SH_INSTALLER,
     },
   ];
-  if (platform === "darwin") {
-    routes.push({
-      label: "Install with Homebrew",
-      detail: "The same binary, as a Homebrew formula. Needs brew.",
-      command: BREW,
-    });
-  }
   return [...routes, cargo];
 }
 
 /** The docs page that explains all of this at length. */
 export const DOCS_URL = "https://daybrite.dev/docs/getting-started/";
+
+/** Where the CLI's own update check looks, so the extension and the CLI agree on "latest". */
+const CRATES_URL = "https://crates.io/api/v1/crates/day-cli";
+
+/** What the extension knows about the CLI it is driving. */
+export interface CliVersions {
+  /** The version `day version` reports, or `undefined` when no CLI could be run. */
+  installed?: string;
+  /** The newest stable release on crates.io, when it could be reached. */
+  latest?: string;
+}
+
+/**
+ * `1.2.3` as numbers, ignoring anything after the patch.
+ *
+ * A build from source reports `0.3.0*` (the `*` marks a debug profile) and a git build appends its
+ * ref, so the string is parsed rather than compared: `"0.4.0" > "0.10.0"` is the lexicographic
+ * answer, and it is wrong in exactly the case that matters.
+ */
+function parts(version: string): number[] | undefined {
+  const m = /(\d+)\.(\d+)\.(\d+)/.exec(version);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : undefined;
+}
+
+/** Whether `latest` is a newer release than `installed`. False when either cannot be read. */
+export function isNewer(installed: string, latest: string): boolean {
+  const [a, b] = [parts(installed), parts(latest)];
+  if (!a || !b) {
+    return false;
+  }
+  for (let i = 0; i < 3; i++) {
+    if (b[i] !== a[i]) {
+      return b[i] > a[i];
+    }
+  }
+  return false;
+}
+
+/** The version out of `day version`'s line: `day 0.3.0 (release, branch main, abc1234)`. */
+export function parseVersion(output: string): string | undefined {
+  return /^day\s+(\S+)/m.exec(output.trim())?.[1];
+}
+
+/** Ask the resolved CLI what version it is. `undefined` when it cannot be run at all. */
+export async function installedVersion(
+  projectDir?: string,
+): Promise<string | undefined> {
+  const cli = resolveCli(projectDir);
+  return new Promise((resolve) => {
+    cp.execFile(
+      cli.command,
+      [...cli.baseArgs, "version"],
+      {
+        cwd: cli.cwd,
+        timeout: 60_000,
+        env: { ...process.env, DAY_NO_UPDATE_CHECK: "1" },
+      },
+      (err, stdout) => resolve(err ? undefined : parseVersion(stdout)),
+    );
+  });
+}
+
+/** The newest stable day-cli on crates.io, or `undefined` if the network did not answer. */
+export async function latestVersion(): Promise<string | undefined> {
+  try {
+    const res = await fetch(CRATES_URL, {
+      headers: {
+        "user-agent": "day-vscode (https://github.com/daybrite/day-vscode)",
+      },
+    });
+    if (!res.ok) {
+      return undefined;
+    }
+    const body = (await res.json()) as {
+      crate?: { max_stable_version?: string };
+    };
+    return body.crate?.max_stable_version;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Build the CLI from source into the extension's own storage, at the version `day.cliVersion` asks
@@ -234,7 +271,10 @@ export const DOCS_URL = "https://daybrite.dev/docs/getting-started/";
  * It does need a Rust toolchain — but so does every Day app, which is a Rust crate, so anyone who
  * can build what this extension exists to run already has one.
  */
-export async function installFromSource(globalStorage: string): Promise<void> {
+export async function installFromSource(
+  globalStorage: string,
+  versionOverride?: string,
+): Promise<void> {
   if (!hasCargo()) {
     const choice = await vscode.window.showErrorMessage(
       "Day: building the CLI from source needs a Rust toolchain, and `cargo` is not on the PATH this window inherited. Install Rust, or use a prebuilt binary instead.",
@@ -249,25 +289,13 @@ export async function installFromSource(globalStorage: string): Promise<void> {
     return;
   }
 
-  const setting = (
-    vscode.workspace.getConfiguration("day").get<string>("cliVersion") ?? ""
-  ).trim();
+  // The picker names the version it means, so its choice wins over the setting; the setting is
+  // what an unqualified install follows, and where a specific tag is pinned.
+  const setting =
+    versionOverride ??
+    (vscode.workspace.getConfiguration("day").get<string>("cliVersion") ?? "").trim();
 
-  let version: SourceVersion;
-  try {
-    version = await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Window,
-        title: "Day: finding the version to build",
-      },
-      () => resolveSourceVersion(setting),
-    );
-  } catch (e) {
-    void vscode.window.showErrorMessage(
-      `Day: ${e instanceof Error ? e.message : String(e)}`,
-    );
-    return;
-  }
+  const version = resolveSourceVersion(setting);
 
   const root = managedCliDir(globalStorage);
   const command = sourceInstallCommand(version, root);
@@ -302,57 +330,140 @@ export async function installFromSource(globalStorage: string): Promise<void> {
     });
 }
 
+/** Context key the walkthrough's update step is gated on (`when`). */
+export const UPDATE_CONTEXT = "day.cliUpdateAvailable";
+
+/**
+ * Read both versions, publish whether an update is available, and hand the pair back.
+ *
+ * The context key is the only channel a walkthrough has: its step text is a fixed string in
+ * `package.json`, so it can be SHOWN conditionally but cannot say which version you have. The
+ * numbers therefore travel to places that can render them — the install picker's title, and the
+ * log.
+ */
+export async function checkVersions(
+  projectDir: string | undefined,
+  output?: vscode.OutputChannel,
+): Promise<CliVersions> {
+  const [installed, latest] = await Promise.all([
+    installedVersion(projectDir),
+    latestVersion(),
+  ]);
+  const stale = !!installed && !!latest && isNewer(installed, latest);
+  void vscode.commands.executeCommand("setContext", UPDATE_CONTEXT, stale);
+  output?.appendLine(
+    `day CLI: installed ${installed ?? "not found"}, latest ${latest ?? "unknown"}` +
+      (stale ? " — an update is available" : ""),
+  );
+  return { installed, latest };
+}
+
 /**
  * Offer the install routes, and run the chosen one in a terminal.
  *
  * A terminal rather than a hidden child process: the command is visible, its output is visible,
- * and anything it asks for (a sudo prompt, a Homebrew confirmation) can be answered. When it
+ * and anything it asks for (a sudo prompt, a password) can be answered. When it
  * finishes, the caller's refresh is what picks the CLI up.
  */
-export async function promptToInstall(globalStorage?: string): Promise<void> {
+/** One row of the install picker. `version` marks the rows the extension installs itself. */
+export interface InstallChoice {
+  label: string;
+  detail: string;
+  description: string;
+  /** A PATH route to run in a terminal, for the rows that are one. */
+  route?: InstallRoute;
+  /** A `day.cliVersion` value for the rows the extension installs into its own storage. */
+  version?: string;
+}
+
+/**
+ * The picker's rows, in the order they are offered.
+ *
+ * Order is the point, so it is a function rather than an array literal inside the `showQuickPick`
+ * call: the released CLI first because it is what almost everyone wants and the extension owns
+ * that copy, the PATH routes next, and the source build last because it needs a Rust toolchain
+ * and takes minutes. `managed` is false when there is nowhere to put an extension-owned copy,
+ * which drops those rows entirely rather than offering something that cannot run.
+ */
+export function installChoices(
+  routes: InstallRoute[],
+  managed: boolean,
+  pinned?: string,
+): InstallChoice[] {
+  const out: InstallChoice[] = [];
+  if (managed) {
+    out.push({
+      label: "Install the latest release (crates.io)",
+      detail:
+        "The newest published day-cli, into this extension's own storage. Nothing joins your PATH, and a `day` you installed yourself is left alone.",
+      description: "cargo install day-cli",
+      version: "",
+    });
+    // A pinned `day.cliVersion` is a deliberate choice, so it is offered rather than buried:
+    // without this the picker could only ever install the release or the branch.
+    if (pinned) {
+      out.push({
+        label: `Install ${pinned} (day.cliVersion)`,
+        detail:
+          "The revision `day.cliVersion` pins, built from the repository into this extension's own storage.",
+        description: "cargo install --git … --tag",
+        version: pinned,
+      });
+    }
+  }
+  for (const r of routes) {
+    out.push({
+      label: r.label,
+      detail: r.detail,
+      description:
+        r.command.length > 60 ? `${r.command.slice(0, 57)}…` : r.command,
+      route: r,
+    });
+  }
+  if (managed) {
+    out.push({
+      label: "Install from Source (main branch)",
+      detail:
+        "Builds day-cli from the development branch into this extension's own storage — for a CLI change that has not been released yet. Needs a Rust toolchain.",
+      description: "cargo install --git … --branch main",
+      version: "main",
+    });
+  }
+  out.push({
+    label: "Open the install instructions",
+    detail: "Read them on daybrite.dev instead of running anything now.",
+    description: DOCS_URL,
+  });
+  return out;
+}
+
+export async function promptToInstall(
+  globalStorage?: string,
+  versions?: CliVersions,
+): Promise<void> {
   const routes = installRoutes();
+  // A `day.cliVersion` that is neither the release nor the branch is a pin, and gets its own row.
+  const setting = (
+    vscode.workspace.getConfiguration("day").get<string>("cliVersion") ?? ""
+  ).trim();
+  const pinned = setting !== "" && setting !== "main" ? setting : undefined;
   const picked = await vscode.window.showQuickPick(
-    [
-      // Only offered when there is somewhere to put it. Listed first because it is the one route
-      // the extension owns end to end: no PATH change, and `day.cliVersion` decides what it builds.
-      ...(globalStorage
-        ? [
-            {
-              label: "Build it from source (managed by this extension)",
-              detail:
-                "Compiles day-cli at the version `day.cliVersion` names, into this extension's own storage. Needs a Rust toolchain — which every Day app needs anyway.",
-              description: "cargo install --git …",
-              route: undefined,
-              source: true,
-            },
-          ]
-        : []),
-      ...routes.map((r) => ({
-        label: r.label,
-        detail: r.detail,
-        description: r.command.length > 60 ? `${r.command.slice(0, 57)}…` : r.command,
-        route: r,
-        source: false,
-      })),
-      {
-        label: "Open the install instructions",
-        detail: "Read them on daybrite.dev instead of running anything now.",
-        description: DOCS_URL,
-        route: undefined,
-        source: false,
-      },
-    ],
+    installChoices(routes, !!globalStorage, pinned),
     {
-      title: "Install the day CLI",
-      placeHolder: "The extension runs the `day` CLI; it is not installed yet",
+      title: versions
+        ? `Day CLI — installed ${versions.installed ?? "none"}, latest ${versions.latest ?? "unknown"}`
+        : "Install or update the Day CLI",
+      placeHolder: versions?.installed
+        ? "Re-running a route replaces the CLI in place, which is how an update happens"
+        : "The extension runs the `day` CLI; it is not installed yet",
       ignoreFocusOut: true,
     },
   );
   if (!picked) {
     return;
   }
-  if (picked.source && globalStorage) {
-    await installFromSource(globalStorage);
+  if (picked.version !== undefined && globalStorage) {
+    await installFromSource(globalStorage, picked.version);
     return;
   }
   if (!picked.route) {

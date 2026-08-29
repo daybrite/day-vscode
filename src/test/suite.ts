@@ -35,12 +35,17 @@ import {
 import { editFor, Lint, mapFindings } from "../lint";
 import { composeArgs, describeSpec, visibleFields } from "../newproject";
 import { catalog } from "../targets";
+import { cliItem } from "../tree";
 import { toolchainEnv } from "../tasks";
 import {
+  installChoices,
   installRoutes,
+  isNewer,
   managedCliDir,
+  parseVersion,
   resolveSourceVersion,
   sourceInstallCommand,
+  UPDATE_CONTEXT,
 } from "../install";
 
 /** An in-memory Memento, so the selection store can be exercised without touching the real one. */
@@ -517,6 +522,37 @@ const checks: Check[] = [
       }
       assert.ok(buttons >= 3, `expected buttons on most steps, found ${buttons}`);
 
+      // Each step gets its OWN media. Three of them once shared one file, so selecting Install,
+      // Update or Create all filled the pane with the same page — and that pane is the larger half
+      // of the walkthrough editor (VS Code's grid gives it 8fr against the steps' 5fr), which
+      // makes a duplicate the most visible thing on screen.
+      const files: string[] = welcome.steps.map(
+        (s: { media: Record<string, string> }) =>
+          s.media.markdown ?? s.media.image ?? s.media.svg,
+      );
+      assert.strictEqual(
+        new Set(files).size,
+        files.length,
+        `walkthrough steps share media files: ${files.join(", ")}`,
+      );
+
+      // And each markdown pane carries at least one link into the documentation — the point of
+      // that half of the page is to send the reader somewhere fuller than the step itself.
+      for (const step of welcome.steps) {
+        const md = step.media?.markdown;
+        if (!md) {
+          continue;
+        }
+        const text = fs.readFileSync(
+          vscode.Uri.joinPath(ext.extensionUri, md).fsPath,
+          "utf8",
+        );
+        assert.ok(
+          /https:\/\/(?:vscode\.)?daybrite\.dev\/docs\//.test(text),
+          `${md} links to no documentation`,
+        );
+      }
+
       // The same rule for the empty-view buttons, which are the only route out of "no project".
       for (const view of contributes.viewsWelcome ?? []) {
         for (const id of linked(view.contents)) {
@@ -770,6 +806,48 @@ const checks: Check[] = [
     },
   ],
   [
+    "the install picker offers the released CLI first and the source build last",
+    () => {
+      // Order is the whole point of this list. The released CLI is what almost everyone wants and
+      // the extension owns that copy; the source build needs a Rust toolchain and takes minutes,
+      // so it goes last among the things that actually install something.
+      const choices = installChoices(installRoutes("darwin"), true);
+      const labels = choices.map((c) => c.label);
+      assert.strictEqual(labels[0], "Install the latest release (crates.io)");
+      assert.strictEqual(
+        labels[labels.length - 2],
+        "Install from Source (main branch)",
+        `the source build should be the last installing row, got ${labels.join(" | ")}`,
+      );
+      assert.strictEqual(
+        labels[labels.length - 1],
+        "Open the install instructions",
+      );
+      assert.ok(
+        !labels.some((l) => /homebrew/i.test(l)),
+        "Homebrew was dropped from the picker",
+      );
+
+      // The rows the extension installs itself are exactly the two version-bearing ones.
+      assert.deepStrictEqual(
+        choices.filter((c) => c.version !== undefined).map((c) => c.version),
+        ["", "main"],
+        "the release row installs the crates.io version, the source row builds main",
+      );
+
+      // A pinned `day.cliVersion` earns its own row, right after the release.
+      const withPin = installChoices(installRoutes("linux"), true, "v0.3.0");
+      assert.strictEqual(withPin[1].label, "Install v0.3.0 (day.cliVersion)");
+      assert.strictEqual(withPin[1].version, "v0.3.0");
+
+      // With nowhere to put an extension-owned copy, those rows are gone rather than offered
+      // and then failing.
+      const unmanaged = installChoices(installRoutes("win32"), false);
+      assert.ok(unmanaged.every((c) => c.version === undefined));
+      assert.ok(!unmanaged.some((c) => /crates\.io|Source/.test(c.label)));
+    },
+  ],
+  [
     "the install routes put a Rust-free option first on every platform",
     () => {
       // The ordering is the whole point of the table: someone without the CLI usually has no Rust
@@ -795,13 +873,18 @@ const checks: Check[] = [
           `${platform}: cargo should be the last resort`,
         );
       }
-      // Homebrew is macOS-only here; offering it on Linux would be a guess about the host.
-      assert.ok(
-        installRoutes("darwin").some((r) => r.command.includes("brew")),
-      );
-      assert.ok(
-        !installRoutes("win32").some((r) => r.command.includes("brew")),
-      );
+      // Homebrew was dropped: it fetched the same prebuilt binary the install script does, so it
+      // was a second way to say one thing in a list where every row costs a decision.
+      for (const platform of [
+        "darwin",
+        "linux",
+        "win32",
+      ] as NodeJS.Platform[]) {
+        assert.ok(
+          !installRoutes(platform).some((r) => r.command.includes("brew")),
+          `${platform} still offers Homebrew`,
+        );
+      }
     },
   ],
   [
@@ -1388,68 +1471,142 @@ const checks: Check[] = [
     },
   ],
   [
-    "the CLI can be built from source at the version the setting names",
-    async () => {
+    "the CLI install target follows the setting, defaulting to the crates.io release",
+    () => {
       const root =
         process.platform === "win32" ? "c:\\store\\cli" : "/store/cli";
-      const tags = async () => ["v0.9.1", "v0.9.0", "v0.3.0"];
 
-      // Unset follows the default, which is `main` today. Asserted against the DECLARED default
-      // rather than a literal, so the two cannot drift apart: the setting's default and what an
-      // empty value resolves to have to agree, or clearing the field changes what gets built.
+      // Unset is the newest RELEASE, from crates.io — the same answer the Day view compares
+      // against, so "latest" means one thing rather than two that can disagree. Asserted against
+      // the DECLARED default so the two cannot drift.
       const ext = vscode.extensions.getExtension("daybrite.day-vscode");
       assert.ok(ext);
-      const declared = ext.packageJSON.contributes.configuration[0].properties[
-        "day.cliVersion"
-      ].default as string;
-      assert.strictEqual(declared, "main");
-      assert.deepStrictEqual((await resolveSourceVersion("", tags)).ref, [
-        "--branch",
-        "main",
-      ]);
+      assert.strictEqual(
+        ext.packageJSON.contributes.configuration[0].properties[
+          "day.cliVersion"
+        ].default,
+        "",
+      );
+      const release = resolveSourceVersion("");
+      assert.strictEqual(release.fromGit, false);
+      const releaseCmd = sourceInstallCommand(release, root);
+      assert.ok(
+        releaseCmd.startsWith("cargo install day-cli"),
+        `expected a registry install, got ${releaseCmd}`,
+      );
+      assert.ok(!releaseCmd.includes("--git"), releaseCmd);
 
-      // The newest-release path is switched off, not deleted — Day's releases still trail `main`.
-      // Exercised here so it still works on the day the flag flips; see DEFAULT_TO_NEWEST_RELEASE.
-      const latest = await resolveSourceVersion("", tags, true);
-      assert.deepStrictEqual(latest.ref, ["--tag", "v0.9.1"]);
-
-      // `main` is a BRANCH — passing it as `--tag main` would fail, since no such tag exists.
-      assert.deepStrictEqual((await resolveSourceVersion("main", tags)).ref, [
-        "--branch",
-        "main",
-      ]);
+      // `main` is a BRANCH — `--tag main` would fail, since no such tag exists.
+      const main = resolveSourceVersion("main");
+      assert.deepStrictEqual(main.ref, ["--branch", "main"]);
+      assert.ok(main.fromGit);
       // Anything else is taken literally, so a tag and a bare revision both work.
-      assert.deepStrictEqual((await resolveSourceVersion("v0.3.0", tags)).ref, [
+      assert.deepStrictEqual(resolveSourceVersion("v0.3.0").ref, [
         "--tag",
         "v0.3.0",
       ]);
-      assert.deepStrictEqual((await resolveSourceVersion(" main ", tags)).ref, [
+      assert.deepStrictEqual(resolveSourceVersion(" main ").ref, [
         "--branch",
         "main",
       ]);
 
-      // On the release path, no reachable tags must say so rather than build something arbitrary.
-      await assert.rejects(() =>
-        resolveSourceVersion("", async () => [], true),
-      );
+      const gitCmd = sourceInstallCommand(main, root);
+      assert.ok(gitCmd.includes("--git"), gitCmd);
+      assert.ok(gitCmd.includes("--branch main"), gitCmd);
+      // `--root` keeps this out of ~/.cargo/bin and off the PATH; `--force` is what lets a second
+      // install replace the first, which is how changing the version takes effect.
+      for (const cmd of [releaseCmd, gitCmd]) {
+        assert.ok(cmd.includes("--force"), cmd);
+        assert.ok(
+          cmd.includes(root) || cmd.includes(JSON.stringify(root)),
+          cmd,
+        );
+      }
 
-      const command = sourceInstallCommand(latest, root);
-      assert.ok(command.startsWith("cargo install --git "));
-      assert.ok(command.includes("--tag v0.9.1"));
-      // `--root` is what keeps this out of ~/.cargo/bin and off the user's PATH; `--force` is what
-      // lets a second install replace the first, which is how changing the version takes effect.
-      assert.ok(command.includes("--force"), command);
-      assert.ok(
-        command.includes(root) || command.includes(JSON.stringify(root)),
-        command,
-      );
-      assert.ok(command.trim().endsWith("day-cli"), command);
+      assert.strictEqual(managedCliDir(root), path.join(root, "cli"));
+    },
+  ],
+  [
+    "the Day view's CLI row shows the version, and offers the update when there is one",
+    () => {
+      // The row exists because a walkthrough cannot render these numbers — its text is fixed in
+      // package.json. Every state it can be in is checked here, since each is a different message
+      // and getting one wrong means the view quietly says the wrong thing about the toolchain.
+      const missing = cliItem({});
+      assert.strictEqual(missing.description, "not installed");
+      assert.strictEqual(missing.contextValue, "dayCli");
 
-      // The binary the install produces is the one resolveCli looks for.
+      const current = cliItem({ installed: "0.3.0", latest: "0.3.0" });
+      assert.strictEqual(current.label, "day 0.3.0");
+      assert.strictEqual(current.description, "up to date");
+      assert.strictEqual(current.contextValue, "dayCli");
+
+      const stale = cliItem({ installed: "0.3.0", latest: "0.4.1" });
+      assert.strictEqual(stale.label, "day 0.3.0");
+      assert.strictEqual(stale.description, "update to 0.4.1");
       assert.strictEqual(
-        managedCliDir(root),
-        path.join(root, "cli"),
-        "the managed CLI lives under the extension's storage, not beside it",
+        stale.contextValue,
+        "dayCliOutdated",
+        "a distinct context value, so a menu can offer the update only when there is one",
+      );
+
+      // Offline: a version but no answer about the newest. It must not claim either way.
+      const unknown = cliItem({ installed: "0.3.0" });
+      assert.strictEqual(unknown.description, undefined);
+      assert.strictEqual(unknown.contextValue, "dayCli");
+
+      // Every state acts through the one command.
+      for (const item of [missing, current, stale, unknown]) {
+        assert.strictEqual(item.command?.command, "day.installCli");
+      }
+    },
+  ],
+  [
+    "the CLI version is read and compared as numbers, not as text",
+    () => {
+      // What `day version` prints, in each shape it prints it.
+      assert.strictEqual(
+        parseVersion("day 0.3.0 (release, branch main, bd026ff7)"),
+        "0.3.0",
+      );
+      // A source build marks a debug profile with `*`, which must not defeat the parse.
+      assert.strictEqual(
+        parseVersion("day 0.3.0* (debug, branch main, 7708193a)"),
+        "0.3.0*",
+      );
+      assert.strictEqual(parseVersion("not a version"), undefined);
+
+      assert.ok(isNewer("0.3.0", "0.4.1"));
+      assert.ok(isNewer("0.3.0*", "0.3.1"), "a debug build still compares");
+      assert.ok(!isNewer("0.4.1", "0.3.0"), "older is not an update");
+      assert.ok(!isNewer("0.3.0", "0.3.0"), "same is not an update");
+      // The whole reason this is not a string compare: lexicographically "0.10.0" < "0.4.0".
+      assert.ok(isNewer("0.4.0", "0.10.0"), "0.10.0 is newer than 0.4.0");
+      assert.ok(!isNewer("0.10.0", "0.4.0"));
+      // Unreadable on either side means no claim — never a spurious update prompt.
+      assert.ok(!isNewer("main", "0.4.0"));
+      assert.ok(!isNewer("0.4.0", "unknown"));
+    },
+  ],
+  [
+    "the walkthrough's update step is gated on the context key the extension sets",
+    () => {
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const steps = ext.packageJSON.contributes.walkthroughs[0].steps as {
+        id: string;
+        when?: string;
+        description: string;
+      }[];
+      const update = steps.find((s) => s.id === "update-cli");
+      assert.ok(update, "the walkthrough offers an update step");
+      // A walkthrough cannot render the version numbers — its text is fixed here — so `when` is
+      // the only way it reacts at all. Gated on the wrong key it would either never appear or
+      // always appear, and both look like the feature is broken.
+      assert.strictEqual(update.when, UPDATE_CONTEXT);
+      assert.ok(
+        update.description.includes("command:day.installCli"),
+        "and it acts through the install/update command",
       );
     },
   ],

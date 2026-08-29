@@ -11,6 +11,7 @@ import * as vscode from "vscode";
 
 import { State } from "./config";
 import { cached, isMobile, loading } from "./devices";
+import { CliVersions, isNewer } from "./install";
 import { logLevel, verbose } from "./tasks";
 import { DayProject } from "./project";
 import { Runner } from "./runner";
@@ -25,6 +26,8 @@ export type ConfigRow = "mode" | "locale" | "script" | "verbose" | "loglevel";
  * apps open, a Configuration row that edited someone else's would be indistinguishable from a bug.
  */
 export type Node =
+  /** The `day` CLI this window is driving — one row, above the projects it acts on. */
+  | { kind: "cli" }
   | { kind: "project"; root: string }
   | { kind: "group"; root: string; id: "config" | "targets"; label: string }
   | { kind: "config"; root: string; which: ConfigRow }
@@ -41,6 +44,56 @@ export interface TreeDeps {
   /** Enumerate ONE target's devices and refresh the tree when the answer lands. Per target, so
    *  drawing the iOS row never runs adb. */
   refreshDevices: (target: string) => Promise<void>;
+  /** What is known about the CLI: the version it reports, and the newest release. Both may be
+   *  absent — no CLI on this machine, or no answer from the network — and the row says which. */
+  versions: () => CliVersions;
+}
+
+/**
+ * The `day` CLI row: which one is being driven, and whether a newer release exists.
+ *
+ * A free function because this is the one row with no project behind it — it renders from two
+ * strings — and because it is the whole of what the walkthrough could not say. The walkthrough can
+ * only be TOLD there is an update (a `when` clause on a context key); its text is fixed in
+ * package.json, so the versions themselves have to be shown somewhere that renders at runtime.
+ * This is that place.
+ */
+export function cliItem(v: CliVersions): vscode.TreeItem {
+  const stale = !!v.installed && !!v.latest && isNewer(v.installed, v.latest);
+  const label = v.installed ? `day ${v.installed}` : "day CLI";
+  const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+  item.id = "cli";
+  if (!v.installed) {
+    item.description = "not installed";
+    item.iconPath = new vscode.ThemeIcon(
+      "warning",
+      new vscode.ThemeColor("list.warningForeground"),
+    );
+    item.tooltip =
+      "No `day` CLI could be run. Every build, launch and check goes through it — install one to " +
+      "start.";
+  } else if (stale) {
+    item.description = `update to ${v.latest}`;
+    item.iconPath = new vscode.ThemeIcon(
+      "arrow-circle-up",
+      new vscode.ThemeColor("charts.blue"),
+    );
+    item.tooltip = `day ${v.installed} is installed; ${v.latest} is the newest release on crates.io.`;
+  } else {
+    item.description = v.latest ? "up to date" : undefined;
+    item.iconPath = new vscode.ThemeIcon("terminal");
+    item.tooltip = v.latest
+      ? `day ${v.installed}, the newest release on crates.io.`
+      : `day ${v.installed}. The newest release could not be checked.`;
+  }
+  // Clicking it does the thing the row is about; the context value lets the menus offer it too.
+  item.contextValue = stale ? "dayCliOutdated" : "dayCli";
+  item.command = {
+    command: "day.installCli",
+    title: "Install/Update the Day CLI",
+    arguments: [],
+  };
+  return item;
 }
 
 export class DayTree implements vscode.TreeDataProvider<Node> {
@@ -65,7 +118,12 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     // Projects ARE the roots: a "Projects" wrapper stopped earning its level once each project
     // grew a subtree of its own, and dropping it keeps the deepest row four deep instead of five.
     if (!element) {
-      return this.deps.projects().map((p) => ({ kind: "project", root: p.root }) as Node);
+      // The CLI first: every row below it is something that CLI will be asked to do, and when it
+      // is missing or behind, that is the fact that explains the rest of the view.
+      return [
+        { kind: "cli" } as Node,
+        ...this.deps.projects().map((p) => ({ kind: "project", root: p.root }) as Node),
+      ];
     }
     if (element.kind === "project") {
       return [
@@ -96,6 +154,8 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
 
   getTreeItem(node: Node): vscode.TreeItem {
     switch (node.kind) {
+      case "cli":
+        return cliItem(this.deps.versions());
       case "project":
         return this.projectItem(node.root);
       case "group":
