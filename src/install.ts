@@ -158,7 +158,7 @@ export function installRoutes(
     ? [
         {
           label: "Run the Windows installer",
-          detail: "Prebuilt binary onto your PATH. No Rust needed.",
+          detail: "Prebuilt binary onto your PATH.",
           description: "day-installer.ps1",
           command: PS_INSTALLER,
         },
@@ -166,7 +166,7 @@ export function installRoutes(
     : [
         {
           label: "Run the install script",
-          detail: "Prebuilt binary onto your PATH. No Rust needed.",
+          detail: "Prebuilt binary onto your PATH.",
           description: "day-installer.sh",
           command: SH_INSTALLER,
         },
@@ -392,7 +392,7 @@ export function installChoices(
     out.push({
       label: "Install the latest release (crates.io)",
       detail:
-        "Managed by this extension. Nothing joins your PATH.",
+        "Managed by this extension and builds the Day CLI from the latest crates.io release.",
       description: "cargo install day-cli",
       version: "",
     });
@@ -402,7 +402,7 @@ export function installChoices(
       out.push({
         label: `Install ${pinned} (day.cliVersion)`,
         detail:
-          "The revision `day.cliVersion` pins, managed here.",
+          "Managed by this extension and builds the Day CLI from the specified crates.io release.",
         description: "cargo install --git … --tag",
         version: pinned,
       });
@@ -420,14 +420,14 @@ export function installChoices(
     out.push({
       label: "Install from Source (main branch)",
       detail:
-        "The development branch. Needs Rust, and a few minutes.",
+        "Build from source for the development branch on GitHub.",
       description: "cargo install --git … --branch main",
       version: "main",
     });
   }
   out.push({
     label: "Open the install instructions",
-    detail: "Read them on daybrite.dev instead.",
+    detail: "Read the installation documentation on daybrite.dev.",
     description: DOCS_URL,
   });
   return out;
