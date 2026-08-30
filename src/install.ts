@@ -365,7 +365,9 @@ export async function checkVersions(
 /** One row of the install picker. `version` marks the rows the extension installs itself. */
 export interface InstallChoice {
   label: string;
+  /** What the row installs. Keep it to 70 characters; the picker ellipsizes past that. */
   detail: string;
+  /** The command, or a shortened form of it. Keep it to 50 characters, same reason. */
   description: string;
   /** A PATH route to run in a terminal, for the rows that are one. */
   route?: InstallRoute;
@@ -391,8 +393,7 @@ export function installChoices(
   if (managed) {
     out.push({
       label: "Install the latest release (crates.io)",
-      detail:
-        "Managed by this extension and builds the Day CLI from the latest crates.io release.",
+      detail: "Managed by this extension, built from the latest crates.io release.",
       description: "cargo install day-cli",
       version: "",
     });
@@ -401,8 +402,9 @@ export function installChoices(
     if (pinned) {
       out.push({
         label: `Install ${pinned} (day.cliVersion)`,
-        detail:
-          "Managed by this extension and builds the Day CLI from the specified crates.io release.",
+        // A pinned version is a git tag, not a crates.io release: `resolveSourceVersion` turns
+        // any non-empty, non-`main` setting into `--tag`, which the description below shows.
+        detail: "Managed by this extension, built from that tag in the Day repository.",
         description: "cargo install --git … --tag",
         version: pinned,
       });
