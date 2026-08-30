@@ -35,7 +35,13 @@ import { RunRef, Runner } from "./runner";
 import { StatusBar } from "./statusbar";
 import { DayTaskProvider } from "./taskProvider";
 import { logLevel, setLogLevel, toggleVerbose, toolchainEnv } from "./tasks";
-import { findTarget, isBuildableHere } from "./targets";
+import {
+  findTarget,
+  isBuildableHere,
+  NativeIde,
+  nativeProjectFor,
+  NativeProject,
+} from "./targets";
 import { DayTree, Node } from "./tree";
 
 /**
@@ -484,6 +490,36 @@ export async function activate(
       }
     }),
   );
+
+  // Open a target's scaffolded native project in the IDE that owns it. Both rows are contributed
+  // against the context value `targetItem` sets, so a target with no such project never offers one.
+  const openNative = (node: Node | undefined, ide: NativeIde): Promise<void> =>
+    guard(async () => {
+      const ref = refOf(node);
+      if (!ref) {
+        return;
+      }
+      const native = nativeProjectFor(ref.target, process.platform);
+      // Belt and braces against a menu that has drifted from the tree: the command is reachable by
+      // id, and running the Xcode one on Linux should say so rather than spawn `open`.
+      if (!native || native.ide !== ide) {
+        vscode.window.showInformationMessage(
+          `Day: ${ref.target} has no ${ide === "xcode" ? "Xcode" : "Android Studio"} project to open here.`,
+        );
+        return;
+      }
+      const full = path.join(ref.root, native.relative);
+      if (!fs.existsSync(full)) {
+        vscode.window.showErrorMessage(
+          `Day: this project has no ${native.relative}. Scaffolding for ${ref.target} may never have been generated.`,
+        );
+        return;
+      }
+      await openInIde(native, full, output);
+    });
+
+  register("day.openInAndroidStudio", (node?: Node) => openNative(node, "studio"));
+  register("day.openInXcode", (node?: Node) => openNative(node, "xcode"));
 
   register("day.stopAll", () => guard(() => runner.stopAll()));
 
@@ -1154,6 +1190,93 @@ export async function activate(
 
   tree.refresh();
   return { focusedProject: () => state.focusedRoot };
+}
+
+/** The first of these that exists on PATH is the launcher, in the order a machine likely has them. */
+function ideLauncher(ide: NativeIde): string | undefined {
+  const names =
+    ide === "studio"
+      ? process.platform === "win32"
+        ? ["studio64.exe", "studio.exe"]
+        : ["studio", "studio.sh"]
+      : [];
+  const dirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  for (const name of names) {
+    for (const dir of dirs) {
+      const full = path.join(dir, name);
+      if (fs.existsSync(full)) {
+        return full;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Hand a scaffolded native project to its IDE.
+ *
+ * macOS goes through `open -a`, which finds an app by name wherever it was installed — no PATH
+ * entry, no fixed location — and exits non-zero when it is absent, so a missing Xcode or Android
+ * Studio is reported rather than silently doing nothing. Everywhere else Android Studio is a
+ * launcher script that has to be on PATH, and it is spawned detached: it outlives this window, and
+ * a child held open by the extension host would keep the host alive at shutdown.
+ */
+async function openInIde(
+  native: NativeProject,
+  fullPath: string,
+  output: vscode.OutputChannel,
+): Promise<void> {
+  const offerDownload = (message: string): void => {
+    const url =
+      native.ide === "studio"
+        ? "https://developer.android.com/studio"
+        : "https://developer.apple.com/xcode/";
+    void vscode.window
+      .showErrorMessage(message, `Get ${native.ideName}`)
+      .then((choice) => {
+        if (choice) {
+          void vscode.env.openExternal(vscode.Uri.parse(url));
+        }
+      });
+  };
+
+  if (process.platform === "darwin") {
+    output.appendLine(`[ide] open -a "${native.ideName}" ${fullPath}`);
+    await new Promise<void>((resolve) => {
+      childProcess.execFile(
+        "open",
+        ["-a", native.ideName, fullPath],
+        (err, _stdout, stderr) => {
+          if (err) {
+            output.appendLine(`[ide] ${stderr.trim() || err.message}`);
+            offerDownload(
+              `Day: could not open ${native.ideName}. ${stderr.trim() || err.message}`,
+            );
+          }
+          resolve();
+        },
+      );
+    });
+    return;
+  }
+
+  const launcher = ideLauncher(native.ide);
+  if (!launcher) {
+    offerDownload(
+      `Day: ${native.ideName} was not found on PATH. Add its \`bin\` directory to PATH, or open ${fullPath} from ${native.ideName} itself.`,
+    );
+    return;
+  }
+  output.appendLine(`[ide] ${launcher} ${fullPath}`);
+  const child = childProcess.spawn(launcher, [fullPath], {
+    detached: true,
+    stdio: "ignore",
+  });
+  child.on("error", (err) => {
+    output.appendLine(`[ide] ${err.message}`);
+    offerDownload(`Day: could not start ${native.ideName}. ${err.message}`);
+  });
+  child.unref();
 }
 
 export function deactivate(): void {

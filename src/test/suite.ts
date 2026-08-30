@@ -35,9 +35,9 @@ import {
 } from "../debug";
 import { editFor, Lint, mapFindings } from "../lint";
 import { composeArgs, describeSpec, visibleFields } from "../newproject";
-import { catalog } from "../targets";
-import { cliItem } from "../tree";
-import { toolchainEnv } from "../tasks";
+import { catalog, findTarget, isBuildableHere, nativeProjectFor } from "../targets";
+import { cliItem, orderTargets, targetContextValue } from "../tree";
+import { hideUnavailableTargets, toolchainEnv } from "../tasks";
 import {
   installChoices,
   installRoutes,
@@ -1875,6 +1875,280 @@ const checks: Check[] = [
           vscode.ConfigurationTarget.Workspace,
         );
       }
+    },
+  ],
+  [
+    "each target offers the native IDE its own scaffold wrote, and only where that IDE runs",
+    () => {
+      // These are committed source under `platform/`, written by `day new` — not build output —
+      // so the row can offer them without a build having happened.
+      for (const platform of [
+        "darwin",
+        "linux",
+        "win32",
+      ] as NodeJS.Platform[]) {
+        const studio = nativeProjectFor("android-mdc", platform);
+        assert.strictEqual(studio?.ide, "studio", `${platform}: android-mdc`);
+        // The Gradle ROOT, not the app module and not a lone build.gradle.kts: Studio imports the
+        // directory holding settings.gradle.kts, and treats a bare build file as a stray.
+        assert.strictEqual(studio?.relative, "platform/android");
+      }
+
+      // Both Apple targets open in Xcode, each from its OWN platform directory — swapping the two
+      // would hand Xcode the wrong project, and both paths exist so neither would error.
+      const apple: [string, string][] = [
+        ["ios-uikit", "platform/ios/DayApp.xcodeproj"],
+        ["macos-appkit", "platform/macos/DayApp.xcodeproj"],
+      ];
+      for (const [name, relative] of apple) {
+        const mac = nativeProjectFor(name, "darwin");
+        assert.strictEqual(mac?.ide, "xcode", name);
+        assert.strictEqual(mac?.relative, relative, name);
+        // Xcode is macOS-only, so no other host is offered a row it could not act on.
+        for (const platform of ["linux", "win32"] as NodeJS.Platform[]) {
+          assert.strictEqual(
+            nativeProjectFor(name, platform),
+            undefined,
+            `${platform} has no Xcode to open ${name} with`,
+          );
+        }
+      }
+
+      // Everything else opens nothing.
+      for (const name of ["linux-gtk", "web-dom", "harmony-arkui", "macos-gtk"]) {
+        assert.strictEqual(
+          nativeProjectFor(name, "darwin"),
+          undefined,
+          `${name} should offer no IDE project`,
+        );
+      }
+    },
+  ],
+  [
+    "a target row advertises an IDE project only when the project on disk has one",
+    () => {
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      assert.ok(root, "this check needs the scaffolded fixture");
+      // The fixture scaffolds ios-uikit and android-mdc, so both directories are really there.
+      assert.ok(fs.existsSync(path.join(root, "platform/android")));
+
+      assert.strictEqual(
+        targetContextValue("dayTarget", root, "android-mdc", "darwin"),
+        "dayTarget.studio",
+      );
+      // The suffix rides on every base state: a running or unbuildable row still opens in an IDE,
+      // and an unbuildable target is exactly when someone reaches for one.
+      assert.strictEqual(
+        targetContextValue("dayTargetRunning", root, "android-mdc", "linux"),
+        "dayTargetRunning.studio",
+      );
+      assert.strictEqual(
+        targetContextValue("dayTargetDisabled", root, "ios-uikit", "darwin"),
+        "dayTargetDisabled.xcode",
+      );
+      assert.strictEqual(
+        targetContextValue("dayTarget", root, "macos-appkit", "darwin"),
+        "dayTarget.xcode",
+      );
+      // Same project, same target, a host with no Xcode: no offer.
+      assert.strictEqual(
+        targetContextValue("dayTarget", root, "ios-uikit", "win32"),
+        "dayTarget",
+      );
+      // A target that scaffolds nothing to open.
+      assert.strictEqual(
+        targetContextValue("dayTarget", root, "linux-gtk", "darwin"),
+        "dayTarget",
+      );
+
+      // A project WITHOUT the scaffolding — the directory decides, not the target name. Otherwise
+      // the row would offer Studio for a project that has no Gradle build to open.
+      const bare = fs.mkdtempSync(path.join(os.tmpdir(), "day-no-platform-"));
+      try {
+        assert.strictEqual(
+          targetContextValue("dayTarget", bare, "android-mdc", "darwin"),
+          "dayTarget",
+        );
+      } finally {
+        fs.rmSync(bare, { recursive: true, force: true });
+      }
+    },
+  ],
+  [
+    "the IDE rows are contributed to the menu, and no target menu lost its row to the suffix",
+    () => {
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const menus = ext.packageJSON.contributes.menus[
+        "view/item/context"
+      ] as { command: string; when: string }[];
+      const commands = (ext.packageJSON.contributes.commands ?? []) as {
+        command: string;
+        title: string;
+      }[];
+
+      for (const id of ["day.openInAndroidStudio", "day.openInXcode"]) {
+        assert.ok(
+          commands.some((c) => c.command === id),
+          `${id} is not declared as a command`,
+        );
+        assert.ok(
+          menus.some((m) => m.command === id),
+          `${id} is not on the target menu`,
+        );
+      }
+
+      // Evaluate each `when` clause's own regex against the context values the tree really emits.
+      // The suffix was added to a value four other menus matched with `==`, and each of them would
+      // have silently vanished from every Android and iOS row.
+      const matcher = (command: string): RegExp => {
+        const entry = menus.find((m) => m.command === command);
+        assert.ok(entry, `${command} has no menu entry`);
+        const m = /viewItem =~ \/(.+?)\/(?:\s|$)/.exec(entry.when);
+        assert.ok(m, `${command}'s when clause has no viewItem regex: ${entry.when}`);
+        return new RegExp(m[1]);
+      };
+      const plain = ["dayTarget", "dayTargetRunning", "dayTargetDisabled"];
+      const suffixed = plain.flatMap((b) => [`${b}.studio`, `${b}.xcode`]);
+
+      for (const [command, shouldMatch] of [
+        ["day.runTarget", ["dayTarget", "dayTarget.studio", "dayTarget.xcode"]],
+        [
+          "day.stop",
+          ["dayTargetRunning", "dayTargetRunning.studio", "dayTargetRunning.xcode"],
+        ],
+        [
+          "day.restart",
+          ["dayTargetRunning", "dayTargetRunning.studio", "dayTargetRunning.xcode"],
+        ],
+        [
+          "day.toggleTarget",
+          [
+            "dayTarget",
+            "dayTargetRunning",
+            "dayTarget.studio",
+            "dayTargetRunning.xcode",
+          ],
+        ],
+      ] as [string, string[]][]) {
+        const re = matcher(command);
+        for (const value of shouldMatch) {
+          assert.ok(re.test(value), `${command} no longer matches ${value}`);
+        }
+        // Still not offered on a row it was never meant for.
+        assert.ok(
+          !re.test("dayProject"),
+          `${command} matches a project row`,
+        );
+      }
+
+      // A disabled row cannot be run, stopped or ticked — that was true before and stays true with
+      // a suffix on it.
+      for (const command of ["day.runTarget", "day.stop", "day.toggleTarget"]) {
+        const re = matcher(command);
+        for (const value of ["dayTargetDisabled", "dayTargetDisabled.studio"]) {
+          assert.ok(!re.test(value), `${command} now matches ${value}`);
+        }
+      }
+
+      // And each IDE row is offered only for its own IDE.
+      const studio = matcher("day.openInAndroidStudio");
+      const xcode = matcher("day.openInXcode");
+      for (const value of suffixed.filter((v) => v.endsWith(".studio"))) {
+        assert.ok(studio.test(value), `Studio row missing from ${value}`);
+        assert.ok(!xcode.test(value), `Xcode row offered on ${value}`);
+      }
+      for (const value of suffixed.filter((v) => v.endsWith(".xcode"))) {
+        assert.ok(xcode.test(value), `Xcode row missing from ${value}`);
+        assert.ok(!studio.test(value), `Studio row offered on ${value}`);
+      }
+      for (const value of plain) {
+        assert.ok(!studio.test(value) && !xcode.test(value), `${value} offers an IDE`);
+      }
+    },
+  ],
+  [
+    "unavailable targets sink to the bottom, or drop out when the setting says so",
+    () => {
+      // `findTarget`/`isBuildableHere` answer against THIS host, so the expected split is computed
+      // the same way rather than hard-coded — the suite runs on all three OSes in CI, and a fixed
+      // list would encode whichever one wrote it.
+      const names = catalog().map((t) => t.name);
+      const buildable = names.filter((n) => {
+        const t = findTarget(n);
+        return !t || isBuildableHere(t);
+      });
+      const not = names.filter((n) => !buildable.includes(n));
+      assert.ok(
+        buildable.length > 0 && not.length > 0,
+        "this check needs a host with both kinds of target",
+      );
+
+      const listed = orderTargets(names, false);
+      assert.strictEqual(listed.hidden, 0, "nothing is hidden when the setting is off");
+      assert.deepStrictEqual(
+        listed.shown,
+        [...buildable, ...not],
+        "every buildable target comes before every unbuildable one",
+      );
+      // Nothing is lost by reordering — a row that vanished would be a worse bug than a mis-sorted
+      // one, and is exactly what a filter written in place of a partition would do.
+      assert.deepStrictEqual([...listed.shown].sort(), [...names].sort());
+
+      const trimmed = orderTargets(names, true);
+      assert.deepStrictEqual(trimmed.shown, buildable);
+      assert.strictEqual(trimmed.hidden, not.length, "the count is what the heading reports");
+
+      // Declaration order survives inside each half: Day.toml's order is the author's, and this
+      // is a stable partition rather than a sort.
+      const declared = [...not.slice(0, 1), ...buildable.reverse(), ...not.slice(1)];
+      const stable = orderTargets(declared, false);
+      assert.deepStrictEqual(
+        stable.shown,
+        [...declared.filter((n) => !not.includes(n)), ...declared.filter((n) => not.includes(n))],
+      );
+    },
+  ],
+  [
+    "a target the catalog does not know stays listed rather than being buried or hidden",
+    () => {
+      // A CLI newer than this extension can report a target the static fallback has never heard of.
+      // Treating unknown as unavailable would bury it under the greyed-out rows — or, with hiding
+      // on by default, drop it from the view entirely.
+      const invented = "plan9-rio";
+      assert.strictEqual(findTarget(invented), undefined, "the fixture target must be unknown");
+
+      const shown = orderTargets(["macos-appkit", invented], false).shown;
+      assert.ok(shown.includes(invented), "an unknown target must be listed");
+
+      const hiding = orderTargets([invented], true);
+      assert.deepStrictEqual(hiding.shown, [invented]);
+      assert.strictEqual(hiding.hidden, 0, "an unknown target is not counted as hidden");
+    },
+  ],
+  [
+    "hiding unavailable targets is on by default, and is a per-project setting",
+    () => {
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const cfg = ext.packageJSON.contributes.configuration;
+      const props = (Array.isArray(cfg) ? cfg[0] : cfg).properties as Record<
+        string,
+        { default?: unknown; scope?: string; type?: string }
+      >;
+      const entry = props["day.hideUnavailableTargets"];
+      assert.ok(entry, "the setting is not contributed");
+      assert.strictEqual(entry.type, "boolean");
+      assert.strictEqual(entry.default, true, "hiding is the default");
+      // Folder-scoped like day.verbose: one app in the window can list everything it ships to
+      // while another stays trimmed to what this host runs.
+      assert.strictEqual(entry.scope, "resource");
+
+      // And the reader agrees with the manifest, rather than carrying its own default.
+      assert.strictEqual(
+        hideUnavailableTargets(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath),
+        true,
+      );
     },
   ],
   [

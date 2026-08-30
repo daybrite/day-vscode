@@ -131,6 +131,17 @@ export function verbose(root?: string): boolean {
   return dayConfig(root).get<boolean>("verbose", false);
 }
 
+/**
+ * Whether the Day view leaves out the targets this host cannot build
+ * (`day.hideUnavailableTargets`).
+ *
+ * Folder-scoped like the rest: a Windows-only app in the same window as a cross-platform one can
+ * list what it ships to while the other stays trimmed to what runs here.
+ */
+export function hideUnavailableTargets(root?: string): boolean {
+  return dayConfig(root).get<boolean>("hideUnavailableTargets", true);
+}
+
 /** Flip `day.verbose` for one project (see [`writeScope`]). Returns the new value. */
 export async function toggleVerbose(root?: string): Promise<boolean> {
   const cfg = dayConfig(root);

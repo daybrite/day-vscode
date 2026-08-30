@@ -6,16 +6,23 @@
 // apps and the point is to see and drive them together. Targets belong to a project — the row
 // carries its root — so ticking `ios-uikit` under one app says nothing about the next.
 
+import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 
 import { State } from "./config";
 import { cached, isMobile, loading } from "./devices";
 import { CliVersions, isNewer } from "./install";
-import { logLevel, verbose } from "./tasks";
+import { hideUnavailableTargets, logLevel, verbose } from "./tasks";
 import { DayProject } from "./project";
 import { Runner } from "./runner";
-import { catalog, findTarget, isBuildableHere, kindLabel } from "./targets";
+import {
+  catalog,
+  findTarget,
+  isBuildableHere,
+  kindLabel,
+  nativeProjectFor,
+} from "./targets";
 
 /** Which configuration row a `config` node is. */
 export type ConfigRow = "mode" | "locale" | "script" | "verbose" | "loglevel";
@@ -96,6 +103,60 @@ export function cliItem(v: CliVersions): vscode.TreeItem {
   return item;
 }
 
+/**
+ * A target row's context value: its state, plus the IDE of any native project it carries.
+ *
+ * The suffix (`.studio`, `.xcode`) is what puts "Open in Android Studio" / "Open in Xcode" on the
+ * row's menu, and it rides on ALL THREE base states — a running or unbuildable row keeps the entry,
+ * because opening a project in its IDE has nothing to do with whether this host can build it, and
+ * an unbuildable target is exactly when someone reaches for Studio. Every other target menu matches
+ * its base with the suffix optional, so adding one here does not take Run or Stop off the row.
+ *
+ * Checked against disk rather than assumed from the target name: a project that never scaffolded
+ * that platform, or that has since deleted it, offers nothing to open.
+ */
+export function targetContextValue(
+  base: string,
+  root: string,
+  target: string,
+  platform: NodeJS.Platform,
+): string {
+  const native = nativeProjectFor(target, platform);
+  return native && fs.existsSync(path.join(root, native.relative))
+    ? `${base}.${native.ide}`
+    : base;
+}
+
+/**
+ * The targets a project's list shows, and how many it left out.
+ *
+ * Unavailable means this host cannot build it — `windows-xaml` on a Mac. Those rows sink to the
+ * bottom rather than sorting away entirely, so the ones you can act on are the ones under the
+ * cursor; hiding them is the separate `day.hideUnavailableTargets` choice.
+ *
+ * The partition is STABLE: within each half the project's own declaration order from `Day.toml`
+ * survives, because that order is the author's and re-sorting it alphabetically would shuffle a
+ * list someone deliberately arranged.
+ *
+ * A target the catalog does not know is treated as available. It may be a target this CLI is too
+ * old to list, and burying — or hiding — a row on the strength of not recognizing it is how a
+ * newer target silently disappears from the view.
+ */
+export function orderTargets(
+  names: string[],
+  hideUnavailable: boolean,
+): { shown: string[]; hidden: number } {
+  const available: string[] = [];
+  const unavailable: string[] = [];
+  for (const name of names) {
+    const target = findTarget(name);
+    (target && !isBuildableHere(target) ? unavailable : available).push(name);
+  }
+  return hideUnavailable
+    ? { shown: available, hidden: unavailable.length }
+    : { shown: [...available, ...unavailable], hidden: 0 };
+}
+
 export class DayTree implements vscode.TreeDataProvider<Node> {
   private emitter = new vscode.EventEmitter<Node | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
@@ -112,6 +173,11 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
   /** The targets a project offers: the ones it declares, else the whole catalog. */
   private targetNames(project: DayProject): string[] {
     return project.targets.length > 0 ? project.targets : catalog().map((t) => t.name);
+  }
+
+  /** A project's target rows, ordered and filtered by `day.hideUnavailableTargets`. */
+  private targetRows(project: DayProject): { shown: string[]; hidden: number } {
+    return orderTargets(this.targetNames(project), hideUnavailableTargets(project.root));
   }
 
   getChildren(element?: Node): Node[] {
@@ -144,7 +210,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     if (element.kind === "group" && element.id === "targets") {
       const project = this.deps.projects().find((p) => p.root === element.root);
       return project
-        ? this.targetNames(project).map(
+        ? this.targetRows(project).shown.map(
             (name) => ({ kind: "target", root: project.root, name }) as Node,
           )
         : [];
@@ -197,6 +263,8 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     } else {
       const running = this.deps.runner.runningIn(node.root).length;
       const ticked = sel.targets.length;
+      const project = this.deps.projects().find((p) => p.root === node.root);
+      const hidden = project ? this.targetRows(project).hidden : 0;
       const bits: string[] = [];
       if (ticked > 0) {
         bits.push(`${ticked} ticked`);
@@ -204,7 +272,13 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       if (running > 0) {
         bits.push(`${running} running`);
       }
+      if (hidden > 0) {
+        bits.push(`${hidden} unavailable hidden`);
+      }
       item.description = bits.join(" · ");
+      if (hidden > 0) {
+        item.tooltip = `${hidden} target(s) this host cannot build are hidden. Turn off day.hideUnavailableTargets to list them.`;
+      }
     }
     return item;
   }
@@ -414,6 +488,13 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       item.iconPath = new vscode.ThemeIcon(kindIcon);
       item.contextValue = "dayTarget";
     }
+
+    item.contextValue = targetContextValue(
+      item.contextValue,
+      root,
+      name,
+      process.platform,
+    );
 
     // Only buildable targets get a selection checkbox — a target this host cannot build has
     // nothing to tick. Deliberately NO `item.command`: the checkbox is the only thing that

@@ -62,12 +62,13 @@ rather a `day` of your own won, name it in `day.cliPath`, which beats both.
 Steps 1, 3 and 4 build from source on the first run, which takes minutes and looks like a hang. The
 output channel shows the `cargo` invocation, so you can tell that case apart.
 
-## A target is greyed out
+## A target is missing, or greyed out
 
-Targets your host cannot build are disabled with the reason in the row — `windows-xaml` needs a
-Windows host, `macos-appkit` needs a Mac. This is not a configuration problem: those toolkits build
-only on their own OS. [Platforms](https://daybrite.dev/docs/platforms/) lists what each target
-requires.
+The Day view hides the targets your host cannot build, and the **Targets** heading says how many.
+Set `day.hideUnavailableTargets` to `false` to see them: they sit at the bottom of the group,
+disabled with the reason in the row — `windows-xaml` needs a Windows host, `macos-appkit` needs a
+Mac. This is not a configuration problem: those toolkits build only on their own OS.
+[Platforms](https://daybrite.dev/docs/platforms/) lists what each target requires.
 
 ## A build fails on a toolchain
 

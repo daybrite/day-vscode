@@ -139,6 +139,16 @@
         "icon": "$(debug-restart)"
       },
       {
+        "command": "day.openInAndroidStudio",
+        "title": "Open in Android Studio",
+        "category": "Day"
+      },
+      {
+        "command": "day.openInXcode",
+        "title": "Open in Xcode",
+        "category": "Day"
+      },
+      {
         "command": "day.selectMode",
         "title": "Select Build Mode",
         "category": "Day"
@@ -338,17 +348,17 @@
       "view/item/context": [
         {
           "command": "day.runTarget",
-          "when": "view == dayTargets && viewItem == dayTarget",
+          "when": "view == dayTargets && viewItem =~ /^dayTarget(\\.\\w+)?$/",
           "group": "inline@1"
         },
         {
           "command": "day.stop",
-          "when": "view == dayTargets && viewItem == dayTargetRunning",
+          "when": "view == dayTargets && viewItem =~ /^dayTargetRunning(\\.\\w+)?$/",
           "group": "inline@1"
         },
         {
           "command": "day.restart",
-          "when": "view == dayTargets && viewItem == dayTargetRunning",
+          "when": "view == dayTargets && viewItem =~ /^dayTargetRunning(\\.\\w+)?$/",
           "group": "inline@2"
         },
         {
@@ -363,7 +373,7 @@
         },
         {
           "command": "day.toggleTarget",
-          "when": "view == dayTargets && viewItem =~ /^dayTarget(Running)?$/",
+          "when": "view == dayTargets && viewItem =~ /^dayTarget(Running)?(\\.\\w+)?$/",
           "group": "1_toggle@1"
         },
         {
@@ -375,6 +385,16 @@
           "command": "day.clean",
           "when": "view == dayTargets && viewItem =~ /^dayProject/",
           "group": "2_tools@1"
+        },
+        {
+          "command": "day.openInAndroidStudio",
+          "when": "view == dayTargets && viewItem =~ /\\.studio$/",
+          "group": "3_native@1"
+        },
+        {
+          "command": "day.openInXcode",
+          "when": "view == dayTargets && viewItem =~ /\\.xcode$/",
+          "group": "3_native@2"
         }
       ],
       "commandPalette": [
@@ -432,6 +452,14 @@
         },
         {
           "command": "day.fixAllInFile",
+          "when": "false"
+        },
+        {
+          "command": "day.openInAndroidStudio",
+          "when": "false"
+        },
+        {
+          "command": "day.openInXcode",
           "when": "false"
         }
       ]
@@ -513,11 +541,18 @@
               "env"
             ]
           },
+          "day.hideUnavailableTargets": {
+            "type": "boolean",
+            "default": true,
+            "scope": "resource",
+            "markdownDescription": "Leave the platform-toolkit targets this host cannot build out of the Day view's **Targets** list — `windows-xaml` on a Mac, `macos-appkit` on Linux. The group heading says how many were hidden. Turn this off to list them at the bottom of the group instead, greyed out with the reason: an app can ship to platforms you only build on CI.",
+            "order": 7
+          },
           "day.followActiveEditor": {
             "type": "boolean",
             "default": true,
             "markdownDescription": "Focus the Day project that the active editor's file belongs to. With several apps open in one window, opening a file in one of them points the Configuration rows, the Run button, and the status bar at that project. Turn this off to change focus only from the Day sidebar or `Day: Select Project`.",
-            "order": 7
+            "order": 8
           },
           "day.newProject.openAfterCreate": {
             "type": "string",
@@ -536,20 +571,20 @@
             "default": "ask",
             "scope": "window",
             "markdownDescription": "What to do with a project after `Day: New Project` scaffolds it.",
-            "order": 8
+            "order": 9
           },
           "day.showWalkthroughOnStartup": {
             "type": "boolean",
             "default": false,
             "scope": "window",
             "markdownDescription": "Open the **Get started with Day** walkthrough every time a window opens, rather than once per install. `scripts/dev.sh` sets this in the workspace it generates when there is no project to open, so the welcome page is what you land on.",
-            "order": 9
+            "order": 10
           },
           "day.mcp.enabled": {
             "type": "boolean",
             "default": true,
             "description": "Expose Day to AI agents via the Model Context Protocol (`day mcp-server`): build, launch, relaunch, and drive running apps, with screenshots agents can see.",
-            "order": 10,
+            "order": 11,
             "keywords": [
               "MCP",
               "agent",
@@ -576,7 +611,7 @@
             ],
             "default": "auto",
             "markdownDescription": "Which Rust debugger **Start Debugging** hands a desktop target to. Day ships no debug adapter of its own — it builds the app and passes the binary, working directory, and environment to the debugger you already use. Device and browser targets always run without a debugger.",
-            "order": 11,
+            "order": 12,
             "keywords": [
               "debugger",
               "LLDB",
@@ -598,13 +633,13 @@
               "git",
               "CLI"
             ],
-            "order": 12
+            "order": 13
           },
           "day.cliPath": {
             "type": "string",
             "default": "day",
             "markdownDescription": "Path to the `day` CLI binary. If it is left as `day`, a local Day checkout is preferred over `PATH`: the Day repository itself when the workspace is inside one, otherwise a `day/` checkout sitting beside this extension's own `day-vscode/` source. That checkout's `target/debug/day` is used when it has been built, and `cargo run` against it (via `--manifest-path` for the sibling case) when it has not — so a dev host needs no installed CLI.",
-            "order": 13,
+            "order": 14,
             "keywords": [
               "CLI",
               "day",
@@ -616,7 +651,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Path to a `day` **source checkout** (the folder holding `Cargo.toml` and `crates/day-cli/`). When set, every CLI invocation runs as `cargo run --manifest-path <path>/Cargo.toml -q -p day-cli --`, so an edit to the CLI is compiled into the very next build, launch or project scan — no rebuild step to remember. Takes precedence over `#day.cliPath#`. Costs roughly a second per invocation for cargo's freshness check, and needs `cargo` on the PATH the editor was started with; without it the checkout's already-built binary is used instead. Leave empty for normal use.",
-            "order": 14,
+            "order": 15,
             "keywords": [
               "CLI",
               "cargo",
@@ -628,7 +663,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Sets `DEVELOPER_DIR` for every `day` command this extension runs — the Xcode to build Apple targets with, named either as the `.app` itself or as its `Contents/Developer`. `xcrun`, `xcodebuild` and `simctl` read that variable directly, so this is how a machine with several Xcodes points `macos-appkit` and `ios-uikit` at one of them. Empty = whatever `xcode-select` points to.",
-            "order": 15,
+            "order": 16,
             "keywords": [
               "DEVELOPER_DIR",
               "Xcode",
@@ -643,7 +678,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Path to the Android SDK (the directory holding `platform-tools/` and `emulator/`). Exported as both `ANDROID_HOME` and `ANDROID_SDK_ROOT` for every `day` command this extension runs — builds, launches, `day doctor` and device listing — and its `platform-tools/` and `emulator/` are added to the task `PATH`, which is what lets `adb` and the emulator be found when the editor was launched from the Dock and inherited no shell environment. Empty = whatever the environment already provides.",
-            "order": 16,
+            "order": 17,
             "keywords": [
               "ANDROID_HOME",
               "ANDROID_SDK_ROOT",
@@ -656,7 +691,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Path to the Android NDK used to cross-compile the Rust cdylib for `android-mdc`. Exported as `ANDROID_NDK_HOME`. Empty = the CLI picks the newest NDK inside the SDK.",
-            "order": 17,
+            "order": 18,
             "keywords": [
               "ANDROID_NDK_HOME",
               "NDK",
@@ -668,7 +703,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Sets `OHOS_NDK_HOME` for the `harmony-arkui` target — the path to the HarmonyOS (OpenHarmony) NDK `native` directory, e.g. `~/ohos-sdk/native`. The SDK's sibling `toolchains/` directory, which carries `hdc`, joins the task `PATH` as well. Leave empty to auto-detect: an existing `OHOS_NDK_HOME`, then `~/ohos/ndk-extract/native`, then `~/ohos-sdk/native`.",
-            "order": 18,
+            "order": 19,
             "keywords": [
               "HarmonyOS",
               "OpenHarmony",

@@ -73,13 +73,14 @@ one:
 <figure class="shot">
   <img class="only-dark" src="/img/docs/cockpit-dark.png" alt="The Day view showing a project, its configuration and its targets" />
   <img class="only-light" src="/img/docs/cockpit-light.png" alt="The Day view showing a project, its configuration and its targets" />
-  <figcaption>Targets this machine cannot build say so and stay visible, rather than disappearing.
-  Mobile targets expand to a Device row.</figcaption>
+  <figcaption>The targets this machine can build. Mobile targets expand to a Device row.</figcaption>
 </figure>
 
-A macOS machine cannot build `windows-xaml`, so that row is greyed and gives the reason. What each
-target is, and what it needs installed, is covered in
-[Platforms](https://daybrite.dev/docs/platforms/).
+A macOS machine cannot build `windows-xaml`, so that row is left out and the **Targets** heading
+says how many were hidden. Set `day.hideUnavailableTargets` to `false` to list them instead: they
+sit at the bottom of the group, greyed out and giving the reason. Either way an app can ship to
+platforms you only ever build on CI. What each target is, and what it needs installed, is covered
+in [Platforms](https://daybrite.dev/docs/platforms/).
 
 ## 4. Run it
 

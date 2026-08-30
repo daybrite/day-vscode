@@ -53,6 +53,17 @@ Per-target **Run**, **Stop**, **Restart** and **Build**, per-project **Run** and
 Device picker are inline buttons and context-menu entries on their rows rather than palette
 commands.
 
+Two more commands sit on the targets that carry a native project to open:
+
+| Right-click | On | What it opens |
+|---|---|---|
+| Open in Android Studio | `android-mdc` | `platform/android`, the Gradle root |
+| Open in Xcode | `ios-uikit`, on macOS | `platform/ios/DayApp.xcodeproj` |
+| Open in Xcode | `macos-appkit`, on macOS | `platform/macos/DayApp.xcodeproj` |
+
+Each is scaffolded source that `day new` wrote and your app owns, so none of them needs a build
+first. A row offers the entry only when that directory is actually in the project.
+
 ## Settings
 
 ### Finding the CLI
@@ -82,6 +93,7 @@ Day view's Configuration rows write to the focused project's folder.
 | `day.verbose` | `false` | Run with `--verbose`, showing every sub-command a build executes and its raw output |
 | `day.logLevel` | `trace` | `DAY_LOG` level passed to every launch as `--env`; a `DAY_LOG` in `day.extraEnv` wins |
 | `day.extraEnv` | `{}` | `KEY=VALUE` pairs passed to every launch as `--env` |
+| `day.hideUnavailableTargets` | `true` | Leave the targets this host cannot build out of the **Targets** list; the heading says how many. Off lists them at the bottom, greyed out with the reason |
 
 ### Toolchain locations
 

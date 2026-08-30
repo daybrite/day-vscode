@@ -18,7 +18,6 @@ length, and the toolchains each target needs.
 reason not to. VS Code updates it from there without you doing anything.
 
 [![VS Code Marketplace version](https://vsmarketplacebadges.dev/version-short/daybrite.day-vscode.svg?style=flat-square&color=1C6E7E)](https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode)
-[![VS Code Marketplace installs](https://vsmarketplacebadges.dev/installs-short/daybrite.day-vscode.svg?style=flat-square&color=1C6E7E)](https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode)
 
 Three ways in, all the same extension:
 

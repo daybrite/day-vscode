@@ -66,6 +66,59 @@ export function isBuildableHere(t: Target): boolean {
   return t.host === "any" || t.host === hostOs();
 }
 
+/** An IDE that a target's scaffolded native project can be handed to. */
+export type NativeIde = "studio" | "xcode";
+
+/** The native project a target carries, and what opens it. */
+export interface NativeProject {
+  /** Suffix on the row's `contextValue`, which is what the menu's `when` clause keys on. */
+  ide: NativeIde;
+  /** The application's name, for `open -a` and for anything that has to say what is missing. */
+  ideName: string;
+  /** What to hand the IDE, relative to the project root. */
+  relative: string;
+}
+
+/**
+ * The native IDE project a target carries, if the scaffold wrote one for it.
+ *
+ * These are committed source under `platform/`, not build output — `day new` writes them and the
+ * app owns them from then on — so opening one is just handing the IDE a path, with no build
+ * required first. `platform` is a parameter rather than `process.platform` so the macOS-only rule
+ * can be tested from any host, the way `installRoutes` is.
+ */
+export function nativeProjectFor(
+  target: string,
+  platform: NodeJS.Platform,
+): NativeProject | undefined {
+  switch (target) {
+    case "android-mdc":
+      // Studio opens the Gradle ROOT — the directory holding `settings.gradle.kts` — not the app
+      // module beneath it and not a lone `build.gradle.kts`, which it would treat as a stray file.
+      return {
+        ide: "studio",
+        ideName: "Android Studio",
+        relative: "platform/android",
+      };
+    // The two Apple targets each scaffold their own .xcodeproj, under their own platform
+    // directory. Xcode ships on macOS only, so no other host is offered a row it could not act on.
+    case "ios-uikit":
+    case "macos-appkit":
+      return platform === "darwin"
+        ? {
+            ide: "xcode",
+            ideName: "Xcode",
+            relative:
+              target === "ios-uikit"
+                ? "platform/ios/DayApp.xcodeproj"
+                : "platform/macos/DayApp.xcodeproj",
+          }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
 /** A short, human label for a target's kind (shown as the tree item description). */
 export function kindLabel(t: Target): string {
   switch (t.kind) {
