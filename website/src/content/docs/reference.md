@@ -49,9 +49,9 @@ All of these are under the **Day** category in the command palette.
 | Open Settings | Opens this extension's settings |
 | Show Log | Opens the Day output channel |
 
-Per-target **Run**, **Stop**, **Restart** and **Build**, per-project **Run** and **Stop**, and the
-Device picker are inline buttons and context-menu entries on their rows rather than palette
-commands.
+Per-target **Run**, **Stop**, **Restart** and **Build**, per-project **Run** and **Stop**, the **+**
+that adds a device to a mobile target, and a device row's own **Play**, **Stop** and **Remove
+Device** are inline buttons and context-menu entries on their rows rather than palette commands.
 
 Two more commands sit on the targets that carry a native project to open:
 

@@ -9,7 +9,7 @@
 import * as childProcess from "child_process";
 import * as vscode from "vscode";
 
-import { State } from "./config";
+import { DeviceChoice, State } from "./config";
 import { renderCommand, resolveCli, stopArgs } from "./cli";
 import { buildDayTask, DayTaskDefinition } from "./tasks";
 
@@ -18,12 +18,17 @@ export interface RunRef {
   /** Project root (the directory holding Day.toml). */
   root: string;
   target: string;
+  /** Which configured device this run is on; absent means the CLI's "every connected one". */
+  device?: string;
 }
 
-/** NUL joins the two halves: it cannot occur in a path or a target name, so the key is unambiguous
- *  where `${root}:${target}` would collide on a project whose path ends in a target's name. */
-function key(root: string, target: string): string {
-  return `${root}\u0000${target}`;
+/** NUL joins the parts: it cannot occur in a path, a target name or a device id, so the key is
+ *  unambiguous where `${root}:${target}` would collide on a project whose path ends in a target's
+ *  name. The device is part of it because one target can be live on several devices at once —
+ *  keyed by target alone, the second launch would evict the first from the map and its Stop would
+ *  then terminate nothing. An empty last part is "no device chosen", the CLI's own default. */
+function key(root: string, target: string, device?: string): string {
+  return `${root}\u0000${target}\u0000${device ?? ""}`;
 }
 
 interface Running {
@@ -49,7 +54,7 @@ export class Runner implements vscode.Disposable {
     this.subs.push(
       vscode.tasks.onDidStartTaskProcess((e) => {
         const ref = this.taskRef(e.execution.task.definition as DayTaskDefinition);
-        const r = ref && this.running.get(key(ref.root, ref.target));
+        const r = ref && this.running.get(key(ref.root, ref.target, ref.device));
         if (r) {
           r.pid = e.processId;
           this.emitter.fire();
@@ -57,7 +62,7 @@ export class Runner implements vscode.Disposable {
       }),
       vscode.tasks.onDidEndTaskProcess((e) => {
         const ref = this.taskRef(e.execution.task.definition as DayTaskDefinition);
-        if (ref && this.running.delete(key(ref.root, ref.target))) {
+        if (ref && this.running.delete(key(ref.root, ref.target, ref.device))) {
           this.emitter.fire();
         }
       }),
@@ -85,7 +90,7 @@ export class Runner implements vscode.Disposable {
     // A task authored in tasks.json may omit `project`; it then means the focused one, which is
     // what buildDayTask resolved when it ran.
     const root = def.project || this.state.focusedRoot;
-    return root ? { root, target: def.target } : undefined;
+    return root ? { root, target: def.target, device: def.device?.id } : undefined;
   }
 
   /** The project+target a debug session launches, if it is one of ours. */
@@ -102,8 +107,14 @@ export class Runner implements vscode.Disposable {
     return root ? { root, target } : undefined;
   }
 
+  /** Whether a target is live on ANY device — what the target row and its Stop button ask. */
   isRunning(root: string, target: string): boolean {
-    const k = key(root, target);
+    return this.runningRefs().some((r) => r.root === root && r.target === target);
+  }
+
+  /** Whether one configured device is live — what a device row's Play/Stop asks. */
+  isDeviceRunning(root: string, target: string, device: string): boolean {
+    const k = key(root, target, device);
     return this.running.has(k) || this.debug.has(k);
   }
 
@@ -122,14 +133,23 @@ export class Runner implements vscode.Disposable {
     return [...out.values()];
   }
 
-  /** The targets running in one project. */
+  /** The targets running in one project, each named once however many devices it is live on. */
   runningIn(root: string): string[] {
-    return this.runningRefs()
-      .filter((r) => r.root === root)
-      .map((r) => r.target);
+    return [
+      ...new Set(
+        this.runningRefs()
+          .filter((r) => r.root === root)
+          .map((r) => r.target),
+      ),
+    ];
   }
 
-  private definition(command: "build" | "launch", root: string, target: string): DayTaskDefinition {
+  private definition(
+    command: "build" | "launch",
+    root: string,
+    target: string,
+    device?: DeviceChoice,
+  ): DayTaskDefinition {
     const sel = this.state.selectionFor(root);
     return {
       type: "day",
@@ -139,8 +159,20 @@ export class Runner implements vscode.Disposable {
       locale: sel.locale || undefined,
       script: sel.script || undefined,
       project: root,
-      device: sel.devices?.[target],
+      device,
     };
+  }
+
+  /**
+   * The runs one target's Play button starts: one per configured device, or a single run on the
+   * CLI's own "every connected device" when none is configured.
+   *
+   * `[undefined]` rather than `[]` for the unconfigured case on purpose — an empty list would make
+   * Play silently do nothing for every desktop target, which have no devices by definition.
+   */
+  private runsFor(root: string, target: string): (DeviceChoice | undefined)[] {
+    const configured = this.state.devicesFor(root, target);
+    return configured.length > 0 ? configured : [undefined];
   }
 
   async runTargets(root: string, targets: string[]): Promise<void> {
@@ -152,14 +184,14 @@ export class Runner implements vscode.Disposable {
     }
     for (const target of targets) {
       // Re-running a live target restarts it rather than stacking a second instance — whether it
-      // was launched from the cockpit (a task) or the native Run UI (a debug session).
+      // was launched from the cockpit (a task) or the native Run UI (a debug session). Stopping by
+      // TARGET covers every device it was running on, including ones since removed from the list.
       if (this.isRunning(root, target)) {
         await this.stop(root, target);
       }
-      const exec = await vscode.tasks.executeTask(
-        buildDayTask(this.definition("launch", root, target)),
-      );
-      this.running.set(key(root, target), { ref: { root, target }, execution: exec });
+      for (const device of this.runsFor(root, target)) {
+        await this.launchOne(root, target, device);
+      }
     }
     this.emitter.fire();
   }
@@ -176,20 +208,71 @@ export class Runner implements vscode.Disposable {
     }
   }
 
-  async stop(root: string, target: string): Promise<void> {
-    const k = key(root, target);
+  /** Launch one target onto one device (or onto the CLI's default when `device` is absent). */
+  private async launchOne(
+    root: string,
+    target: string,
+    device: DeviceChoice | undefined,
+  ): Promise<void> {
+    const exec = await vscode.tasks.executeTask(
+      buildDayTask(this.definition("launch", root, target, device)),
+    );
+    this.running.set(key(root, target, device?.id), {
+      ref: { root, target, device: device?.id },
+      execution: exec,
+    });
+  }
+
+  /** Run one target on ONE of its configured devices — a device row's own Play button. */
+  async runDevice(root: string, target: string, device: DeviceChoice): Promise<void> {
+    if (this.isDeviceRunning(root, target, device.id)) {
+      await this.stopDevice(root, target, device.id);
+    }
+    await this.launchOne(root, target, device);
+    this.emitter.fire();
+  }
+
+  /** Terminate one tracked task run and forget it. Silent when there is nothing under that key. */
+  private forget(k: string): void {
     const r = this.running.get(k);
     if (r) {
       r.execution.terminate();
       this.running.delete(k);
       this.emitter.fire();
     }
-    const d = this.debug.get(k);
-    if (d) {
-      await vscode.debug.stopDebugging(d);
-      this.debug.delete(k);
-      this.emitter.fire();
+  }
+
+  /** End any debug session for this target, whichever device it was launched against. */
+  private async stopDebugFor(root: string, target: string): Promise<void> {
+    for (const [k, session] of [...this.debug]) {
+      const ref = this.debugRef(session);
+      if (ref && ref.root === root && ref.target === target) {
+        await vscode.debug.stopDebugging(session);
+        this.debug.delete(k);
+        this.emitter.fire();
+      }
     }
+  }
+
+  /**
+   * Stop one device's run of a target.
+   *
+   * No `day stop` here, unlike [`stop`]: the CLI stops a target's session for the PROJECT, not for
+   * one device, so calling it would take down the target's other devices as well — the opposite of
+   * what a single row's Stop means.
+   */
+  async stopDevice(root: string, target: string, device: string): Promise<void> {
+    this.forget(key(root, target, device));
+  }
+
+  /** Stop every run of a target, whatever devices it landed on. */
+  async stop(root: string, target: string): Promise<void> {
+    for (const ref of this.runningRefs()) {
+      if (ref.root === root && ref.target === target) {
+        this.forget(key(root, target, ref.device));
+      }
+    }
+    await this.stopDebugFor(root, target);
     // Then ask the CLI to stop the APP. Ending the task only kills what `day` launched as its own
     // child, which is the whole story on a desktop and none of it on a device: an Android app is
     // started with `am start` and outlives its launcher, so Stop left it on screen. `day stop`

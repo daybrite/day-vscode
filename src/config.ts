@@ -33,14 +33,24 @@ export interface Selection {
   /** Dayscript path; "" = none. */
   script: string;
   /**
-   * Chosen device per target name. A target with no entry launches onto every connected device,
-   * which is the CLI's own default — so an untouched project behaves exactly as it did before.
+   * The devices configured for each target, in the order they were added.
+   *
+   * A target with no entry launches onto every connected device, which is the CLI's own default —
+   * so a project nobody has configured behaves exactly as it did before. One with several launches
+   * onto each of them, one task apiece.
    */
-  devices?: Record<string, DeviceChoice>;
+  deviceList?: Record<string, DeviceChoice[]>;
 }
 
 /** One project's stored slice. Every field optional: absent means "fall back to the setting". */
-type StoredSelection = Partial<Selection>;
+type StoredSelection = Partial<Selection> & {
+  /**
+   * Superseded by `deviceList`. It held ONE pinned device per target; a workspace written before
+   * multi-device support still carries it, and [`State.selectionFor`] promotes it to a
+   * single-entry list so nobody's pinned simulator silently reverts to "all connected".
+   */
+  devices?: Record<string, DeviceChoice>;
+};
 
 interface Stored {
   /** Root of the focused project. */
@@ -50,6 +60,17 @@ interface Stored {
 }
 
 const KEY = "day.projectSelections";
+
+/** The pre-multi-device shape: one pinned device per target becomes a one-entry list. */
+function promoteLegacyDevices(
+  legacy: Record<string, DeviceChoice> | undefined,
+): Record<string, DeviceChoice[]> {
+  const out: Record<string, DeviceChoice[]> = {};
+  for (const [target, device] of Object.entries(legacy ?? {})) {
+    out[target] = [device];
+  }
+  return out;
+}
 
 export class State {
   private emitter = new vscode.EventEmitter<void>();
@@ -85,7 +106,7 @@ export class State {
       profile: slice.profile ?? (cfg.get<Profile>("defaultProfile") ?? "debug"),
       locale: slice.locale ?? (cfg.get<string>("defaultLocale") ?? ""),
       script: slice.script ?? "",
-      devices: slice.devices ?? {},
+      deviceList: slice.deviceList ?? promoteLegacyDevices(slice.devices),
     };
   }
 
@@ -120,15 +141,45 @@ export class State {
     });
   }
 
-  /** Choose the device one target launches onto, or clear it back to "every connected device". */
-  chooseDevice(root: string, target: string, device: DeviceChoice | undefined): Promise<void> {
-    const devices = { ...this.selectionFor(root).devices };
-    if (device) {
-      devices[target] = device;
-    } else {
-      delete devices[target];
+  /** The devices configured for one target, in the order they were added. */
+  devicesFor(root: string, target: string): DeviceChoice[] {
+    return this.selectionFor(root).deviceList?.[target] ?? [];
+  }
+
+  /**
+   * Add a device to a target, keeping the order they were added in.
+   *
+   * Adding one already there is a no-op rather than a second row: the picker lists what is
+   * connected, so re-picking a device already configured is an easy thing to do by accident, and
+   * two identical rows would each launch and then fight over the same device.
+   */
+  addDevice(root: string, target: string, device: DeviceChoice): Promise<void> {
+    const current = this.devicesFor(root, target);
+    if (current.some((d) => d.id === device.id)) {
+      return Promise.resolve();
     }
-    return this.updateFor(root, { devices });
+    return this.writeDevices(root, target, [...current, device]);
+  }
+
+  /** Remove one configured device. The target falls back to "all connected" once none are left. */
+  removeDevice(root: string, target: string, id: string): Promise<void> {
+    return this.writeDevices(
+      root,
+      target,
+      this.devicesFor(root, target).filter((d) => d.id !== id),
+    );
+  }
+
+  private writeDevices(root: string, target: string, list: DeviceChoice[]): Promise<void> {
+    const deviceList = { ...this.selectionFor(root).deviceList };
+    if (list.length > 0) {
+      deviceList[target] = list;
+    } else {
+      // Dropped rather than left as an empty array, so "configured nothing" and "configured
+      // nothing after removing the last one" are the same stored state.
+      delete deviceList[target];
+    }
+    return this.updateFor(root, { deviceList });
   }
 
   /** Tick or untick one target of one project. Named explicitly rather than defaulting to the

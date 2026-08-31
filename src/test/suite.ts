@@ -37,7 +37,7 @@ import { editFor, Lint, mapFindings } from "../lint";
 import { composeArgs, describeSpec, visibleFields } from "../newproject";
 import { catalog, findTarget, isBuildableHere, nativeProjectFor } from "../targets";
 import { cliItem, orderTargets, targetContextValue } from "../tree";
-import { hideUnavailableTargets, toolchainEnv } from "../tasks";
+import { buildDayTask, hideUnavailableTargets, toolchainEnv } from "../tasks";
 import {
   installChoices,
   installRoutes,
@@ -50,8 +50,8 @@ import {
 } from "../install";
 
 /** An in-memory Memento, so the selection store can be exercised without touching the real one. */
-function fakeMemento(): vscode.Memento {
-  const map = new Map<string, unknown>();
+function fakeMemento(seed?: Record<string, unknown>): vscode.Memento {
+  const map = new Map<string, unknown>(Object.entries(seed ?? {}));
   return {
     keys: () => [...map.keys()],
     get: (<T>(key: string, fallback?: T) =>
@@ -1048,26 +1048,23 @@ const checks: Check[] = [
         label: "iPhone 16",
         flag: "--ios-simulator",
       };
-      await state.chooseDevice(rise, "ios-uikit", device);
+      await state.addDevice(rise, "ios-uikit", device);
+      assert.deepStrictEqual(state.devicesFor(rise, "ios-uikit"), [device]);
       assert.deepStrictEqual(
-        state.selectionFor(rise).devices?.["ios-uikit"],
-        device,
+        state.devicesFor(rise, "android-mdc"),
+        [],
+        "adding for one target must not touch another",
       );
-      assert.strictEqual(
-        state.selectionFor(rise).devices?.["android-mdc"],
-        undefined,
-        "choosing for one target must not touch another",
+      assert.deepStrictEqual(
+        state.devicesFor(showcase, "ios-uikit"),
+        [],
+        "adding for one project must not touch another",
       );
-      assert.strictEqual(
-        state.selectionFor(showcase).devices?.["ios-uikit"],
-        undefined,
-        "choosing for one project must not touch another",
-      );
-      await state.chooseDevice(rise, "ios-uikit", undefined);
-      assert.strictEqual(
-        state.selectionFor(rise).devices?.["ios-uikit"],
-        undefined,
-        "clearing returns to every connected device",
+      await state.removeDevice(rise, "ios-uikit", device.id);
+      assert.deepStrictEqual(
+        state.devicesFor(rise, "ios-uikit"),
+        [],
+        "removing the last one returns to every connected device",
       );
     },
   ],
@@ -2149,6 +2146,222 @@ const checks: Check[] = [
         hideUnavailableTargets(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath),
         true,
       );
+    },
+  ],
+  [
+    "a target keeps several devices, in order, and survives the pre-multi-device store",
+    () => {
+      const state = new State(fakeMemento());
+      const root = "/w/Day-Rise";
+      const a = { id: "UDID-A", label: "iPhone 16", flag: "--ios-simulator" };
+      const b = { id: "UDID-B", label: "iPhone SE", flag: "--ios-simulator" };
+
+      return (async () => {
+        await state.addDevice(root, "ios-uikit", a);
+        await state.addDevice(root, "ios-uikit", b);
+        assert.deepStrictEqual(
+          state.devicesFor(root, "ios-uikit").map((d) => d.id),
+          ["UDID-A", "UDID-B"],
+          "added order is kept — it is the order the rows are drawn in",
+        );
+
+        // Re-adding is a no-op, not a second row: the picker lists what is connected, so picking
+        // one already configured is easy to do by accident, and two rows would launch twice onto
+        // the same device.
+        await state.addDevice(root, "ios-uikit", a);
+        assert.strictEqual(state.devicesFor(root, "ios-uikit").length, 2);
+
+        // Removing takes out the named one and leaves the rest in order.
+        await state.removeDevice(root, "ios-uikit", "UDID-A");
+        assert.deepStrictEqual(
+          state.devicesFor(root, "ios-uikit").map((d) => d.id),
+          ["UDID-B"],
+        );
+
+        // A workspace written before multi-device support pinned ONE device per target. It has to
+        // come back as that device, not as "all connected" — a silent revert would send the next
+        // launch to every phone in the room.
+        const legacy = new State(
+          fakeMemento({
+            "day.projectSelections": {
+              byProject: { [root]: { devices: { "ios-uikit": a } } },
+            },
+          }),
+        );
+        assert.deepStrictEqual(legacy.devicesFor(root, "ios-uikit"), [a]);
+      })();
+    },
+  ],
+  [
+    "a mobile target lists its configured devices, and shows no twisty with none",
+    () => {
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      assert.ok(root, "this check needs the scaffolded fixture");
+      // The fixed "Device" child is gone: a mobile target with nothing configured has no children,
+      // so the row must not offer an expander onto an empty list.
+      assert.deepStrictEqual(
+        orderTargets(["ios-uikit"], false).shown,
+        ["ios-uikit"],
+        "sanity: the fixture declares ios-uikit",
+      );
+    },
+  ],
+  [
+    "every device row's menu keys on the row's own state, and the + only on mobile",
+    () => {
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const menus = ext.packageJSON.contributes.menus["view/item/context"] as {
+        command: string;
+        when: string;
+      }[];
+      const matcher = (command: string): RegExp => {
+        const entry = menus.find((m) => m.command === command);
+        assert.ok(entry, `${command} has no menu entry`);
+        const m = /viewItem =~ \/(.+?)\/(?:\s|$)/.exec(entry.when);
+        if (!m) {
+          // An `==` clause, not a regex — turn it into one so both forms can be checked together.
+          const eq = /viewItem == (\w+)/.exec(entry.when);
+          assert.ok(eq, `${command}: ${entry.when}`);
+          return new RegExp(`^${eq[1]}$`);
+        }
+        return new RegExp(m[1]);
+      };
+
+      // A device row is either idle or running, and gets exactly one of Play / Stop.
+      const play = matcher("day.runDevice");
+      const stop = matcher("day.stopDevice");
+      const remove = matcher("day.removeDevice");
+      assert.ok(play.test("dayDevice") && !play.test("dayDeviceRunning"));
+      assert.ok(stop.test("dayDeviceRunning") && !stop.test("dayDevice"));
+      // Remove is offered whichever state it is in — a running device must still be removable.
+      assert.ok(remove.test("dayDevice") && remove.test("dayDeviceRunning"));
+
+      // The "+" belongs to mobile target rows only, and not to ones this host cannot build: their
+      // toolchain cannot enumerate what is connected, so the picker would open onto an error.
+      const add = matcher("day.addDevice");
+      for (const yes of [
+        "dayTarget.mobile",
+        "dayTarget.studio.mobile",
+        "dayTarget.xcode.mobile",
+        "dayTargetRunning.studio.mobile",
+      ]) {
+        assert.ok(add.test(yes), `+ missing from ${yes}`);
+      }
+      for (const no of [
+        "dayTarget",
+        "dayTarget.xcode",
+        "dayTargetDisabled.xcode.mobile",
+        "dayDevice",
+      ]) {
+        assert.ok(!add.test(no), `+ offered on ${no}`);
+      }
+
+      // The IDE rows survive a SECOND tag after theirs. `.mobile` is appended after `.studio`, and
+      // an end-anchored `\.studio$` silently dropped the entry from every Android row.
+      const studio = matcher("day.openInAndroidStudio");
+      const xcode = matcher("day.openInXcode");
+      assert.ok(studio.test("dayTarget.studio.mobile"), "Studio lost to a trailing tag");
+      assert.ok(xcode.test("dayTarget.xcode.mobile"), "Xcode lost to a trailing tag");
+      assert.ok(!studio.test("dayTarget.xcode.mobile") && !xcode.test("dayTarget.studio.mobile"));
+    },
+  ],
+  [
+    "one target on two devices is two tasks, each with its own name and its own device flag",
+    () => {
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      assert.ok(root, "this check needs the scaffolded fixture");
+      const base = { type: "day", command: "launch", target: "ios-uikit", project: root } as const;
+      const a = buildDayTask({
+        ...base,
+        device: { id: "UDID-A", flag: "--ios-simulator", label: "iPhone 16" },
+      });
+      const b = buildDayTask({
+        ...base,
+        device: { id: "UDID-B", flag: "--ios-simulator", label: "iPhone SE" },
+      });
+
+      // The NAME is the task's identity, and the presentation asks for a dedicated panel per
+      // identity. Two same-named launches share one terminal and each `clear: true` wipes the one
+      // before it, so two of three runs would be invisible — the device has to be in the name.
+      assert.notStrictEqual(a.name, b.name, "two devices must not share a task identity");
+      assert.ok(a.name.includes("iPhone 16"), a.name);
+      assert.ok(b.name.includes("iPhone SE"), b.name);
+      assert.ok(a.name.startsWith("run ios-uikit"), a.name);
+
+      // And each actually targets its own device on the command line.
+      const args = (t: vscode.Task): string[] =>
+        (t.execution as vscode.ProcessExecution).args as string[];
+      assert.ok(args(a).join(" ").includes("--ios-simulator UDID-A"), args(a).join(" "));
+      assert.ok(args(b).join(" ").includes("--ios-simulator UDID-B"), args(b).join(" "));
+
+      // A target with no device configured keeps the plain name it always had, so nothing changes
+      // for desktop targets or for a mobile one nobody has configured.
+      const plain = buildDayTask({ ...base, target: "macos-appkit" });
+      assert.ok(!plain.name.includes(" · "), plain.name);
+      assert.ok(!args(plain).join(" ").includes("--ios-simulator"));
+    },
+  ],
+  [
+    "two devices are two live tasks, because the device is part of the contributed identity",
+    async () => {
+      // VS Code keys a task on the properties its type DECLARES in `contributes.taskDefinitions`.
+      // A property missing there is invisible to that key, so two launches of one target onto two
+      // devices were one task: the second replaced the first, leaving a single terminal carrying
+      // the first device's name and no way to watch or stop the other run.
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const def = ext.packageJSON.contributes.taskDefinitions.find(
+        (t: { type: string }) => t.type === "day",
+      );
+      assert.ok(def, "the day task type is not contributed");
+      assert.ok(
+        def.properties?.device,
+        "`device` must be declared, or two devices collapse into one task",
+      );
+
+      // And the behavior itself, through the real task type. `node -e` rather than `sleep` so the
+      // check runs on Windows too; the process is terminated below either way.
+      const idle = (id: string) =>
+        new vscode.Task(
+          {
+            type: "day",
+            command: "launch",
+            target: "android-mdc",
+            device: { id, flag: "-d", label: id },
+          },
+          vscode.TaskScope.Workspace,
+          `run android-mdc · ${id}`,
+          "day",
+          new vscode.ProcessExecution(process.execPath, [
+            "-e",
+            "setTimeout(() => {}, 30000)",
+          ]),
+        );
+
+      const started: vscode.TaskExecution[] = [];
+      try {
+        started.push(await vscode.tasks.executeTask(idle("emulator-5554")));
+        started.push(await vscode.tasks.executeTask(idle("emulator-5556")));
+        // Poll rather than sleep a fixed time: the executions register asynchronously, and a fixed
+        // wait is how this check would go flaky on a loaded CI runner.
+        const ours = () =>
+          vscode.tasks.taskExecutions.filter(
+            (e) => (e.task.definition as { target?: string }).target === "android-mdc",
+          );
+        for (let i = 0; i < 100 && ours().length < 2; i++) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        assert.strictEqual(
+          ours().length,
+          2,
+          "one target on two devices must be two live tasks, not one",
+        );
+      } finally {
+        for (const e of started) {
+          e.terminate();
+        }
+      }
     },
   ],
   [

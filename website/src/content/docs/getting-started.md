@@ -73,7 +73,7 @@ one:
 <figure class="shot">
   <img class="only-dark" src="/img/docs/cockpit-dark.png" alt="The Day view showing a project, its configuration and its targets" />
   <img class="only-light" src="/img/docs/cockpit-light.png" alt="The Day view showing a project, its configuration and its targets" />
-  <figcaption>The targets this machine can build. Mobile targets expand to a Device row.</figcaption>
+  <figcaption>The targets this machine can build. Mobile targets hold a list of devices you add with +.</figcaption>
 </figure>
 
 A macOS machine cannot build `windows-xaml`, so that row is left out and the **Targets** heading

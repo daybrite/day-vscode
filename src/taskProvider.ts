@@ -36,18 +36,23 @@ export class DayTaskProvider implements vscode.TaskProvider {
           continue;
         }
         for (const command of ["launch", "build"] as const) {
-          tasks.push(
-            buildDayTask({
-              type: "day",
-              command,
-              target: name,
-              profile,
-              project: project.root,
-              // The chosen device rides along, so "Run Task…" launches where the sidebar says it
-              // will rather than fanning out to every connected phone.
-              device: selection.devices?.[name],
-            }),
-          );
+          // One launch task per configured device, so "Run Task…" offers the same set the sidebar
+          // shows rather than fanning out to every connected phone. A build is device-independent,
+          // and a target with nothing configured keeps its single task on the CLI's own default.
+          const configured = command === "launch" ? (selection.deviceList?.[name] ?? []) : [];
+          const devices = configured.length > 0 ? configured : [undefined];
+          for (const device of devices) {
+            tasks.push(
+              buildDayTask({
+                type: "day",
+                command,
+                target: name,
+                profile,
+                project: project.root,
+                device,
+              }),
+            );
+          }
         }
       }
     }

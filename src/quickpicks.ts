@@ -22,24 +22,25 @@ export async function pickMode(current: Profile): Promise<Profile | undefined> {
 
 /** What the device picker came back with. `all` clears any pin; `boot` asks to start one first. */
 export type DevicePick =
-  | { kind: "all" }
   | { kind: "device"; device: DeviceChoice }
   | { kind: "boot"; id: string; name: string };
 
 /**
- * Choose the device one target launches onto.
+ * Choose a device to ADD to a target's configured list.
  *
- * Returns the choice, `null` for the explicit "All connected" entry, or `undefined` if cancelled —
- * three outcomes, because clearing a pin and changing nothing must not look the same.
+ * `undefined` means cancelled. There is no "all connected" entry any more: launching on every
+ * connected device is what a target with an EMPTY list does, so offering it here as a pick would
+ * be offering to configure the absence of configuration.
  *
  * Connected devices come first because they are the ones that can be launched onto right now;
  * the rest are offered under a separator as something to boot, which is the common iOS case since
- * `simctl install` cannot reach a shut-down simulator.
+ * `simctl install` cannot reach a shut-down simulator. Devices already configured stay on the list
+ * but are marked and cannot be picked twice.
  */
 export async function pickDevice(
   target: string,
   listing: Promise<TargetDevices | undefined>,
-  current: DeviceChoice | undefined,
+  configured: DeviceChoice[],
 ): Promise<DevicePick | undefined> {
   type Item = vscode.QuickPickItem & { pick?: DevicePick };
 
@@ -48,18 +49,10 @@ export async function pickDevice(
   // happening with nothing on screen at all. This opens immediately, spins while the CLI answers,
   // and fills in — Escape cancels it at any point, including mid-query.
   const qp = vscode.window.createQuickPick<Item>();
-  qp.title = `Day: Device for ${target}`;
+  qp.title = `Day: add a device for ${target}`;
   qp.matchOnDetail = true;
   qp.busy = true;
   qp.placeholder = "Looking for connected devices…";
-  // The default is knowable without asking anything, so it is on screen from the first frame.
-  qp.items = [
-    {
-      label: "All connected",
-      detail: "Launch on every connected device — the default",
-      pick: { kind: "all" },
-    },
-  ];
   qp.show();
 
   // Closed covers BOTH ways out — Escape and accept — because everything below mutates the
@@ -93,21 +86,26 @@ export async function pickDevice(
 
 
   const connected = found?.devices ?? [];
-  const items: Item[] = [
-    {
-      label: "All connected",
-      description: connected.length > 0 ? `${connected.length} right now` : "nothing connected",
-      detail: "Launch on every connected device — the default",
-      pick: { kind: "all" },
-    },
-  ];
+  const already = new Set(configured.map((d) => d.id));
+  const items: Item[] = [];
   for (const d of connected) {
+    const here = already.has(d.id);
     items.push({
-      label: d.name,
-      description: [d.state, d.runtime, d.arch].filter(Boolean).join(" · "),
+      label: here ? `$(check) ${d.name}` : d.name,
+      description: [here ? "already added" : undefined, d.state, d.runtime, d.arch]
+        .filter(Boolean)
+        .join(" · "),
       detail: d.id,
-      pick: d.flag ? { kind: "device", device: { id: d.id, label: d.name, flag: d.flag } } : undefined,
+      // No `pick` on one already configured, so choosing it closes the picker and changes nothing
+      // rather than appearing to add a second copy.
+      pick:
+        d.flag && !here
+          ? { kind: "device", device: { id: d.id, label: d.name, flag: d.flag } }
+          : undefined,
     });
+  }
+  if (items.length === 0) {
+    qp.placeholder = "Nothing connected for this target";
   }
   const bootable = found?.bootable ?? [];
   if (bootable.length > 0) {
@@ -122,11 +120,9 @@ export async function pickDevice(
     }
   }
   qp.items = items;
-  qp.placeholder = current ? current.label : "All connected";
-  // Keep the current choice highlighted, so reopening the picker shows where you already are.
-  const active = items.find((i) =>
-    current ? i.pick?.kind === "device" && i.pick.device.id === current.id : i.pick?.kind === "all",
-  );
+  // Land on the first device that can actually be added, so Enter does the obvious thing rather
+  // than re-selecting one that is already on the list.
+  const active = items.find((i) => i.pick);
   if (active) {
     qp.activeItems = [active];
   }

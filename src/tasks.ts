@@ -21,8 +21,13 @@ export interface DayTaskDefinition extends vscode.TaskDefinition {
   /** Keep the app running after its dayscript completes (default: day.script.keepAppRunning). */
   keepAlive?: boolean;
   project?: string;
-  /** Device to launch onto, as `day devices list` described it. Omitted = every connected one. */
-  device?: { id: string; flag: string };
+  /**
+   * Device to launch onto, as `day devices list` described it. Omitted = every connected one.
+   *
+   * `label` is what the device is called; it names the task (and therefore its terminal), so one
+   * target running on three phones reads as three panels rather than one contested panel.
+   */
+  device?: { id: string; flag: string; label?: string };
 }
 
 /**
@@ -300,9 +305,14 @@ export function buildDayTask(
   // appears would instead rename a task the moment a folder is added, which is worse: the name
   // would be stable only as long as the workspace was.
   const verb = def.command === "launch" ? "run" : "build";
+  // The device is part of the name because the name is the task's IDENTITY, and the presentation
+  // below asks for a DEDICATED panel per identity. Launching one target onto three phones without
+  // this gives all three the same name: they share one terminal, and each `clear: true` wipes the
+  // one before it, so two of the three runs are invisible.
+  const on = def.device?.label ? ` · ${def.device.label}` : "";
   const name = projectRoot
-    ? `${verb} ${def.target} (${path.basename(projectRoot)})`
-    : `${verb} ${def.target}`;
+    ? `${verb} ${def.target}${on} (${path.basename(projectRoot)})`
+    : `${verb} ${def.target}${on}`;
   // $day-rustc is contributed by THIS extension (a $rustc it can rely on: the stock name only
   // exists when rust-analyzer is installed, and an unknown matcher name is silently ignored).
   // Launches compile first, so they get the matcher too.

@@ -545,29 +545,26 @@ export async function activate(
     }),
   );
 
-  register("day.selectDevice", (node?: Node) =>
+  register("day.addDevice", (node?: Node) =>
     guard(async () => {
-      if (!node || node.kind !== "device") {
+      // Reached from the "+" on a mobile target row, so the node is the TARGET, not a device.
+      const ref = refOf(node);
+      if (!ref) {
         return;
       }
-      const { root, target } = node;
+      const { root, target } = ref;
       devices.invalidate(target); // opening the picker is the moment to re-look at THIS target
-      // Handed the PROMISE, not its result: the picker opens on the next frame and spins while
-      // the CLI answers, instead of leaving the click with no feedback. The tree row spins for
-      // the same reason, since the query is what both are waiting on.
+      // Handed the PROMISE, not its result: the picker opens on the next frame and spins while the
+      // CLI answers, instead of leaving the click with no feedback.
       const listing = devices.list(root, output, target);
       tree.refresh();
       void listing.finally(() => tree.refresh());
-      const pick = await pickDevice(
-        target,
-        listing,
-        state.selectionFor(root).devices?.[target],
-      );
+      const pick = await pickDevice(target, listing, state.devicesFor(root, target));
       if (!pick) {
         return; // cancelled
       }
       if (pick.kind === "boot") {
-        // Start it, then pick it — the whole reason booting is offered here is that selecting a
+        // Start it, then add it — the whole reason booting is offered here is that picking a
         // shut-down simulator used to dead-end in "boot one yourself".
         const failed = await vscode.window.withProgress(
           {
@@ -577,37 +574,66 @@ export async function activate(
           () => devices.boot(root, target, pick.id),
         );
         if (failed) {
-          vscode.window.showErrorMessage(
-            `Day: could not start ${pick.name} — ${failed}`,
-          );
+          vscode.window.showErrorMessage(`Day: could not start ${pick.name} — ${failed}`);
           return;
         }
-        const started = (
-          await devices.list(root, output, target)
-        )?.devices.find((d) => d.id === pick.id);
+        const started = (await devices.list(root, output, target))?.devices.find(
+          (d) => d.id === pick.id,
+        );
         if (started?.flag) {
-          await state.chooseDevice(root, target, {
+          await state.addDevice(root, target, {
             id: started.id,
             label: started.name,
             flag: started.flag,
           });
         } else {
-          // It is starting but not ready to install onto yet; leave the target on its default
-          // rather than pinning a device the next launch would fail against.
+          // Booting but not yet installable onto. Adding it now would store a device whose launch
+          // flag we do not know, and every run against it would fail.
           vscode.window.setStatusBarMessage(
-            `Day: ${pick.name} is starting — pick it once it finishes booting`,
+            `Day: ${pick.name} is starting — add it once it finishes booting`,
             5000,
           );
         }
-      } else {
-        // "All connected" clears the pin; anything else stores the device and its flag.
-        await state.chooseDevice(
-          root,
-          target,
-          pick.kind === "all" ? undefined : pick.device,
-        );
+      } else if (pick.kind === "device") {
+        await state.addDevice(root, target, pick.device);
       }
       tree.refresh();
+    }),
+  );
+
+  register("day.removeDevice", (node?: Node) =>
+    guard(async () => {
+      if (!node || node.kind !== "device") {
+        return;
+      }
+      // Stopped first: the row is about to go, and a run left behind would have no row to stop it
+      // from — `day.stopProject` or Stop All would be the only way back.
+      await runner.stopDevice(node.root, node.target, node.id);
+      await state.removeDevice(node.root, node.target, node.id);
+      tree.refresh();
+    }),
+  );
+
+  register("day.runDevice", (node?: Node) =>
+    guard(async () => {
+      if (!node || node.kind !== "device") {
+        return;
+      }
+      const device = state
+        .devicesFor(node.root, node.target)
+        .find((d) => d.id === node.id);
+      if (!device) {
+        return; // removed between the click and the handler
+      }
+      await runner.runDevice(node.root, node.target, device);
+    }),
+  );
+
+  register("day.stopDevice", (node?: Node) =>
+    guard(async () => {
+      if (node && node.kind === "device") {
+        await runner.stopDevice(node.root, node.target, node.id);
+      }
     }),
   );
 

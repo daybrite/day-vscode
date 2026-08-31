@@ -205,10 +205,28 @@
         "icon": "$(check)"
       },
       {
-        "command": "day.selectDevice",
-        "title": "Select Device",
+        "command": "day.addDevice",
+        "title": "Add Device…",
         "category": "Day",
-        "icon": "$(device-mobile)"
+        "icon": "$(add)"
+      },
+      {
+        "command": "day.removeDevice",
+        "title": "Remove Device",
+        "category": "Day",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "day.runDevice",
+        "title": "Run on This Device",
+        "category": "Day",
+        "icon": "$(play)"
+      },
+      {
+        "command": "day.stopDevice",
+        "title": "Stop This Device",
+        "category": "Day",
+        "icon": "$(debug-stop)"
       },
       {
         "command": "day.buildTarget",
@@ -348,17 +366,17 @@
       "view/item/context": [
         {
           "command": "day.runTarget",
-          "when": "view == dayTargets && viewItem =~ /^dayTarget(\\.\\w+)?$/",
+          "when": "view == dayTargets && viewItem =~ /^dayTarget(\\.\\w+)*$/",
           "group": "inline@1"
         },
         {
           "command": "day.stop",
-          "when": "view == dayTargets && viewItem =~ /^dayTargetRunning(\\.\\w+)?$/",
+          "when": "view == dayTargets && viewItem =~ /^dayTargetRunning(\\.\\w+)*$/",
           "group": "inline@1"
         },
         {
           "command": "day.restart",
-          "when": "view == dayTargets && viewItem =~ /^dayTargetRunning(\\.\\w+)?$/",
+          "when": "view == dayTargets && viewItem =~ /^dayTargetRunning(\\.\\w+)*$/",
           "group": "inline@2"
         },
         {
@@ -373,7 +391,7 @@
         },
         {
           "command": "day.toggleTarget",
-          "when": "view == dayTargets && viewItem =~ /^dayTarget(Running)?(\\.\\w+)?$/",
+          "when": "view == dayTargets && viewItem =~ /^dayTarget(Running)?(\\.\\w+)*$/",
           "group": "1_toggle@1"
         },
         {
@@ -388,13 +406,33 @@
         },
         {
           "command": "day.openInAndroidStudio",
-          "when": "view == dayTargets && viewItem =~ /\\.studio$/",
+          "when": "view == dayTargets && viewItem =~ /\\.studio(\\.|$)/",
           "group": "3_native@1"
         },
         {
           "command": "day.openInXcode",
-          "when": "view == dayTargets && viewItem =~ /\\.xcode$/",
+          "when": "view == dayTargets && viewItem =~ /\\.xcode(\\.|$)/",
           "group": "3_native@2"
+        },
+        {
+          "command": "day.addDevice",
+          "when": "view == dayTargets && viewItem =~ /^dayTarget(Running)?(\\.\\w+)*\\.mobile(\\.\\w+)*$/",
+          "group": "inline@0"
+        },
+        {
+          "command": "day.runDevice",
+          "when": "view == dayTargets && viewItem == dayDevice",
+          "group": "inline@1"
+        },
+        {
+          "command": "day.stopDevice",
+          "when": "view == dayTargets && viewItem == dayDeviceRunning",
+          "group": "inline@1"
+        },
+        {
+          "command": "day.removeDevice",
+          "when": "view == dayTargets && viewItem =~ /^dayDevice/",
+          "group": "1_device@1"
         }
       ],
       "commandPalette": [
@@ -439,10 +477,6 @@
           "when": "false"
         },
         {
-          "command": "day.selectDevice",
-          "when": "false"
-        },
-        {
           "command": "day.toggleTarget",
           "when": "false"
         },
@@ -460,6 +494,22 @@
         },
         {
           "command": "day.openInXcode",
+          "when": "false"
+        },
+        {
+          "command": "day.addDevice",
+          "when": "false"
+        },
+        {
+          "command": "day.removeDevice",
+          "when": "false"
+        },
+        {
+          "command": "day.runDevice",
+          "when": "false"
+        },
+        {
+          "command": "day.stopDevice",
           "when": "false"
         }
       ]
@@ -824,6 +874,24 @@
           "keepAlive": {
             "type": "boolean",
             "description": "Keep the app running after its dayscript completes (default: the day.script.keepAppRunning setting)."
+          },
+          "device": {
+            "type": "object",
+            "description": "Device to launch onto, as `day devices list --json` describes it. Omitted means every connected device. This is part of a task's IDENTITY: VS Code keys a task on the properties declared here, so without it two launches of one target onto two devices are the same task — the second replaces the first instead of running beside it.",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Device id the CLI reported."
+              },
+              "flag": {
+                "type": "string",
+                "description": "The `day launch` flag that selects it, e.g. --ios-simulator."
+              },
+              "label": {
+                "type": "string",
+                "description": "Human name; it names the task and therefore its terminal."
+              }
+            }
           }
         }
       }

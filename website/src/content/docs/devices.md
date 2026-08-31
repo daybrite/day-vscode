@@ -10,34 +10,48 @@ section: Extension
 A desktop target has one obvious place to run: this machine. A mobile target does not — you might
 have two simulators booted, a phone plugged in, and an emulator running, all at once.
 
-So `ios-uikit`, `android-mdc` and `harmony-arkui` expand in the Day view to a **Device** row.
+So `ios-uikit`, `android-mdc` and `harmony-arkui` each hold a **list of devices** in the Day view,
+which you build up yourself and which stays put between sessions.
 
-## Picking one
+## Adding one
 
-Click the Device row. The picker opens straight away and spins while the CLI looks, so the click
-always feels like it did something — enumerating simulators and phones takes a moment.
+Hover a mobile target row and press **+**. The picker opens straight away and spins while the CLI
+looks, so the click always feels like it did something — enumerating simulators and phones takes a
+moment.
 
 You will see:
 
 - every **booted simulator**, **connected phone** and **running emulator** for that platform
 - any **simulator or AVD that exists but is not running**, which the picker offers to start
-- **All connected**, the default
 
-Each device carries the flag that selects it, so iOS picks the right one of `--ios-simulator` and
-`--ios-device` on its own. Nothing is guessed by the extension.
+Devices already on the list are shown with a check and cannot be added twice. Each device carries
+the flag that selects it, so iOS picks the right one of `--ios-simulator` and `--ios-device` on its
+own. Nothing is guessed by the extension.
 
-## All connected is the default
+The device you add becomes a row under the target. It stays there whether or not that phone is
+plugged in — the row says `connected`, `not running` or `not found` from whatever the extension
+last learned, rather than disappearing when you unplug something.
 
-Leave it alone and a launch goes to *every* runtime of that kind it can see. That is usually what
-you want when you have exactly one, and it is what makes a capture sweep across several simulators
-work. Name a device when you mean one in particular.
+## Running them
+
+Each device row has its own **Play**, which launches on that device alone. The target's own Play
+launches on **every** device configured under it, one task and one terminal each, so you can watch
+two simulators side by side.
+
+Remove a device with **Remove Device** on its right-click menu. Removing one that is running stops
+it first.
+
+## An empty list means every connected device
+
+A target with no devices configured launches onto *every* runtime of that kind the CLI can see —
+its own default. That is usually what you want when you have exactly one, and it is what makes a
+capture sweep across several simulators work. Add devices when you mean particular ones.
 
 ## Starting a simulator that is not running
 
 iOS cannot install onto a shut-down simulator, so picking one used to be a dead end. Now the picker
-offers it, starts it for you, and selects it once it is ready. If it is still booting when the CLI
-answers, the target stays on its default rather than pinning a device the next launch would fail
-against.
+offers it, starts it for you, and adds it once it is ready. If it is still booting when the CLI
+answers, nothing is added rather than storing a device whose launch flag is not yet known.
 
 ## One platform at a time
 

@@ -39,7 +39,8 @@ export type Node =
   | { kind: "group"; root: string; id: "config" | "targets"; label: string }
   | { kind: "config"; root: string; which: ConfigRow }
   | { kind: "target"; root: string; name: string }
-  | { kind: "device"; root: string; target: string };
+  /** One configured device under a mobile target. `id` is the device the CLI reported. */
+  | { kind: "device"; root: string; target: string; id: string };
 
 export interface TreeDeps {
   state: State;
@@ -202,10 +203,15 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       return rows.map((which) => ({ kind: "config", root: element.root, which }) as Node);
     }
     if (element.kind === "target") {
-      // Only mobile targets have a device to choose. Desktop and web have nowhere else to run, so
-      // giving them a twisty would promise a choice that does not exist.
+      // Only mobile targets carry devices. Desktop and web have nowhere else to run, so giving
+      // them a twisty would promise a choice that does not exist.
       const kind = findTarget(element.name)?.kind;
-      return isMobile(kind) ? [{ kind: "device", root: element.root, target: element.name }] : [];
+      if (!isMobile(kind)) {
+        return [];
+      }
+      return this.deps.state
+        .devicesFor(element.root, element.name)
+        .map((d) => ({ kind: "device", root: element.root, target: element.name, id: d.id }) as Node);
     }
     if (element.kind === "group" && element.id === "targets") {
       const project = this.deps.projects().find((p) => p.root === element.root);
@@ -231,7 +237,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       case "target":
         return this.targetItem(node.root, node.name);
       case "device":
-        return this.deviceItem(node.root, node.target);
+        return this.deviceItem(node.root, node.target, node.id);
     }
   }
 
@@ -392,63 +398,45 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
   }
 
   /**
-   * The Device row under a mobile target.
+   * One configured device under a mobile target.
    *
-   * Renders from the CACHED listing and kicks off a refresh when there is none — `getTreeItem` is
-   * synchronous, and blocking the sidebar on adb would make every expand feel broken. The refresh
-   * fires a tree change when it lands, so the row fills itself in a moment later.
+   * Rendered from what was STORED when the device was added, not from a live listing: the row has
+   * to draw the same whether or not the phone is plugged in right now, and `getTreeItem` is
+   * synchronous — blocking the sidebar on adb would make every expand feel broken. The cached
+   * listing only decorates it, saying whether the device is connected at the moment.
    */
-  private deviceItem(root: string, target: string): vscode.TreeItem {
-    const chosen = this.deps.state.selectionFor(root).devices?.[target];
-    const item = new vscode.TreeItem("Device", vscode.TreeItemCollapsibleState.None);
-    item.id = `device:${root}:${target}`;
-    item.iconPath = new vscode.ThemeIcon("device-mobile");
-    item.contextValue = "dayDevice";
-    item.command = {
-      command: "day.selectDevice",
-      title: "Select Device",
-      arguments: [{ kind: "device", root, target } as Node],
-    };
+  private deviceItem(root: string, target: string, id: string): vscode.TreeItem {
+    const device = this.deps.state.devicesFor(root, target).find((d) => d.id === id);
+    const item = new vscode.TreeItem(
+      device?.label ?? id,
+      vscode.TreeItemCollapsibleState.None,
+    );
+    item.id = `device:${root}:${target}:${id}`;
+    const running = this.deps.runner.isDeviceRunning(root, target, id);
+    item.contextValue = running ? "dayDeviceRunning" : "dayDevice";
+    item.iconPath = running
+      ? new vscode.ThemeIcon("circle-filled", new vscode.ThemeColor("charts.green"))
+      : new vscode.ThemeIcon("device-mobile");
 
-    // A query in flight spins the row — the click that opens the picker starts one, and this is
-    // the other place the wait is visible. A already-chosen device keeps its label while the
-    // spinner runs, so re-querying never looks like the choice was lost.
-    const busy = loading(target);
-    if (busy) {
-      item.iconPath = new vscode.ThemeIcon("sync~spin");
+    const bits: string[] = [];
+    if (running) {
+      bits.push("running");
     }
-    if (chosen) {
-      item.description = busy ? `${chosen.label} · checking…` : chosen.label;
-      item.tooltip = `${chosen.label}\n${chosen.flag} ${chosen.id}`;
-      return item;
-    }
-    if (busy) {
-      item.description = "looking for devices…";
-      item.tooltip = "Asking simctl, adb and hdc what is connected";
-      return item;
-    }
+    // Whether it is reachable right now, from whatever listing is already cached. Deliberately no
+    // query is started here: a configured device that is simply unplugged is a normal state, not a
+    // reason to shell out to simctl/adb/hdc every time the tree redraws.
     const listing = cached(target);
-    if (!listing) {
-      item.description = "…";
-      item.tooltip = "Looking for connected devices";
-      void this.deps.refreshDevices(target);
-      return item;
+    if (loading(target)) {
+      bits.push("checking…");
+    } else if (listing?.available) {
+      const live = listing.devices.some((d) => d.id === id);
+      const bootable = listing.bootable.some((d) => d.id === id);
+      bits.push(live ? "connected" : bootable ? "not running" : "not found");
     }
-    if (!listing.available) {
-      item.description = "unavailable";
-      item.tooltip = listing.note ?? "this target's toolchain was not found";
-      item.iconPath = new vscode.ThemeIcon(
-        "circle-slash",
-        new vscode.ThemeColor("disabledForeground"),
-      );
-      return item;
-    }
-    const n = listing.devices.length;
-    item.description = n === 0 ? "none connected" : `all connected (${n})`;
-    item.tooltip =
-      n === 0
-        ? "Nothing is connected for this target"
-        : `Launches on every connected device:\n${listing.devices.map((d) => d.name).join("\n")}`;
+    item.description = bits.join(" · ");
+    item.tooltip = device
+      ? `${device.label}\n${device.flag} ${device.id}`
+      : `${id}\nconfigured for ${target}`;
     return item;
   }
 
@@ -458,10 +446,15 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     const buildable = target ? isBuildableHere(target) : true;
     const selected = this.deps.state.selectionFor(root).targets.includes(name);
 
+    // A twisty only once there is something under it. A mobile target with nothing configured used
+    // to expand to a single fixed "Device" row; now it has no children until one is added, and an
+    // empty expander that opens onto nothing reads as a broken row.
+    const mobile = isMobile(target?.kind);
+    const devices = mobile ? this.deps.state.devicesFor(root, name) : [];
     const item = new vscode.TreeItem(
       name,
-      isMobile(target?.kind)
-        ? vscode.TreeItemCollapsibleState.Collapsed
+      devices.length > 0
+        ? vscode.TreeItemCollapsibleState.Expanded
         : vscode.TreeItemCollapsibleState.None,
     );
     item.id = `target:${root}:${name}`;
@@ -474,6 +467,9 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       parts.push("running");
     } else if (!buildable) {
       parts.push(`needs a ${target?.host} host`);
+    }
+    if (devices.length > 0) {
+      parts.push(devices.length === 1 ? "1 device" : `${devices.length} devices`);
     }
     item.description = parts.join(" · ");
 
@@ -495,6 +491,11 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       name,
       process.platform,
     );
+    // Tags accumulate, so a row can read `dayTarget.mobile.studio`. Every menu that matches a
+    // target row allows any number of them (`(\.\w+)*`) rather than exactly one.
+    if (mobile) {
+      item.contextValue += ".mobile";
+    }
 
     // Only buildable targets get a selection checkbox — a target this host cannot build has
     // nothing to tick. Deliberately NO `item.command`: the checkbox is the only thing that
