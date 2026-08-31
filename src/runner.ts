@@ -171,8 +171,13 @@ export class Runner implements vscode.Disposable {
    * Play silently do nothing for every desktop target, which have no devices by definition.
    */
   private runsFor(root: string, target: string): (DeviceChoice | undefined)[] {
-    const configured = this.state.devicesFor(root, target);
-    return configured.length > 0 ? configured : [undefined];
+    // Ticked devices only. A target with devices configured but none ticked launches nowhere:
+    // running onto "every connected device" there would ignore the very checkboxes that were just
+    // cleared, which is the opposite of what unticking them meant.
+    if (this.state.devicesFor(root, target).length > 0) {
+      return this.state.tickedDevicesFor(root, target);
+    }
+    return [undefined];
   }
 
   async runTargets(root: string, targets: string[]): Promise<void> {
@@ -189,7 +194,14 @@ export class Runner implements vscode.Disposable {
       if (this.isRunning(root, target)) {
         await this.stop(root, target);
       }
-      for (const device of this.runsFor(root, target)) {
+      const runs = this.runsFor(root, target);
+      if (runs.length === 0) {
+        vscode.window.showInformationMessage(
+          `Day: ${target} has devices configured but none ticked — tick one to launch on it.`,
+        );
+        continue;
+      }
+      for (const device of runs) {
         await this.launchOne(root, target, device);
       }
     }

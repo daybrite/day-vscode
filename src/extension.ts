@@ -294,10 +294,29 @@ export async function activate(
   context.subscriptions.push(view);
   context.subscriptions.push(
     view.onDidChangeCheckboxState(async (e) => {
-      for (const [node] of e.items) {
+      for (const [node, checked] of e.items) {
+        const on = checked === vscode.TreeItemCheckboxState.Checked;
         if (node.kind === "target") {
           // The row names its own project, so ticking a target under one app never reaches another.
           await state.toggleTargetFor(node.root, node.name);
+          // A target's checkbox is the all-or-nothing switch for the devices under it. Driven from
+          // the state VS Code reports rather than from a re-read of ours: with the parent's tick
+          // derived from the children, toggling it and then asking "is it on now?" would answer
+          // from the children we have not updated yet.
+          if (state.devicesFor(node.root, node.name).length > 0) {
+            await state.setAllDevicesTicked(node.root, node.name, on);
+          }
+        } else if (node.kind === "device") {
+          await state.setDeviceTicked(node.root, node.target, node.id, on);
+          // Roll the change up: a target with nothing ticked under it must not stay selected, or
+          // the project's Run would build it and then launch onto nothing.
+          const anyTicked = state.tickedDevicesFor(node.root, node.target).length > 0;
+          const selected = state
+            .selectionFor(node.root)
+            .targets.includes(node.target);
+          if (anyTicked !== selected) {
+            await state.toggleTargetFor(node.root, node.target);
+          }
         } else if (node.kind === "config" && node.which === "verbose") {
           // The row's own project, like every other config row — ticking Day-Showcase's Verbose
           // while Day-Rise is focused was flipping Day-Rise's.

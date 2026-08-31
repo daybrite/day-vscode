@@ -2365,6 +2365,81 @@ const checks: Check[] = [
     },
   ],
   [
+    "device ticks decide what launches, and a new device arrives ticked",
+    async () => {
+      const state = new State(fakeMemento());
+      const root = "/w/Day-Rise";
+      const t = "android-mdc";
+      const a = { id: "emulator-5554", label: "Pixel 8", flag: "--android-device" };
+      const b = { id: "emulator-5556", label: "Pixel 7", flag: "--android-device" };
+
+      await state.addDevice(root, t, a);
+      await state.addDevice(root, t, b);
+      // Absent tick state means all of them — a project that predates ticking, or one where
+      // nobody has unticked anything, launches on everything it lists.
+      assert.deepStrictEqual(
+        state.tickedDevicesFor(root, t).map((d) => d.id),
+        [a.id, b.id],
+      );
+
+      await state.setDeviceTicked(root, t, a.id, false);
+      assert.deepStrictEqual(state.tickedDevicesFor(root, t).map((d) => d.id), [b.id]);
+      assert.deepStrictEqual(
+        state.devicesFor(root, t).map((d) => d.id),
+        [a.id, b.id],
+        "unticking must not remove the row — it is still a configured device",
+      );
+
+      // Re-ticking restores both, and they read back in configured order however they were
+      // toggled — reads filter the configured list rather than replaying toggle order.
+      await state.setDeviceTicked(root, t, a.id, true);
+      assert.deepStrictEqual(state.tickedDevicesFor(root, t).map((d) => d.id), [a.id, b.id]);
+
+      // The target's checkbox is all-or-nothing over its children.
+      await state.setAllDevicesTicked(root, t, false);
+      assert.deepStrictEqual(state.tickedDevicesFor(root, t), []);
+      await state.setAllDevicesTicked(root, t, true);
+      assert.strictEqual(state.tickedDevicesFor(root, t).length, 2);
+
+      // A device added AFTER something was unticked still arrives ticked: adding it is saying you
+      // want to run on it. With the tick map already present this is the case that would
+      // otherwise land unticked and silently never launch.
+      await state.setDeviceTicked(root, t, a.id, false);
+      const c = { id: "emulator-5558", label: "Pixel 9", flag: "--android-device" };
+      await state.addDevice(root, t, c);
+      assert.deepStrictEqual(
+        state.tickedDevicesFor(root, t).map((d) => d.id),
+        [b.id, c.id],
+        "a newly added device is ticked; the earlier untick stands",
+      );
+
+      // Removing a device drops its tick, so re-adding it comes back ticked rather than carrying
+      // a stale untick nobody can see.
+      await state.removeDevice(root, t, b.id);
+      await state.addDevice(root, t, b);
+      assert.ok(
+        state.tickedDevicesFor(root, t).some((d) => d.id === b.id),
+        "a re-added device must not inherit its old untick",
+      );
+    },
+  ],
+  [
+    "a partially ticked target still reads as selected, and says how many of its devices run",
+    () => {
+      // VS Code tree checkboxes are two-state — `TreeItemCheckboxState` is Checked/Unchecked and
+      // the workbench renders a plain toggle with no indeterminate path — so a partly ticked
+      // target cannot show a third state. It stays CHECKED while any device is ticked, because
+      // that is exactly when it still launches, and the count in the row carries the rest.
+      assert.strictEqual(
+        Object.keys(vscode.TreeItemCheckboxState).filter((k) => isNaN(Number(k))).length,
+        2,
+        "if a mixed state ever ships, the target row should use it instead of the count",
+      );
+      assert.strictEqual(vscode.TreeItemCheckboxState.Checked, 1);
+      assert.strictEqual(vscode.TreeItemCheckboxState.Unchecked, 0);
+    },
+  ],
+  [
     "breakpoints are contributed for Rust",
     () => {
       // Without this contribution VS Code refuses to set a breakpoint in a .rs file at all, and a

@@ -40,6 +40,19 @@ export interface Selection {
    * onto each of them, one task apiece.
    */
   deviceList?: Record<string, DeviceChoice[]>;
+  /**
+   * Which of a target's configured devices are ticked, by device id.
+   *
+   * Separate from `deviceList` rather than a flag on each entry: a `DeviceChoice` is handed
+   * straight to the task definition, and VS Code keys a task on that definition's declared
+   * properties — a `checked` field riding along would put the tick into the task's IDENTITY, so
+   * unticking a running device would look like a different task.
+   *
+   * A target with configured devices and NO entry here has them all ticked: adding a device is
+   * saying you want to run on it, so it arrives ticked and this map only records departures from
+   * that.
+   */
+  deviceTicks?: Record<string, string[]>;
 }
 
 /** One project's stored slice. Every field optional: absent means "fall back to the setting". */
@@ -107,6 +120,7 @@ export class State {
       locale: slice.locale ?? (cfg.get<string>("defaultLocale") ?? ""),
       script: slice.script ?? "",
       deviceList: slice.deviceList ?? promoteLegacyDevices(slice.devices),
+      deviceTicks: slice.deviceTicks ?? {},
     };
   }
 
@@ -158,6 +172,16 @@ export class State {
     if (current.some((d) => d.id === device.id)) {
       return Promise.resolve();
     }
+    // Arrives TICKED. `tickedDevicesFor` reads an absent entry as "all of them", which covers the
+    // first device; once anything has been unticked the entry exists, and a new device would
+    // otherwise land unticked — added on purpose, yet silently not launched onto.
+    const ticks = this.selectionFor(root).deviceTicks?.[target];
+    if (ticks) {
+      return this.writeDevicesAndTicks(root, target, [...current, device], [
+        ...ticks,
+        device.id,
+      ]);
+    }
     return this.writeDevices(root, target, [...current, device]);
   }
 
@@ -170,8 +194,64 @@ export class State {
     );
   }
 
+  /**
+   * The configured devices of a target that are ticked, in configured order.
+   *
+   * Absent state means all of them, so a project that predates ticking — or one where nobody has
+   * unticked anything — launches on everything it lists, which is what it did before.
+   */
+  tickedDevicesFor(root: string, target: string): DeviceChoice[] {
+    const all = this.devicesFor(root, target);
+    const ticks = this.selectionFor(root).deviceTicks?.[target];
+    return ticks === undefined ? all : all.filter((d) => ticks.includes(d.id));
+  }
+
+  /** Tick or untick one device. */
+  setDeviceTicked(
+    root: string,
+    target: string,
+    id: string,
+    ticked: boolean,
+  ): Promise<void> {
+    const current = new Set(this.tickedDevicesFor(root, target).map((d) => d.id));
+    if (ticked) {
+      current.add(id);
+    } else {
+      current.delete(id);
+    }
+    return this.writeTicks(root, target, current);
+  }
+
+  /** Tick or untick every configured device of a target — what the target's own checkbox does. */
+  setAllDevicesTicked(root: string, target: string, ticked: boolean): Promise<void> {
+    const all = this.devicesFor(root, target).map((d) => d.id);
+    return this.writeTicks(root, target, new Set(ticked ? all : []));
+  }
+
+  private writeTicks(root: string, target: string, ids: Set<string>): Promise<void> {
+    const deviceTicks = { ...this.selectionFor(root).deviceTicks };
+    // Normalised to configured order. Reads filter the configured list, so order here is not
+    // observable either way — this only keeps the persisted value from churning as ticks are
+    // toggled back and forth.
+    deviceTicks[target] = this.devicesFor(root, target)
+      .map((d) => d.id)
+      .filter((id) => ids.has(id));
+    return this.updateFor(root, { deviceTicks });
+  }
+
   private writeDevices(root: string, target: string, list: DeviceChoice[]): Promise<void> {
-    const deviceList = { ...this.selectionFor(root).deviceList };
+    return this.writeDevicesAndTicks(root, target, list, undefined);
+  }
+
+  /** One write for both maps: two `updateFor` calls would each build from a pre-write snapshot. */
+  private writeDevicesAndTicks(
+    root: string,
+    target: string,
+    list: DeviceChoice[],
+    ticks: string[] | undefined,
+  ): Promise<void> {
+    const selection = this.selectionFor(root);
+    const deviceList = { ...selection.deviceList };
     if (list.length > 0) {
       deviceList[target] = list;
     } else {
@@ -179,7 +259,26 @@ export class State {
       // nothing after removing the last one" are the same stored state.
       delete deviceList[target];
     }
-    return this.updateFor(root, { deviceList });
+
+    // The ticks follow the list: a device removed and later re-added must arrive ticked like any
+    // other new one, rather than carrying a stale untick nobody can see. Written in the SAME
+    // update as the list — two `updateFor` calls both read the stored object first, so the second
+    // would be built from a snapshot taken before the first landed and would drop its change.
+    const deviceTicks = { ...selection.deviceTicks };
+    if (ticks) {
+      deviceTicks[target] = ticks;
+    }
+    const stored = deviceTicks[target];
+    if (stored) {
+      const ids = new Set(list.map((d) => d.id));
+      const kept = stored.filter((id) => ids.has(id));
+      if (list.length > 0) {
+        deviceTicks[target] = kept;
+      } else {
+        delete deviceTicks[target];
+      }
+    }
+    return this.updateFor(root, { deviceList, deviceTicks });
   }
 
   /** Tick or untick one target of one project. Named explicitly rather than defaulting to the

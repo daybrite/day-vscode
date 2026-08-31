@@ -32,14 +32,26 @@ The device you add becomes a row under the target. It stays there whether or not
 plugged in — the row says `connected`, `not running` or `not found` from whatever the extension
 last learned, rather than disappearing when you unplug something.
 
+## Choosing which ones run
+
+Every device row has a checkbox. The target's Play — and the project's Run — launch onto the
+**ticked** devices, one task and one terminal each, so you can watch two simulators side by side
+while a third stays configured but idle.
+
+The target's own checkbox is the all-or-nothing switch for the devices under it: ticking it ticks
+them all, unticking it clears them. Untick the last device and the target unticks itself, since
+there is nothing left for it to launch onto.
+
+A partly ticked target reads **`1 of 2 devices`** in its row. VS Code's tree checkboxes are
+two-state — there is no half-ticked box to show — so the count is where partial selection is
+visible. The box itself stays ticked while any device is, which is exactly when the target still
+runs.
+
 ## Running them
 
-Each device row has its own **Play**, which launches on that device alone. The target's own Play
-launches on **every** device configured under it, one task and one terminal each, so you can watch
-two simulators side by side.
-
-Remove a device with **Remove Device** on its right-click menu. Removing one that is running stops
-it first.
+Each device row has its own **Play**, which launches on that device alone whether or not it is
+ticked. Remove a device with **Remove Device** on its right-click menu; removing one that is
+running stops it first.
 
 ## An empty list means every connected device
 

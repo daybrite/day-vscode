@@ -434,6 +434,14 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       bits.push(live ? "connected" : bootable ? "not running" : "not found");
     }
     item.description = bits.join(" · ");
+    // Its own checkbox: which devices a launch goes to. Unticked rows stay listed — a device you
+    // are not launching onto right now is still one you configured.
+    const ticked = this.deps.state
+      .tickedDevicesFor(root, target)
+      .some((d) => d.id === id);
+    item.checkboxState = ticked
+      ? vscode.TreeItemCheckboxState.Checked
+      : vscode.TreeItemCheckboxState.Unchecked;
     item.tooltip = device
       ? `${device.label}\n${device.flag} ${device.id}`
       : `${id}\nconfigured for ${target}`;
@@ -468,8 +476,19 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     } else if (!buildable) {
       parts.push(`needs a ${target?.host} host`);
     }
+    // With devices configured, the count says how many will actually be launched onto. That
+    // wording carries what the checkbox cannot: VS Code tree checkboxes are two-state (the API's
+    // `TreeItemCheckboxState` is Checked/Unchecked and the workbench renders a plain toggle), so a
+    // partially-ticked target has no third visual state to show. The row reads "1 of 2 devices".
+    const tickedDevices = mobile ? this.deps.state.tickedDevicesFor(root, name) : [];
     if (devices.length > 0) {
-      parts.push(devices.length === 1 ? "1 device" : `${devices.length} devices`);
+      parts.push(
+        tickedDevices.length === devices.length
+          ? devices.length === 1
+            ? "1 device"
+            : `${devices.length} devices`
+          : `${tickedDevices.length} of ${devices.length} devices`,
+      );
     }
     item.description = parts.join(" · ");
 
@@ -503,7 +522,12 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     // behaves. Binding the whole row to the toggle meant a row could not be selected, expanded,
     // or right-clicked without also flipping whether it builds.
     if (buildable) {
-      item.checkboxState = selected
+      // With devices configured the target's tick is the aggregate of theirs: checked while ANY is
+      // ticked, because that is exactly when this target still launches. Reading it from the
+      // target's own selection instead would leave the row ticked with every device unticked —
+      // a row claiming it will run when nothing under it would.
+      const on = devices.length > 0 ? tickedDevices.length > 0 : selected;
+      item.checkboxState = on
         ? vscode.TreeItemCheckboxState.Checked
         : vscode.TreeItemCheckboxState.Unchecked;
     }
