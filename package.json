@@ -229,6 +229,30 @@
         "icon": "$(debug-stop)"
       },
       {
+        "command": "day.startSimulator",
+        "title": "Start Simulator",
+        "category": "Day",
+        "icon": "$(vm-active)"
+      },
+      {
+        "command": "day.stopSimulator",
+        "title": "Stop Simulator",
+        "category": "Day",
+        "icon": "$(vm-outline)"
+      },
+      {
+        "command": "day.startEmulator",
+        "title": "Start Emulator",
+        "category": "Day",
+        "icon": "$(vm-active)"
+      },
+      {
+        "command": "day.stopEmulator",
+        "title": "Stop Emulator",
+        "category": "Day",
+        "icon": "$(vm-outline)"
+      },
+      {
         "command": "day.buildTarget",
         "title": "Build Target",
         "category": "Day",
@@ -421,13 +445,33 @@
         },
         {
           "command": "day.runDevice",
-          "when": "view == dayTargets && viewItem == dayDevice",
+          "when": "view == dayTargets && viewItem =~ /^dayDevice(\\.\\w+)*$/",
           "group": "inline@1"
         },
         {
           "command": "day.stopDevice",
-          "when": "view == dayTargets && viewItem == dayDeviceRunning",
+          "when": "view == dayTargets && viewItem =~ /^dayDeviceRunning(\\.\\w+)*$/",
           "group": "inline@1"
+        },
+        {
+          "command": "day.startSimulator",
+          "when": "view == dayTargets && viewItem =~ /\\.startSimulator(\\.|$)/",
+          "group": "1_device@0"
+        },
+        {
+          "command": "day.stopSimulator",
+          "when": "view == dayTargets && viewItem =~ /\\.stopSimulator(\\.|$)/",
+          "group": "1_device@0"
+        },
+        {
+          "command": "day.startEmulator",
+          "when": "view == dayTargets && viewItem =~ /\\.startEmulator(\\.|$)/",
+          "group": "1_device@0"
+        },
+        {
+          "command": "day.stopEmulator",
+          "when": "view == dayTargets && viewItem =~ /\\.stopEmulator(\\.|$)/",
+          "group": "1_device@0"
         },
         {
           "command": "day.removeDevice",
@@ -510,6 +554,22 @@
         },
         {
           "command": "day.stopDevice",
+          "when": "false"
+        },
+        {
+          "command": "day.startSimulator",
+          "when": "false"
+        },
+        {
+          "command": "day.stopSimulator",
+          "when": "false"
+        },
+        {
+          "command": "day.startEmulator",
+          "when": "false"
+        },
+        {
+          "command": "day.stopEmulator",
           "when": "false"
         }
       ]

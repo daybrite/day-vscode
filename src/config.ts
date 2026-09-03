@@ -23,6 +23,16 @@ export interface DeviceChoice {
   id: string;
   label: string;
   flag: string;
+  /**
+   * The AVD an Android emulator is running, when the CLI could name one.
+   *
+   * `id` is an adb serial there, and a serial is a CONSOLE PORT rather than an identity: stop the
+   * emulator and it names nothing, start it again beside another one and it comes back as a
+   * different serial. The AVD is what survives that, so it is what lets a stopped row still say
+   * which emulator it is and offer to start it. Absent everywhere else — a simulator's UDID and a
+   * phone's serial are already stable.
+   */
+  avd?: string;
 }
 
 export interface Selection {
@@ -183,6 +193,35 @@ export class State {
       ]);
     }
     return this.writeDevices(root, target, [...current, device]);
+  }
+
+  /**
+   * Swap one configured device for the same device under a new id, keeping its place and its tick.
+   *
+   * What restarting an Android emulator needs: the row is the same emulator, but its adb serial is
+   * a console port the next boot may not get back, and `--android-device` selects by that serial.
+   * Removing and re-adding would send the row to the bottom of the list and re-tick it, so the
+   * entry is rewritten in place instead.
+   */
+  replaceDevice(
+    root: string,
+    target: string,
+    id: string,
+    next: DeviceChoice,
+  ): Promise<void> {
+    const current = this.devicesFor(root, target);
+    if (!current.some((d) => d.id === id) || current.some((d) => d.id === next.id)) {
+      // Nothing to rename, or the new id is already its own row — writing either would leave two
+      // rows for one device, each launching onto it.
+      return Promise.resolve();
+    }
+    const ticks = this.selectionFor(root).deviceTicks?.[target];
+    return this.writeDevicesAndTicks(
+      root,
+      target,
+      current.map((d) => (d.id === id ? next : d)),
+      ticks?.map((t) => (t === id ? next.id : t)),
+    );
   }
 
   /** Remove one configured device. The target falls back to "all connected" once none are left. */

@@ -36,6 +36,7 @@ import {
 import { editFor, Lint, mapFindings } from "../lint";
 import { composeArgs, describeSpec, visibleFields } from "../newproject";
 import { catalog, findTarget, isBuildableHere, nativeProjectFor } from "../targets";
+import { TargetDevices, virtualDevice } from "../devices";
 import { cliItem, orderTargets, targetContextValue } from "../tree";
 import { buildDayTask, hideUnavailableTargets, toolchainEnv } from "../tasks";
 import {
@@ -2237,6 +2238,42 @@ const checks: Check[] = [
       // Remove is offered whichever state it is in — a running device must still be removable.
       assert.ok(remove.test("dayDevice") && remove.test("dayDeviceRunning"));
 
+      // Play and Stop are about the APP; the tag a row grows for its simulator or emulator rides
+      // behind them and must not take either off the row. An `==` clause did exactly that.
+      assert.ok(play.test("dayDevice.startSimulator"), "Play lost to a device-state tag");
+      assert.ok(stop.test("dayDeviceRunning.stopEmulator"), "Stop lost to a device-state tag");
+      assert.ok(remove.test("dayDevice.startEmulator"));
+
+      // Start/Stop Simulator/Emulator: four entries, each keyed on the one tag its own row grows,
+      // so a row offers exactly one of them and the wording always names the right thing.
+      const startSim = matcher("day.startSimulator");
+      const stopSim = matcher("day.stopSimulator");
+      const startEmu = matcher("day.startEmulator");
+      const stopEmu = matcher("day.stopEmulator");
+      const tags = [
+        ["dayDevice.startSimulator", startSim],
+        ["dayDevice.stopSimulator", stopSim],
+        ["dayDeviceRunning.stopSimulator", stopSim],
+        ["dayDevice.startEmulator", startEmu],
+        ["dayDeviceRunning.stopEmulator", stopEmu],
+      ] as const;
+      for (const [value, mine] of tags) {
+        for (const other of [startSim, stopSim, startEmu, stopEmu]) {
+          assert.strictEqual(
+            other.test(value),
+            other === mine,
+            `${value} matched the wrong entry`,
+          );
+        }
+      }
+      // An untagged row — a physical phone, or a target nothing has been enumerated for — offers
+      // none of them. Offering Start there would promise something no toolchain can do.
+      for (const bare of ["dayDevice", "dayDeviceRunning", "dayTarget.mobile"]) {
+        for (const entry of [startSim, stopSim, startEmu, stopEmu]) {
+          assert.ok(!entry.test(bare), `a start/stop entry reached ${bare}`);
+        }
+      }
+
       // The "+" belongs to mobile target rows only, and not to ones this host cannot build: their
       // toolchain cannot enumerate what is connected, so the picker would open onto an error.
       const add = matcher("day.addDevice");
@@ -2264,6 +2301,129 @@ const checks: Check[] = [
       assert.ok(studio.test("dayTarget.studio.mobile"), "Studio lost to a trailing tag");
       assert.ok(xcode.test("dayTarget.xcode.mobile"), "Xcode lost to a trailing tag");
       assert.ok(!studio.test("dayTarget.xcode.mobile") && !xcode.test("dayTarget.studio.mobile"));
+    },
+  ],
+  [
+    "a device row knows whether its simulator or emulator can be started or stopped",
+    () => {
+      const ios: TargetDevices = {
+        target: "ios-uikit",
+        kind: "iosSim",
+        available: true,
+        devices: [
+          { id: "UDID-UP", name: "iPhone 16", kind: "simulator", flag: "--ios-simulator" },
+          { id: "00008110-PHONE", name: "iPhone 13 mini", kind: "device", flag: "--ios-device" },
+        ],
+        bootable: [{ id: "UDID-OFF", name: "iPad Pro" }],
+      };
+
+      const booted = virtualDevice(ios, { id: "UDID-UP" });
+      assert.deepStrictEqual(booted, { running: true, id: "UDID-UP", noun: "simulator" });
+      const off = virtualDevice(ios, { id: "UDID-OFF" });
+      assert.deepStrictEqual(off, { running: false, id: "UDID-OFF", noun: "simulator" });
+
+      // A plugged-in iPhone has no software to start and nothing to shut down: unplugging it is
+      // the real action, and neither entry belongs on its row.
+      assert.strictEqual(virtualDevice(ios, { id: "00008110-PHONE" }), undefined);
+      // A simulator that has since been deleted is neither running nor startable.
+      assert.strictEqual(virtualDevice(ios, { id: "UDID-GONE" }), undefined);
+      // Nothing enumerated yet, and a target whose toolchain is missing, are both "not known" —
+      // and a menu that guessed "stopped" there would offer Start on a running simulator.
+      assert.strictEqual(virtualDevice(undefined, { id: "UDID-UP" }), undefined);
+      assert.strictEqual(
+        virtualDevice({ ...ios, available: false, note: "no Xcode" }, { id: "UDID-UP" }),
+        undefined,
+      );
+
+      // HarmonyOS gets neither entry: its emulator is started by `day ohos emulator launch` and
+      // has no stop, so both would name something the CLI cannot do.
+      assert.strictEqual(
+        virtualDevice(
+          {
+            target: "harmony-arkui",
+            kind: "harmonyOs",
+            available: true,
+            devices: [
+              { id: "127.0.0.1:55555", name: "127.0.0.1:55555", kind: "emulator", flag: "--ohos-device" },
+            ],
+            bootable: [],
+          },
+          { id: "127.0.0.1:55555" },
+        ),
+        undefined,
+      );
+
+      // Android keys its running emulators by adb SERIAL and its startable ones by AVD NAME, so a
+      // stopped row matches nothing by id — the AVD it was stored with is the whole link back.
+      const android: TargetDevices = {
+        target: "android-mdc",
+        kind: "android",
+        available: true,
+        devices: [
+          {
+            id: "emulator-5554",
+            name: "Pixel_9_API_36 (emulator-5554)",
+            kind: "emulator",
+            avd: "Pixel_9_API_36",
+            flag: "--android-device",
+          },
+        ],
+        bootable: [{ id: "Pixel_6_API_31", name: "Pixel_6_API_31" }],
+      };
+      assert.deepStrictEqual(virtualDevice(android, { id: "emulator-5554" }), {
+        running: true,
+        id: "emulator-5554",
+        noun: "emulator",
+      });
+      assert.deepStrictEqual(
+        virtualDevice(android, { id: "emulator-5556", avd: "Pixel_6_API_31" }),
+        { running: false, id: "Pixel_6_API_31", noun: "emulator" },
+        "a stopped emulator is startable by the AVD its dead serial belonged to",
+      );
+      // Without the AVD there is nothing to match: a serial names a console port, and a stopped
+      // emulator's port belongs to nobody.
+      assert.strictEqual(virtualDevice(android, { id: "emulator-5556" }), undefined);
+    },
+  ],
+  [
+    "restarting an emulator under a new serial keeps its row, its place and its tick",
+    () => {
+      const state = new State(fakeMemento());
+      const root = "/w/Day-Rise";
+      const first = { id: "emulator-5554", label: "Pixel 9", flag: "--android-device", avd: "P9" };
+      const other = { id: "emulator-5558", label: "Pixel 6", flag: "--android-device", avd: "P6" };
+
+      return (async () => {
+        await state.addDevice(root, "android-mdc", first);
+        await state.addDevice(root, "android-mdc", other);
+        await state.setDeviceTicked(root, "android-mdc", "emulator-5558", false);
+
+        // The same emulator, back on a different console port. Removing and re-adding would send
+        // it to the bottom of the list and re-tick it; the row is rewritten in place instead.
+        const back = { ...first, id: "emulator-5560" };
+        await state.replaceDevice(root, "android-mdc", "emulator-5554", back);
+        assert.deepStrictEqual(
+          state.devicesFor(root, "android-mdc").map((d) => d.id),
+          ["emulator-5560", "emulator-5558"],
+          "the row keeps its place",
+        );
+        assert.deepStrictEqual(
+          state.tickedDevicesFor(root, "android-mdc").map((d) => d.id),
+          ["emulator-5560"],
+          "and its tick follows the rename, without reviving the one that was unticked",
+        );
+
+        // Renaming onto a serial another row already holds would leave two rows for one device,
+        // each launching onto it. Refused rather than merged.
+        await state.replaceDevice(root, "android-mdc", "emulator-5560", {
+          ...other,
+          id: "emulator-5558",
+        });
+        assert.deepStrictEqual(
+          state.devicesFor(root, "android-mdc").map((d) => d.id),
+          ["emulator-5560", "emulator-5558"],
+        );
+      })();
     },
   ],
   [

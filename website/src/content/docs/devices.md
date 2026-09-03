@@ -53,6 +53,25 @@ Each device row has its own **Play**, which launches on that device alone whethe
 ticked. Remove a device with **Remove Device** on its right-click menu; removing one that is
 running stops it first.
 
+## Starting and stopping the device itself
+
+A simulator or emulator row's right-click menu offers **Start Simulator** when it is not running
+and **Stop Simulator** when it is — **Start Emulator** and **Stop Emulator** on Android — so a
+device you configured once is one click from being up, and one click from giving back the memory
+it holds. Stopping also stops any app running on it first, since a run left attached to a device
+that has gone has no row to stop it from.
+
+Physical phones get neither entry. There is no software to start, and unplugging one is the real
+way to stop it.
+
+The row itself says which state it is in, so the menu never surprises you: `connected`,
+`not running`, or `not found` for a simulator that has since been deleted. That reading comes from
+the CLI, and the extension asks only about the platform whose rows are on screen.
+
+An Android emulator that comes back on a different adb serial keeps its row. The serial is a
+console port rather than a name — it slides when another emulator holds it — so the row remembers
+the AVD and follows the emulator to wherever it lands, keeping its place in the list and its tick.
+
 ## An empty list means every connected device
 
 A target with no devices configured launches onto *every* runtime of that kind the CLI can see —
@@ -97,6 +116,7 @@ The same enumeration the picker uses:
 day devices list -p ios-uikit
 day devices boot -p ios-uikit "iPhone 16 Pro"
 day launch -p ios-uikit --ios-simulator "iPhone 16 Pro"
+day devices shutdown -p ios-uikit "iPhone 16 Pro"
 ```
 
 See the [CLI reference](https://daybrite.dev/docs/cli/) for every flag, and

@@ -11,7 +11,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 import { State } from "./config";
-import { cached, isMobile, loading } from "./devices";
+import { cached, isMobile, loading, virtualDevice } from "./devices";
 import { CliVersions, isNewer } from "./install";
 import { hideUnavailableTargets, logLevel, verbose } from "./tasks";
 import { DayProject } from "./project";
@@ -50,8 +50,9 @@ export interface TreeDeps {
   /** Every discovered project, in the order the sidebar should list them. */
   projects: () => DayProject[];
   /** Enumerate ONE target's devices and refresh the tree when the answer lands. Per target, so
-   *  drawing the iOS row never runs adb. */
-  refreshDevices: (target: string) => Promise<void>;
+   *  drawing the iOS row never runs adb; the row's own project, so the CLI resolves from the app
+   *  the row sits under rather than from whichever one happens to be focused. */
+  refreshDevices: (root: string, target: string) => Promise<void>;
   /** What is known about the CLI: the version it reports, and the newest release. Both may be
    *  absent — no CLI on this machine, or no answer from the network — and the row says which. */
   versions: () => CliVersions;
@@ -209,9 +210,22 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       if (!isMobile(kind)) {
         return [];
       }
-      return this.deps.state
-        .devicesFor(element.root, element.name)
-        .map((d) => ({ kind: "device", root: element.root, target: element.name, id: d.id }) as Node);
+      const configured = this.deps.state.devicesFor(element.root, element.name);
+      // Device rows are about to be drawn, so THIS target's listing is worth having: the rows read
+      // `connected` / `not running` off it, and their Start/Stop menu is offered from it. Started
+      // here rather than in `getTreeItem` because that is synchronous and cannot wait on adb.
+      //
+      // Gated on there being nothing fresh and nothing in flight, which is what keeps it from
+      // looping: the query refreshes the tree when it lands, that redraw asks again, and an
+      // ungated ask would start another query and another refresh forever. It is also what keeps
+      // the promise in the module header — one target's tools, only when its rows ask, never on
+      // activation and never `adb` for an iOS row.
+      if (configured.length > 0 && !cached(element.name) && !loading(element.name)) {
+        void this.deps.refreshDevices(element.root, element.name);
+      }
+      return configured.map(
+        (d) => ({ kind: "device", root: element.root, target: element.name, id: d.id }) as Node,
+      );
     }
     if (element.kind === "group" && element.id === "targets") {
       const project = this.deps.projects().find((p) => p.root === element.root);
@@ -426,14 +440,23 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     // query is started here: a configured device that is simply unplugged is a normal state, not a
     // reason to shell out to simctl/adb/hdc every time the tree redraws.
     const listing = cached(target);
+    const virtual = device && virtualDevice(listing, device);
     if (loading(target)) {
       bits.push("checking…");
     } else if (listing?.available) {
       const live = listing.devices.some((d) => d.id === id);
-      const bootable = listing.bootable.some((d) => d.id === id);
-      bits.push(live ? "connected" : bootable ? "not running" : "not found");
+      bits.push(live ? "connected" : virtual ? "not running" : "not found");
     }
     item.description = bits.join(" · ");
+    // One tag naming the action this row can offer, so each menu entry is a single `when` clause
+    // and the entry's own wording is the right one for what the row is. Tags accumulate the way a
+    // target row's `.studio`/`.mobile` do, and the base states keep their meaning: `dayDevice` vs
+    // `dayDeviceRunning` is about the APP, this is about the device it would run on.
+    if (virtual) {
+      const verb = virtual.running ? "stop" : "start";
+      const noun = virtual.noun === "simulator" ? "Simulator" : "Emulator";
+      item.contextValue += `.${verb}${noun}`;
+    }
     // Its own checkbox: which devices a launch goes to. Unticked rows stay listed — a device you
     // are not launching onto right now is still one you configured.
     const ticked = this.deps.state
@@ -443,7 +466,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       ? vscode.TreeItemCheckboxState.Checked
       : vscode.TreeItemCheckboxState.Unchecked;
     item.tooltip = device
-      ? `${device.label}\n${device.flag} ${device.id}`
+      ? `${device.label}\n${device.flag} ${device.id}${device.avd ? `\nAVD ${device.avd}` : ""}`
       : `${id}\nconfigured for ${target}`;
     return item;
   }

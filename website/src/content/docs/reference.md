@@ -50,8 +50,9 @@ All of these are under the **Day** category in the command palette.
 | Show Log | Opens the Day output channel |
 
 Per-target **Run**, **Stop**, **Restart** and **Build**, per-project **Run** and **Stop**, the **+**
-that adds a device to a mobile target, and a device row's own **Play**, **Stop** and **Remove
-Device** are inline buttons and context-menu entries on their rows rather than palette commands.
+that adds a device to a mobile target, and a device row's own **Play**, **Stop**, **Remove
+Device** and **Start**/**Stop Simulator** (**Emulator** on Android) are inline buttons and
+context-menu entries on their rows rather than palette commands.
 
 Two more commands sit on the targets that carry a native project to open:
 

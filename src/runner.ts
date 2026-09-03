@@ -159,7 +159,11 @@ export class Runner implements vscode.Disposable {
       locale: sel.locale || undefined,
       script: sel.script || undefined,
       project: root,
-      device,
+      // Projected field by field rather than passed whole. The definition IS the task's identity,
+      // so anything riding along in it renames the task: `avd` is a note about which emulator a
+      // serial belongs to, and a stored device that gained one would look like a different task
+      // from the run already going.
+      device: device && { id: device.id, label: device.label, flag: device.flag },
     };
   }
 

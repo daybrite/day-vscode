@@ -1,5 +1,23 @@
 ## Unreleased
 
+- **A device row can start and stop the device itself.** Right-click a simulator or emulator under
+  a mobile target for **Start Simulator** when it is not running and **Stop Simulator** when it is
+  — **Start Emulator** and **Stop Emulator** on Android. Stopping stops any app running on it
+  first. Physical phones get neither entry: there is nothing to start, and unplugging one is the
+  real way to stop it. Needs a `day` with `devices shutdown`.
+- Device rows now say `connected` / `not running` / `not found` as soon as they are drawn. The
+  listing behind those words was only ever fetched by opening the **+** picker, so a row that had
+  never been asked about showed nothing at all.
+- An Android emulator restarted onto a different adb serial keeps its row, its place in the list
+  and its tick. A serial is a console port rather than a name — it slides when another emulator
+  holds it — so a row now remembers the AVD and follows the emulator to wherever it lands.
+- Booting an AVD from the **+** picker adds it. It never did: Android boots an AVD by name and
+  then reports it by serial, so the picker looked for a device id that could not appear and always
+  ended in "add it once it finishes booting", for a device that had already finished.
+- Android emulators read as the AVD they are running — `Pixel_9_API_36 (emulator-5554)` rather
+  than `Emulator (emulator-5554)`, which named only a console port — and an AVD that is already up
+  no longer appears under the picker's **Not running** heading as a second device to start.
+
 - **An installed `day` is no longer a prerequisite.** **Day: Install the day CLI…** — and the
   walkthrough's new first step — can build one from source with `cargo install --git`, into the
   extension's own storage. Nothing joins your `PATH`, a `day` you installed yourself is untouched,

@@ -100,7 +100,7 @@ export async function pickDevice(
       // rather than appearing to add a second copy.
       pick:
         d.flag && !here
-          ? { kind: "device", device: { id: d.id, label: d.name, flag: d.flag } }
+          ? { kind: "device", device: { id: d.id, label: d.name, flag: d.flag, avd: d.avd } }
           : undefined,
     });
   }
