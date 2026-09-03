@@ -53,6 +53,16 @@ Each device row has its own **Play**, which launches on that device alone whethe
 ticked. Remove a device with **Remove Device** on its right-click menu; removing one that is
 running stops it first.
 
+Press Play on a simulator or emulator that is not running and you are asked first:
+
+> The "iPad (A16)" iOS simulator is not currently running.
+
+**Launch It** starts it, waits for it to finish booting, and then runs the app on it. **Cancel**
+leaves everything as it was. Without the question this was a build's worth of waiting followed by
+"not connected" in the terminal, for something the row had been saying all along. A plugged-in
+phone is never asked about — there is nothing to start — and neither is a target whose devices
+have not been enumerated yet.
+
 ## Starting and stopping the device itself
 
 A simulator or emulator row's right-click menu offers **Start Simulator** when it is not running

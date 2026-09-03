@@ -1,5 +1,11 @@
 ## Unreleased
 
+- **Play on a stopped simulator offers to start it.** A device row's Play used to build the app
+  and then fail in the terminal with the CLI's "not connected", for a device the row had been
+  reporting as `not running` the whole time. It now asks — *The "iPad (A16)" iOS simulator is not
+  currently running.* — and **Launch It** starts the device, waits for it to boot, and runs on it.
+  A physical phone is never asked about, and neither is a target whose devices have not been
+  enumerated yet: both launch the way they always did.
 - **A device row can start and stop the device itself.** Right-click a simulator or emulator under
   a mobile target for **Start Simulator** when it is not running and **Stop Simulator** when it is
   — **Start Emulator** and **Stop Emulator** on Android. Stopping stops any app running on it

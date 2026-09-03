@@ -15,7 +15,7 @@ import {
   setExtensionRoot,
   setGlobalStorage,
 } from "./cli";
-import { State } from "./config";
+import { DeviceChoice, State } from "./config";
 import { DayConfigProvider, DayDebugAdapterFactory } from "./debug";
 import { checkVersions, CliVersions, promptToInstall } from "./install";
 import { editFor, Lint, LintActions } from "./lint";
@@ -564,6 +564,71 @@ export async function activate(
     }),
   );
 
+  /** What a device row's Start/Stop acts on, or `undefined` when the row offers neither. */
+  const virtualOf = async (
+    node?: Node,
+  ): Promise<{ device: devices.VirtualDevice; label: string; avd?: string } | undefined> => {
+    if (!node || node.kind !== "device") {
+      return undefined;
+    }
+    const choice = state
+      .devicesFor(node.root, node.target)
+      .find((d) => d.id === node.id);
+    if (!choice) {
+      return undefined; // removed between the click and the handler
+    }
+    // Re-asked when the cache has aged out. The menu entry the user just clicked was drawn from a
+    // listing that may since have expired, and reading the absence of one as "cannot tell" would
+    // make the entry do nothing at all — the row would offer Stop and then ignore it.
+    const listing = devices.cached(node.target) ?? (await devices.list(node.root, output, node.target));
+    const device = devices.virtualDevice(listing, choice);
+    return device ? { device, label: choice.label, avd: choice.avd } : undefined;
+  };
+
+  /**
+   * Start the simulator or emulator a device row names, and hand back the row's device as it now
+   * stands — or `undefined` when it did not start.
+   *
+   * The return value is why this is a function rather than the body of a command: an Android
+   * emulator comes back under whatever adb SERIAL it landed on, which need not be the one the row
+   * was stored with, and a caller about to LAUNCH onto it needs the device that exists now rather
+   * than the one it asked about.
+   */
+  const startVirtual = async (
+    node: { root: string; target: string; id: string },
+    what: { device: devices.VirtualDevice; label: string; avd?: string },
+  ): Promise<DeviceChoice | undefined> => {
+    const failed = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `Day: starting ${what.label}` },
+      // Waited out, so the device is usable when the notification goes: an emulator is not in
+      // `adb devices` for a while after the boot has merely been asked for.
+      () => devices.boot(node.root, node.target, what.device.id, true),
+    );
+    tree.refresh();
+    if (failed) {
+      vscode.window.showErrorMessage(`Day: could not start ${what.label} — ${failed}`);
+      return undefined;
+    }
+    // Re-listed rather than assumed. Left alone, a row whose serial moved would read `not found`
+    // and every launch from it would name a device that is not there.
+    const started = (await devices.list(node.root, output, node.target))?.devices.find(
+      (d) => d.id === what.device.id || (what.avd !== undefined && d.avd === what.avd),
+    );
+    if (started?.flag && started.id !== node.id) {
+      const moved = {
+        id: started.id,
+        label: started.name,
+        flag: started.flag,
+        avd: started.avd,
+      };
+      await state.replaceDevice(node.root, node.target, node.id, moved);
+      tree.refresh();
+      return moved;
+    }
+    tree.refresh();
+    return state.devicesFor(node.root, node.target).find((d) => d.id === node.id);
+  };
+
   register("day.addDevice", (node?: Node) =>
     guard(async () => {
       // Reached from the "+" on a mobile target row, so the node is the TARGET, not a device.
@@ -643,11 +708,39 @@ export async function activate(
       if (!node || node.kind !== "device") {
         return;
       }
-      const device = state
-        .devicesFor(node.root, node.target)
-        .find((d) => d.id === node.id);
+      let device = state.devicesFor(node.root, node.target).find((d) => d.id === node.id);
       if (!device) {
         return; // removed between the click and the handler
+      }
+      // Play onto a simulator or emulator that is not up used to fail in the terminal, several
+      // seconds and one build later, with the CLI's own "not connected" — the row said
+      // `not running` the whole time. Ask instead, and start it when the answer is yes.
+      //
+      // Only where the answer is KNOWN: `virtualOf` withholds a physical phone and a target
+      // nothing has been enumerated for, and both of those go straight to the launch the way they
+      // always did. Guessing would put a dialog in front of a run that was about to work.
+      const what = await virtualOf(node);
+      if (what && !what.device.running) {
+        const LAUNCH = "Launch It";
+        const answer = await vscode.window.showInformationMessage(
+          devices.startPrompt(device.label, what.device),
+          {
+            modal: true,
+            detail: `Start it, then run ${path.basename(node.root)} on it.`,
+          },
+          LAUNCH,
+        );
+        if (answer !== LAUNCH) {
+          return; // Cancel, or dismissed
+        }
+        // Re-read rather than reused: an Android emulator comes back under whatever adb serial it
+        // landed on, and launching at the one the row held before would name a device that is not
+        // there.
+        const started = await startVirtual(node, what);
+        if (!started) {
+          return; // it did not start, and startVirtual has already said why
+        }
+        device = started;
       }
       await runner.runDevice(node.root, node.target, device);
     }),
@@ -660,27 +753,6 @@ export async function activate(
       }
     }),
   );
-
-  /** What a device row's Start/Stop acts on, or `undefined` when the row offers neither. */
-  const virtualOf = async (
-    node?: Node,
-  ): Promise<{ device: devices.VirtualDevice; label: string; avd?: string } | undefined> => {
-    if (!node || node.kind !== "device") {
-      return undefined;
-    }
-    const choice = state
-      .devicesFor(node.root, node.target)
-      .find((d) => d.id === node.id);
-    if (!choice) {
-      return undefined; // removed between the click and the handler
-    }
-    // Re-asked when the cache has aged out. The menu entry the user just clicked was drawn from a
-    // listing that may since have expired, and reading the absence of one as "cannot tell" would
-    // make the entry do nothing at all — the row would offer Stop and then ignore it.
-    const listing = devices.cached(node.target) ?? (await devices.list(node.root, output, node.target));
-    const device = devices.virtualDevice(listing, choice);
-    return device ? { device, label: choice.label, avd: choice.avd } : undefined;
-  };
 
   /**
    * Start or stop the simulator/emulator a device row names.
@@ -696,33 +768,7 @@ export async function activate(
       if (!node || node.kind !== "device" || !what) {
         return;
       }
-      const failed = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: `Day: starting ${what.label}` },
-        // Waited out, so the row is usable when the notification goes: an emulator is not in
-        // `adb devices` for a while after the boot has merely been asked for.
-        () => devices.boot(node.root, node.target, what.device.id, true),
-      );
-      tree.refresh();
-      if (failed) {
-        vscode.window.showErrorMessage(`Day: could not start ${what.label} — ${failed}`);
-        return;
-      }
-      // Re-listed rather than assumed: an Android emulator comes back under whatever adb SERIAL it
-      // landed on, which need not be the one the row was stored with — the console port slides
-      // when another emulator holds it. Left alone, the row would read `not found` and every
-      // launch from it would name a device that is not there.
-      const started = (await devices.list(node.root, output, node.target))?.devices.find(
-        (d) => d.id === what.device.id || (what.avd !== undefined && d.avd === what.avd),
-      );
-      if (started?.flag && started.id !== node.id) {
-        await state.replaceDevice(node.root, node.target, node.id, {
-          id: started.id,
-          label: started.name,
-          flag: started.flag,
-          avd: started.avd,
-        });
-      }
-      tree.refresh();
+      await startVirtual(node, what);
     });
 
   const stopVirtualDevice = (node?: Node): Promise<void> =>

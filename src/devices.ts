@@ -209,6 +209,8 @@ export interface VirtualDevice {
   /** The id to hand `day devices boot` / `day devices shutdown`. */
   id: string;
   noun: "simulator" | "emulator";
+  /** The platform word that goes in front of `noun` in a sentence about this device. */
+  platform: "iOS" | "Android";
 }
 
 /**
@@ -239,13 +241,14 @@ export function virtualDevice(
   if (!listing?.available || (listing.kind !== "iosSim" && listing.kind !== "android")) {
     return undefined;
   }
-  const noun = listing.kind === "iosSim" ? "simulator" : "emulator";
+  const ios = listing.kind === "iosSim";
+  const named = { noun: ios ? "simulator" : "emulator", platform: ios ? "iOS" : "Android" } as const;
   const live = listing.devices.find((d) => d.id === choice.id);
   if (live) {
     // A physical phone is the one live device with nothing to offer. `kind` is the CLI's own
     // classification, and an unrecognized one is left alone rather than assumed startable.
     return live.kind === "simulator" || live.kind === "emulator"
-      ? { running: true, id: live.id, noun }
+      ? { running: true, id: live.id, ...named }
       : undefined;
   }
   // Not running. Either the row's own id is something bootable (a simulator UDID, or an AVD picked
@@ -253,7 +256,18 @@ export function virtualDevice(
   const startable = listing.bootable.find(
     (d) => d.id === choice.id || (choice.avd !== undefined && d.id === choice.avd),
   );
-  return startable ? { running: false, id: startable.id, noun } : undefined;
+  return startable ? { running: false, id: startable.id, ...named } : undefined;
+}
+
+/**
+ * What a device row's Play asks before it launches onto a simulator or emulator that is not up.
+ *
+ * A sentence rather than a question, with the choice carried by the buttons ("Launch It" /
+ * "Cancel"): the device is NAMED, because a row shows a label and a project can hold several, and
+ * agreeing to start the wrong iPad is the mistake this prompt exists to prevent.
+ */
+export function startPrompt(label: string, device: VirtualDevice): string {
+  return `The "${label}" ${device.platform} ${device.noun} is not currently running.`;
 }
 
 /** Whether a target has devices to choose between at all — desktop and web do not. */

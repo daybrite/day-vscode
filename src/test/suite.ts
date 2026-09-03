@@ -36,7 +36,7 @@ import {
 import { editFor, Lint, mapFindings } from "../lint";
 import { composeArgs, describeSpec, visibleFields } from "../newproject";
 import { catalog, findTarget, isBuildableHere, nativeProjectFor } from "../targets";
-import { TargetDevices, virtualDevice } from "../devices";
+import { startPrompt, TargetDevices, virtualDevice } from "../devices";
 import { cliItem, orderTargets, targetContextValue } from "../tree";
 import { buildDayTask, hideUnavailableTargets, toolchainEnv } from "../tasks";
 import {
@@ -2318,9 +2318,19 @@ const checks: Check[] = [
       };
 
       const booted = virtualDevice(ios, { id: "UDID-UP" });
-      assert.deepStrictEqual(booted, { running: true, id: "UDID-UP", noun: "simulator" });
+      assert.deepStrictEqual(booted, {
+        running: true,
+        id: "UDID-UP",
+        noun: "simulator",
+        platform: "iOS",
+      });
       const off = virtualDevice(ios, { id: "UDID-OFF" });
-      assert.deepStrictEqual(off, { running: false, id: "UDID-OFF", noun: "simulator" });
+      assert.deepStrictEqual(off, {
+        running: false,
+        id: "UDID-OFF",
+        noun: "simulator",
+        platform: "iOS",
+      });
 
       // A plugged-in iPhone has no software to start and nothing to shut down: unplugging it is
       // the real action, and neither entry belongs on its row.
@@ -2374,11 +2384,26 @@ const checks: Check[] = [
         running: true,
         id: "emulator-5554",
         noun: "emulator",
+        platform: "Android",
       });
       assert.deepStrictEqual(
         virtualDevice(android, { id: "emulator-5556", avd: "Pixel_6_API_31" }),
-        { running: false, id: "Pixel_6_API_31", noun: "emulator" },
+        { running: false, id: "Pixel_6_API_31", noun: "emulator", platform: "Android" },
         "a stopped emulator is startable by the AVD its dead serial belonged to",
+      );
+
+      // The prompt a device row's Play puts up names the device and the kind of thing it is, in
+      // the platform's own words — the whole point is that agreeing starts THAT one.
+      assert.strictEqual(
+        startPrompt("iPad (A16)", off!),
+        'The "iPad (A16)" iOS simulator is not currently running.',
+      );
+      assert.strictEqual(
+        startPrompt("Pixel_6_API_31", virtualDevice(android, {
+          id: "emulator-5556",
+          avd: "Pixel_6_API_31",
+        })!),
+        'The "Pixel_6_API_31" Android emulator is not currently running.',
       );
       // Without the AVD there is nothing to match: a serial names a console port, and a stopped
       // emulator's port belongs to nobody.
