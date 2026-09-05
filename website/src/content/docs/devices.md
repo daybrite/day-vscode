@@ -82,6 +82,12 @@ An Android emulator that comes back on a different adb serial keeps its row. The
 console port rather than a name — it slides when another emulator holds it — so the row remembers
 the AVD and follows the emulator to wherever it lands, keeping its place in the list and its tick.
 
+A row that predates that will say `not found` once its emulator stops, since a serial on its own
+names nothing. Its menu offers **Start Emulator…** — with the ellipsis, because it asks which AVD
+the row is — and it only asks once: the answer is stored, and from then on the row behaves like
+any other. Rows whose emulator is running are repaired without being asked, the moment the
+extension next looks at that platform.
+
 ## An empty list means every connected device
 
 A target with no devices configured launches onto *every* runtime of that kind the CLI can see —
@@ -91,8 +97,23 @@ capture sweep across several simulators work. Add devices when you mean particul
 ## Starting a simulator that is not running
 
 iOS cannot install onto a shut-down simulator, so picking one used to be a dead end. Now the picker
-offers it, starts it for you, and adds it once it is ready. If it is still booting when the CLI
-answers, nothing is added rather than storing a device whose launch flag is not yet known.
+offers it and starts it for you.
+
+The row appears **immediately**, reading `Booting…` with a spinner, and stays there while the
+device comes up — the CLI waits for the real thing (`simctl bootstatus` on iOS,
+`sys.boot_completed` on Android), not merely for the boot to have been asked for. An emulator that
+lands on a different adb serial than expected takes its row with it.
+
+If it does not start, you get the CLI's own diagnosis in a dialog — for an emulator that includes
+the tail of its log — and the row reads `failed to start` until the device is actually seen. The
+row stays, so **Start Emulator** on it is the retry.
+
+A slow emulator is the interesting case, because "gave up waiting" and "never coming" are not the
+same thing. After a boot the extension keeps looking for that one device for a few minutes, so an
+emulator that arrives late corrects its own row without being asked. It watches the device it was
+told to start and nothing else: enumerating Android starts an `adb` server that outlives the
+command, and putting that on a timer would keep one alive on every machine with a Day project
+open, including those whose author is working on iOS.
 
 ## One platform at a time
 

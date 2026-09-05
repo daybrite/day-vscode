@@ -271,10 +271,64 @@ export async function activate(
 
   // Enumerating devices shells out to simctl/adb/hdc, so it happens on demand — a device row
   // asks the first time it draws — and the tree redraws when the answer arrives.
-  const refreshDevices = async (root: string, target: string): Promise<void> => {
+  /**
+   * Write back what a listing teaches about rows that were stored before it.
+   *
+   * An Android emulator row keyed by an adb SERIAL cannot be started once it stops: the serial is
+   * a console port that names nothing, and only the AVD ties the row to something bootable. Rows
+   * added before the AVD was recorded carry no AVD at all — so it is learned here, from the one
+   * moment it can be: while that serial is live and the CLI can say which AVD answers to it.
+   *
+   * Writes only on a real change, which is what keeps this from looping: the write refreshes the
+   * tree, the redraw asks for the listing again, and an unconditional write would refresh forever.
+   * The label is left alone while a run is live on that device, because the label names the task's
+   * terminal and renaming it mid-run would relabel a panel someone is reading.
+   */
+  const healDevices = async (
+    root: string,
+    target: string,
+    listing: devices.TargetDevices,
+  ): Promise<void> => {
+    for (const stored of state.devicesFor(root, target)) {
+      // Matched by the AVD as well as by the id, which is what repairs a row that was left naming
+      // an AVD after its boot outlasted the wait: the emulator is right there under a serial, and
+      // only this notices.
+      const live = devices.liveDevice(listing, stored);
+      if (!live?.avd) {
+        continue;
+      }
+      const label = runner.isDeviceRunning(root, target, stored.id) ? stored.label : live.name;
+      if (stored.id === live.id && stored.avd === live.avd && stored.label === label) {
+        continue;
+      }
+      await state.replaceDevice(root, target, stored.id, {
+        ...stored,
+        id: live.id,
+        label,
+        avd: live.avd,
+        flag: live.flag ?? stored.flag,
+      });
+      // A row that moved is a row whose mark, if any, was about where it used to be.
+      devices.setPending(root, target, stored.id, undefined);
+    }
+  };
+
+  /** One target's devices, with the stored rows brought up to date by what came back. */
+  const listDevices = async (
+    root: string,
+    target: string,
+  ): Promise<devices.TargetDevices | undefined> => {
     // `devices.list` coalesces per target, so a row redrawing while its own query is still in
     // flight joins that one instead of starting a second.
-    await devices.list(root, output, target);
+    const listing = await devices.list(root, output, target);
+    if (listing) {
+      await healDevices(root, target, listing);
+    }
+    return listing;
+  };
+
+  const refreshDevices = async (root: string, target: string): Promise<void> => {
+    await listDevices(root, target);
     tree.refresh();
   };
 
@@ -580,7 +634,8 @@ export async function activate(
     // Re-asked when the cache has aged out. The menu entry the user just clicked was drawn from a
     // listing that may since have expired, and reading the absence of one as "cannot tell" would
     // make the entry do nothing at all — the row would offer Stop and then ignore it.
-    const listing = devices.cached(node.target) ?? (await devices.list(node.root, output, node.target));
+    const listing =
+      devices.cached(node.target) ?? (await listDevices(node.root, node.target));
     const device = devices.virtualDevice(listing, choice);
     return device ? { device, label: choice.label, avd: choice.avd } : undefined;
   };
@@ -594,39 +649,147 @@ export async function activate(
    * was stored with, and a caller about to LAUNCH onto it needs the device that exists now rather
    * than the one it asked about.
    */
-  const startVirtual = async (
-    node: { root: string; target: string; id: string },
-    what: { device: devices.VirtualDevice; label: string; avd?: string },
+  /**
+   * Wait out a boot that has already been asked for, and settle the row it belongs to.
+   *
+   * The waiting is the CLI's: `devices boot --wait` blocks on `simctl bootstatus` for iOS and on
+   * `sys.boot_completed` for Android, watches the emulator PROCESS so one that exits fails in
+   * seconds rather than sitting out its timeout, and quotes the emulator log when it gives up.
+   * Polling the listing here instead would be a worse version of all three — adbd answers minutes
+   * before the launcher exists, so a row driven off that would say `connected` and then fail to
+   * install.
+   *
+   * Either way the row survives: on success it is re-keyed onto whatever adb serial an emulator
+   * landed on, and on failure it is marked and left in place, because a device someone deliberately
+   * added is still one they meant to have.
+   */
+  /**
+   * Keep looking for a device that was started but has not turned up, for a bounded while.
+   *
+   * This is the answer to a slow emulator, and it is deliberately NOT a timer over the whole tree.
+   * Enumerating Android costs an `adb` server that outlives the command — the CLI says so, and it
+   * is why a listing is something a caller asks for rather than something that happens on the
+   * side — so polling everything on a clock would keep an adb daemon alive on every machine with a
+   * Day project open, including the ones whose author is working on iOS. This watches ONE device,
+   * only after being told it should exist, and stops the moment it does.
+   *
+   * `listDevices` heals as it goes, so a row keyed by an AVD name is re-keyed onto the serial by
+   * the same tick that finds it.
+   */
+  const watching = new Set<string>();
+  const watchForDevice = async (
+    root: string,
+    target: string,
+    rowId: string,
+    avd: string | undefined,
+  ): Promise<void> => {
+    const key = `${root}\u0000${target}\u0000${rowId}`;
+    if (watching.has(key)) {
+      return; // one watch per row; a second would only double the adb calls
+    }
+    watching.add(key);
+    try {
+      // Three minutes, and it backs off: five-second steps for the first minute, when an emulator
+      // that was nearly ready is most likely to arrive, then fifteen. Long enough for a slow boot,
+      // and about twenty `adb` calls rather than thirty-six for a device that is never coming —
+      // every one of which is a listing the user would otherwise have had to ask for by hand.
+      for (let waited = 0; waited < 180_000; ) {
+        const step = waited < 60_000 ? 5_000 : 15_000;
+        await new Promise((done) => setTimeout(done, step));
+        waited += step;
+        const row = state.devicesFor(root, target).find((d) => d.id === rowId || (!!avd && d.avd === avd));
+        if (!row) {
+          return; // removed while we watched
+        }
+        devices.invalidate(target);
+        const listing = await listDevices(root, target);
+        const live = devices.liveDevice(listing, { id: row.id, avd: row.avd ?? avd });
+        if (live) {
+          // It came up after all, so the mark that said otherwise is no longer true.
+          devices.setPending(root, target, row.id, undefined);
+          tree.refresh();
+          return;
+        }
+      }
+    } finally {
+      watching.delete(key);
+      tree.refresh();
+    }
+  };
+
+  const bootAndSettle = async (
+    root: string,
+    target: string,
+    /** The row this is on behalf of. Its `id` need not be what gets booted: a stopped emulator's
+     *  row is keyed by a serial nothing answers to, and boots by AVD name. */
+    row: { id: string; label: string; avd?: string },
+    bootId: string,
   ): Promise<DeviceChoice | undefined> => {
-    const failed = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: `Day: starting ${what.label}` },
-      // Waited out, so the device is usable when the notification goes: an emulator is not in
-      // `adb devices` for a while after the boot has merely been asked for.
-      () => devices.boot(node.root, node.target, what.device.id, true),
-    );
+    devices.setPending(root, target, row.id, "booting");
     tree.refresh();
+    const { failed, serial } = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `Day: starting ${row.label}` },
+      () => devices.boot(root, target, bootId, true),
+    );
+    const avd = row.avd;
     if (failed) {
-      vscode.window.showErrorMessage(`Day: could not start ${what.label} — ${failed}`);
+      devices.setPending(root, target, row.id, "failed");
+      tree.refresh();
+      vscode.window.showErrorMessage(`Day: ${row.label} did not start — ${failed}`);
+      // An emulator the CLI gave up waiting on is often still coming, and the machine deciding it
+      // has failed does not make it so. Keep looking for a bounded while; if it turns up, the row
+      // corrects itself and the failure it reported stops being true.
+      void watchForDevice(root, target, row.id, avd);
       return undefined;
     }
-    // Re-listed rather than assumed. Left alone, a row whose serial moved would read `not found`
-    // and every launch from it would name a device that is not there.
-    const started = (await devices.list(node.root, output, node.target))?.devices.find(
-      (d) => d.id === what.device.id || (what.avd !== undefined && d.avd === what.avd),
+    devices.setPending(root, target, row.id, undefined);
+    // Which device this IS, in falling order of how sure the answer is: the serial the CLI printed
+    // for the emulator it just started, then the id we asked it to boot, then the AVD. The first
+    // is the only one that cannot race — the other two are matched against a listing taken from a
+    // machine that may still be settling.
+    const started = (await listDevices(root, target))?.devices.find(
+      (d) =>
+        (serial !== undefined && d.id === serial) ||
+        d.id === bootId ||
+        (avd !== undefined && d.avd === avd),
     );
-    if (started?.flag && started.id !== node.id) {
-      const moved = {
-        id: started.id,
-        label: started.name,
-        flag: started.flag,
-        avd: started.avd,
-      };
-      await state.replaceDevice(node.root, node.target, node.id, moved);
+    if (!started) {
+      // Booted, by the CLI's own account, yet nothing answers to it. Watch rather than leave the
+      // row naming something no listing will ever contain.
+      void watchForDevice(root, target, row.id, avd);
+    }
+    if (started?.flag && (started.id !== row.id || started.avd !== avd)) {
+      const moved = { id: started.id, label: started.name, flag: started.flag, avd: started.avd };
+      await state.replaceDevice(root, target, row.id, moved);
+      // The mark follows the row to its new id, or nothing would ever clear it.
+      devices.setPending(root, target, row.id, undefined);
       tree.refresh();
       return moved;
     }
     tree.refresh();
-    return state.devicesFor(node.root, node.target).find((d) => d.id === node.id);
+    return state.devicesFor(root, target).find((d) => d.id === row.id);
+  };
+
+  const startVirtual = async (
+    node: { root: string; target: string; id: string },
+    what: { device: devices.VirtualDevice; label: string; avd?: string },
+    /** Which device to boot, when the row could not name one itself (see `day.adoptEmulator`). */
+    adopted?: string,
+  ): Promise<DeviceChoice | undefined> => {
+    const boot = adopted ?? what.device.id;
+    if (!boot) {
+      return undefined; // an unidentified row reached here without being adopted first
+    }
+    // The AVD to look for afterwards. An ADOPTED row has none stored yet — the name just chosen is
+    // the only thing that will tie it to the emulator that comes up, because Android boots by AVD
+    // name and reports back by adb serial.
+    const avd = adopted ?? what.avd;
+    return bootAndSettle(
+      node.root,
+      node.target,
+      { id: node.id, label: what.label, avd },
+      boot,
+    );
   };
 
   register("day.addDevice", (node?: Node) =>
@@ -647,44 +810,36 @@ export async function activate(
       if (!pick) {
         return; // cancelled
       }
-      if (pick.kind === "boot") {
-        // Start it, then add it — the whole reason booting is offered here is that picking a
-        // shut-down simulator used to dead-end in "boot one yourself".
-        const failed = await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: `Day: starting ${pick.name}`,
-          },
-          () => devices.boot(root, target, pick.id),
-        );
-        if (failed) {
-          vscode.window.showErrorMessage(`Day: could not start ${pick.name} — ${failed}`);
-          return;
+      /** Put the new row on screen: its target may well have been sitting collapsed. */
+      const show = async (id: string): Promise<void> => {
+        tree.refresh();
+        try {
+          await view.reveal({ kind: "device", root, target, id }, { expand: true });
+        } catch {
+          // `reveal` throws when the row is not there — removed already, or a refresh mid-flight.
+          // Not being able to scroll to a row is no reason to fail adding it.
         }
-        // Matched on the AVD as well as on the id, because Android answers under a DIFFERENT one:
-        // an AVD is booted by name and then reported by the adb serial it landed on. Matching the
-        // id alone found nothing there, so booting an emulator from the picker always ended in
-        // "add it once it finishes booting" — for a device that had already finished.
-        const started = (await devices.list(root, output, target))?.devices.find(
-          (d) => d.id === pick.id || d.avd === pick.id,
-        );
-        if (started?.flag) {
-          await state.addDevice(root, target, {
-            id: started.id,
-            label: started.name,
-            flag: started.flag,
-            avd: started.avd,
-          });
-        } else {
-          // Booting but not yet installable onto. Adding it now would store a device whose launch
-          // flag we do not know, and every run against it would fail.
-          vscode.window.setStatusBarMessage(
-            `Day: ${pick.name} is starting — add it once it finishes booting`,
-            5000,
-          );
+      };
+
+      if (pick.kind === "boot") {
+        // The row goes in BEFORE the boot, reading `Booting…`, and stays there whatever happens
+        // next. Waiting for the device first is what this used to do, and it lost the row every
+        // time: the CLI returned as soon as the boot had been ASKED for, the re-list found nothing
+        // under either the AVD name or a serial that did not exist yet, and the picker ended in a
+        // status-bar line nobody was looking at — for a device that was, by then, on its way up.
+        //
+        // A `bootable` entry names its own launch flag, which is what makes seeding honest: the
+        // row records how the device will be selected rather than guessing it from the target.
+        await state.addDevice(root, target, pick.device);
+        await show(pick.device.id);
+        const settled = await bootAndSettle(root, target, pick.device, pick.device.id);
+        // An emulator that moved to a new serial is a new row id, so follow it there.
+        if (settled && settled.id !== pick.device.id) {
+          await show(settled.id);
         }
       } else if (pick.kind === "device") {
         await state.addDevice(root, target, pick.device);
+        await show(pick.device.id);
       }
       tree.refresh();
     }),
@@ -699,6 +854,8 @@ export async function activate(
       // from — `day.stopProject` or Stop All would be the only way back.
       await runner.stopDevice(node.root, node.target, node.id);
       await state.removeDevice(node.root, node.target, node.id);
+      // Or a device re-added under the same id would inherit the mark from the row that went.
+      devices.setPending(node.root, node.target, node.id, undefined);
       tree.refresh();
     }),
   );
@@ -733,12 +890,13 @@ export async function activate(
         if (answer !== LAUNCH) {
           return; // Cancel, or dismissed
         }
-        // Re-read rather than reused: an Android emulator comes back under whatever adb serial it
-        // landed on, and launching at the one the row held before would name a device that is not
-        // there.
-        const started = await startVirtual(node, what);
+        // The device is re-read rather than reused: an Android emulator comes back under whatever
+        // adb serial it landed on, and launching at the one the row held before would name a
+        // device that is not there. A row that cannot name its own emulator asks which one first,
+        // since the prompt above is still true of it.
+        const started = await startAdopting(node, what);
         if (!started) {
-          return; // it did not start, and startVirtual has already said why
+          return; // cancelled, or it did not start and startVirtual has already said why
         }
         device = started;
       }
@@ -768,22 +926,91 @@ export async function activate(
       if (!node || node.kind !== "device" || !what) {
         return;
       }
-      await startVirtual(node, what);
+      await startAdopting(node, what);
+    });
+
+  /**
+   * "Start Emulator…" on a row that cannot say which emulator it is: ask, remember, then start it.
+   *
+   * Its own command because the ELLIPSIS is the honest part — this entry asks a question and the
+   * plain "Start Emulator" does not, and a VS Code menu title is fixed in the manifest.
+   */
+  const askWhichAvd = async (
+    node: { root: string; target: string },
+    what: { label: string },
+  ): Promise<string | undefined> => {
+    const avds = devices.cached(node.target)?.bootable ?? [];
+    if (avds.length === 0) {
+      vscode.window.showWarningMessage(
+        `Day: no AVD is available to start. \`day devices list -p ${node.target}\` shows what ` +
+          "the Android tools report.",
+      );
+      return undefined;
+    }
+    const chosen = await vscode.window.showQuickPick(
+      avds.map((a) => ({ label: a.name, description: a.runtime })),
+      {
+        title: `Day: which AVD is "${what.label}"?`,
+        placeHolder: "Its adb serial names nothing now, so the row cannot say on its own",
+      },
+    );
+    return chosen?.label;
+  };
+
+  /** Start a row's device, asking which AVD it is first when the row cannot say. */
+  const startAdopting = async (
+    node: { root: string; target: string; id: string },
+    what: { device: devices.VirtualDevice; label: string; avd?: string },
+  ): Promise<DeviceChoice | undefined> => {
+    if (what.device.id) {
+      return startVirtual(node, what);
+    }
+    const avd = await askWhichAvd(node, what);
+    if (!avd) {
+      return undefined;
+    }
+    // Two rows cannot be the same emulator. Refused here rather than left to fail quietly: the
+    // rename that follows a boot would be declined to avoid a duplicate row, and the row would
+    // stay pointed at its dead serial while the emulator it just started ran under the other one.
+    const taken = state
+      .devicesFor(node.root, node.target)
+      .find((d) => d.id !== node.id && d.avd === avd);
+    if (taken) {
+      vscode.window.showWarningMessage(
+        `Day: "${taken.label}" is already ${avd}. Remove this row instead — it names an emulator ` +
+          "that no longer exists.",
+      );
+      return undefined;
+    }
+    return startVirtual(node, what, avd);
+  };
+
+  const adoptEmulator = (node?: Node): Promise<void> =>
+    guard(async () => {
+      const what = await virtualOf(node);
+      if (!node || node.kind !== "device" || !what || what.device.id) {
+        return;
+      }
+      await startAdopting(node, what);
     });
 
   const stopVirtualDevice = (node?: Node): Promise<void> =>
     guard(async () => {
       const what = await virtualOf(node);
-      if (!node || node.kind !== "device" || !what) {
+      if (!node || node.kind !== "device" || !what?.device.id) {
         return;
       }
       // The app first. Stopping the device out from under a live run leaves a task attached to a
       // simulator that no longer exists, and its only way out would be Stop All.
       await runner.stopDevice(node.root, node.target, node.id);
+      const running = what.device.id;
+      devices.setPending(node.root, node.target, node.id, "stopping");
+      tree.refresh();
       const failed = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: `Day: stopping ${what.label}` },
-        () => devices.shutdown(node.root, node.target, what.device.id),
+        () => devices.shutdown(node.root, node.target, running),
       );
+      devices.setPending(node.root, node.target, node.id, undefined);
       if (failed) {
         // A CLI that predates `devices shutdown` fails as a clap usage error, which says the
         // subcommand does not exist and nothing about why an editor asked for it. Name the fix.
@@ -792,10 +1019,11 @@ export async function activate(
           : ` — ${failed}`;
         vscode.window.showErrorMessage(`Day: could not stop ${what.label}${stale}`);
       }
-      await devices.list(node.root, output, node.target);
+      await listDevices(node.root, node.target);
       tree.refresh();
     });
 
+  register("day.adoptEmulator", adoptEmulator);
   register("day.startSimulator", startVirtualDevice);
   register("day.stopSimulator", stopVirtualDevice);
   register("day.startEmulator", startVirtualDevice);

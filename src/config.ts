@@ -210,9 +210,10 @@ export class State {
     next: DeviceChoice,
   ): Promise<void> {
     const current = this.devicesFor(root, target);
-    if (!current.some((d) => d.id === id) || current.some((d) => d.id === next.id)) {
-      // Nothing to rename, or the new id is already its own row — writing either would leave two
-      // rows for one device, each launching onto it.
+    if (!current.some((d) => d.id === id) || current.some((d) => d.id === next.id && d.id !== id)) {
+      // Nothing to rename, or the new id is ANOTHER row's — writing either would leave two rows
+      // for one device, each launching onto it. Keeping the same id is allowed and is how a row
+      // gains the AVD behind its serial without moving.
       return Promise.resolve();
     }
     const ticks = this.selectionFor(root).deviceTicks?.[target];

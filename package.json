@@ -247,6 +247,12 @@
         "icon": "$(vm-active)"
       },
       {
+        "command": "day.adoptEmulator",
+        "title": "Start Emulator…",
+        "category": "Day",
+        "icon": "$(vm-active)"
+      },
+      {
         "command": "day.stopEmulator",
         "title": "Stop Emulator",
         "category": "Day",
@@ -469,6 +475,11 @@
           "group": "1_device@0"
         },
         {
+          "command": "day.adoptEmulator",
+          "when": "view == dayTargets && viewItem =~ /\\.adoptEmulator(\\.|$)/",
+          "group": "1_device@0"
+        },
+        {
           "command": "day.stopEmulator",
           "when": "view == dayTargets && viewItem =~ /\\.stopEmulator(\\.|$)/",
           "group": "1_device@0"
@@ -566,6 +577,10 @@
         },
         {
           "command": "day.startEmulator",
+          "when": "false"
+        },
+        {
+          "command": "day.adoptEmulator",
           "when": "false"
         },
         {

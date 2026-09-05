@@ -11,7 +11,16 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 import { State } from "./config";
-import { cached, isMobile, loading, virtualDevice } from "./devices";
+import {
+  cached,
+  isMobile,
+  liveDevice,
+  loading,
+  Pending,
+  pending,
+  TargetDevices,
+  virtualDevice,
+} from "./devices";
 import { CliVersions, isNewer } from "./install";
 import { hideUnavailableTargets, logLevel, verbose } from "./tasks";
 import { DayProject } from "./project";
@@ -159,6 +168,85 @@ export function orderTargets(
     : { shown: [...available, ...unavailable], hidden: 0 };
 }
 
+/**
+ * What a device row reads, looks like, and offers.
+ *
+ * Free and pure so the states can be checked without a tree, and because there are now three
+ * sources feeding one row: whether the APP is running on it, what this session is doing TO it
+ * (booting, stopping, or a boot that failed), and what the last listing said about the machine.
+ * The first two win over the third — a listing taken while a simulator boots reports it as still
+ * shut down, which is exactly the reading that made "add a device" look like it had done nothing.
+ */
+export function deviceRowState(input: {
+  /** The app is live on this device. */
+  running: boolean;
+  /** What this session is doing to the device itself. */
+  pending: Pending | undefined;
+  /** A listing for this target is being fetched right now. */
+  loading: boolean;
+  listing: TargetDevices | undefined;
+  device: { id: string; avd?: string } | undefined;
+}): { bits: string[]; icon: string; color?: string; tag?: string } {
+  const { running, pending: doing, listing, device } = input;
+  const bits: string[] = [];
+  if (running) {
+    bits.push("running");
+  }
+  // An in-flight action outranks the listing, which cannot see it: a device asked to boot is not
+  // in `devices` yet and is still in `bootable`, so the listing's word for it is "not running".
+  if (doing === "booting") {
+    bits.push("Booting…");
+    return { bits, icon: "loading~spin" };
+  }
+  if (doing === "stopping") {
+    bits.push("Stopping…");
+    return { bits, icon: "loading~spin" };
+  }
+  const virtual = device && virtualDevice(listing, device);
+  // The same matching rule the menu uses, so a row cannot read `not found` and offer Stop.
+  const live = !!device && !!liveDevice(listing, device);
+  if (doing === "failed" && !live) {
+    // Kept until the device is actually seen, because a dialog that has been dismissed is the only
+    // other record that the boot was even attempted.
+    bits.push("failed to start");
+  } else if (input.loading) {
+    bits.push("checking…");
+  } else if (listing?.available) {
+    // `virtual.id` and not `virtual`: an emulator row that cannot say which AVD it is has no id
+    // to start, and the device its serial names really is not there. `not found` is the honest
+    // word for that, and the row still offers to adopt an AVD.
+    bits.push(live ? "connected" : virtual?.id ? "not running" : "not found");
+  }
+  if (doing === "failed" && !live) {
+    return {
+      bits,
+      icon: "error",
+      color: "list.errorForeground",
+      // Still offered, so the answer to a failed boot is the same row's own Start rather than
+      // removing it and starting over.
+      tag: tagFor(virtual),
+    };
+  }
+  return {
+    bits,
+    icon: running ? "circle-filled" : "device-mobile",
+    color: running ? "charts.green" : undefined,
+    tag: tagFor(virtual),
+  };
+}
+
+/** The one context-value tag a row carries for the action it can offer, if any. */
+function tagFor(virtual: ReturnType<typeof virtualDevice>): string | undefined {
+  if (!virtual) {
+    return undefined;
+  }
+  const noun = virtual.noun === "simulator" ? "Simulator" : "Emulator";
+  // `adopt` is the third state, and it earns its own tag because its menu entry has to READ
+  // differently: "Start Emulator…", with the ellipsis that says it will ask which one.
+  const verb = virtual.running ? "stop" : virtual.id ? "start" : "adopt";
+  return `${verb}${noun}`;
+}
+
 export class DayTree implements vscode.TreeDataProvider<Node> {
   private emitter = new vscode.EventEmitter<Node | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
@@ -236,6 +324,30 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
         : [];
     }
     return [];
+  }
+
+  /**
+   * The row above this one. Required by `TreeView.reveal`, and only that: nothing else in the tree
+   * walks upwards.
+   *
+   * Adding a device is what needs it. A target row that had no devices carried no twisty at all,
+   * and gaining one does not open it — VS Code remembers what the user last left collapsed — so a
+   * device added from the "+" landed under a closed row and looked like nothing had happened.
+   */
+  getParent(node: Node): Node | undefined {
+    switch (node.kind) {
+      case "cli":
+      case "project":
+        return undefined;
+      case "group":
+        return { kind: "project", root: node.root };
+      case "config":
+        return { kind: "group", root: node.root, id: "config", label: "Configuration" };
+      case "target":
+        return { kind: "group", root: node.root, id: "targets", label: "Targets" };
+      case "device":
+        return { kind: "target", root: node.root, name: node.target };
+    }
   }
 
   getTreeItem(node: Node): vscode.TreeItem {
@@ -427,35 +539,27 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     );
     item.id = `device:${root}:${target}:${id}`;
     const running = this.deps.runner.isDeviceRunning(root, target, id);
+    const state = deviceRowState({
+      running,
+      pending: pending(root, target, id),
+      loading: loading(target),
+      // Read from the cache only. Deliberately no query is started here: `getTreeItem` is
+      // synchronous, and a configured device that is simply unplugged is a normal state rather
+      // than a reason to shell out to simctl/adb/hdc every time the tree redraws.
+      listing: cached(target),
+      device,
+    });
+    item.description = state.bits.join(" · ");
+    item.iconPath = new vscode.ThemeIcon(
+      state.icon,
+      state.color ? new vscode.ThemeColor(state.color) : undefined,
+    );
+    // Tags accumulate the way a target row's `.studio`/`.mobile` do, and the base states keep
+    // their meaning: `dayDevice` vs `dayDeviceRunning` is about the APP, the tag is about the
+    // device it would run on.
     item.contextValue = running ? "dayDeviceRunning" : "dayDevice";
-    item.iconPath = running
-      ? new vscode.ThemeIcon("circle-filled", new vscode.ThemeColor("charts.green"))
-      : new vscode.ThemeIcon("device-mobile");
-
-    const bits: string[] = [];
-    if (running) {
-      bits.push("running");
-    }
-    // Whether it is reachable right now, from whatever listing is already cached. Deliberately no
-    // query is started here: a configured device that is simply unplugged is a normal state, not a
-    // reason to shell out to simctl/adb/hdc every time the tree redraws.
-    const listing = cached(target);
-    const virtual = device && virtualDevice(listing, device);
-    if (loading(target)) {
-      bits.push("checking…");
-    } else if (listing?.available) {
-      const live = listing.devices.some((d) => d.id === id);
-      bits.push(live ? "connected" : virtual ? "not running" : "not found");
-    }
-    item.description = bits.join(" · ");
-    // One tag naming the action this row can offer, so each menu entry is a single `when` clause
-    // and the entry's own wording is the right one for what the row is. Tags accumulate the way a
-    // target row's `.studio`/`.mobile` do, and the base states keep their meaning: `dayDevice` vs
-    // `dayDeviceRunning` is about the APP, this is about the device it would run on.
-    if (virtual) {
-      const verb = virtual.running ? "stop" : "start";
-      const noun = virtual.noun === "simulator" ? "Simulator" : "Emulator";
-      item.contextValue += `.${verb}${noun}`;
+    if (state.tag) {
+      item.contextValue += `.${state.tag}`;
     }
     // Its own checkbox: which devices a launch goes to. Unticked rows stay listed — a device you
     // are not launching onto right now is still one you configured.

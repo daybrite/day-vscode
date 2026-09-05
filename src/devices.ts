@@ -33,7 +33,12 @@ export interface Device {
   arch?: string;
   /** The `day launch` flag that selects this device. */
   flag?: string;
-  /** For an Android emulator, the AVD it is running — the name `day devices boot` starts it by. */
+  /**
+   * For an Android emulator, the AVD it is running — the name `day devices boot` starts it by.
+   *
+   * A `bootable` AVD reports it as its own name, so a row seeded from one before it has any serial
+   * still knows which emulator it is.
+   */
   avd?: string;
 }
 
@@ -52,6 +57,47 @@ export interface TargetDevices {
 interface Envelope {
   schema?: number;
   targets?: TargetDevices[];
+}
+
+/**
+ * What a device row is doing right now, as far as THIS session is concerned.
+ *
+ * A listing describes the machine; this describes our own action on it, which no listing can see:
+ * a simulator that has been asked to boot is not yet in `devices` and is still in `bootable`, so
+ * a row rendered from the listing alone reads "not running" for the whole minute it spends coming
+ * up — and reads the same afterwards if it never made it.
+ *
+ * `failed` outlives the action deliberately. A boot that fails is reported in a dialog the user
+ * may well dismiss before reading, and a row that then looks exactly like one nobody has touched
+ * gives them nothing to come back to.
+ */
+export type Pending = "booting" | "stopping" | "failed";
+
+const pendingState = new Map<string, Pending>();
+
+/** NUL joins the parts: it cannot occur in a path, a target name or a device id. */
+function pendingKey(root: string, target: string, id: string): string {
+  return `${root}\u0000${target}\u0000${id}`;
+}
+
+/** Mark what a device row is doing, or clear it with `undefined`. */
+export function setPending(
+  root: string,
+  target: string,
+  id: string,
+  state: Pending | undefined,
+): void {
+  const key = pendingKey(root, target, id);
+  if (state) {
+    pendingState.set(key, state);
+  } else {
+    pendingState.delete(key);
+  }
+}
+
+/** What a device row is doing, if anything. */
+export function pending(root: string, target: string, id: string): Pending | undefined {
+  return pendingState.get(pendingKey(root, target, id));
 }
 
 /** How long a listing stays good before the next ask re-runs the CLI. */
@@ -165,12 +211,27 @@ function run(
  * emulator is not in `adb devices` for a while after the command returns — so without it the row
  * that was just started reads `not found`.
  */
+export interface BootResult {
+  /** What went wrong, when it did. */
+  failed?: string;
+  /**
+   * The adb serial the emulator came up as, straight from the CLI's stdout.
+   *
+   * The one authoritative answer to "which device did I just start?", and the reason this is
+   * returned rather than discarded: matching an AVD name against a fresh listing afterwards is a
+   * race with two ways to lose — `adb devices` may not list it yet, and `adb emu avd name` may not
+   * answer for a machine still settling — and losing it leaves the row pointing at a name no
+   * listing will ever contain. Absent for iOS, where the UDID never moves.
+   */
+  serial?: string;
+}
+
 export function boot(
   projectRoot: string | undefined,
   target: string,
   id: string,
   wait = false,
-): Promise<string | undefined> {
+): Promise<BootResult> {
   const cli = resolveCli(projectRoot);
   const args = [...cli.baseArgs, "devices", "boot", "-p", target, id];
   if (wait) {
@@ -188,9 +249,14 @@ export function boot(
         timeout: wait ? 15 * 60_000 : 120_000,
         env: { ...process.env, ...toolchainEnv() },
       },
-      (err, _stdout, stderr) => {
+      (err, stdout, stderr) => {
         invalidate(target);
-        resolve(err ? stderr.trim() || err.message : undefined);
+        // Status lines go to stderr, so stdout is only ever the serial — or nothing at all.
+        const serial = stdout.trim();
+        resolve({
+          failed: err ? stderr.trim() || err.message : undefined,
+          serial: serial.length > 0 ? serial : undefined,
+        });
       },
     );
   });
@@ -206,8 +272,14 @@ export function boot(
 export interface VirtualDevice {
   /** Running right now, so it can be stopped. */
   running: boolean;
-  /** The id to hand `day devices boot` / `day devices shutdown`. */
-  id: string;
+  /**
+   * The id to hand `day devices boot` / `day devices shutdown`.
+   *
+   * Absent for one case, always a stopped Android row: an emulator whose AVD is not known, so
+   * there is nothing to start it BY. The caller has to ask which AVD the row is before it can act
+   * — see [`unidentified`].
+   */
+  id?: string;
   noun: "simulator" | "emulator";
   /** The platform word that goes in front of `noun` in a sentence about this device. */
   platform: "iOS" | "Android";
@@ -232,8 +304,28 @@ export interface VirtualDevice {
  *
  * Android is why `avd` exists. Its running emulators are keyed by an adb SERIAL, which is a
  * console port rather than an identity: once one stops, its serial names nothing at all, and only
- * the AVD ties the row back to something `day devices boot` can start.
+ * the AVD ties the row back to something `day devices boot` can start. A row with no AVD and a
+ * serial nothing answers to comes back with NO `id` rather than as `undefined` — see
+ * [`unidentified`], which is what that state is for.
  */
+/**
+ * The listed device a configured row refers to, or `undefined` when it is not up.
+ *
+ * Matched by the AVD as well as by the id, because a row's id is not a stable name for an Android
+ * emulator: it is an adb serial, and the same emulator comes back on whatever console port was
+ * free. A row that missed its chance to be re-keyed — the boot outlasted the wait, the emulator
+ * console did not answer in time — is still THIS device, and reading it as `not found` while it
+ * sits there running is the reading that has to go.
+ */
+export function liveDevice(
+  listing: TargetDevices | undefined,
+  choice: { id: string; avd?: string },
+): Device | undefined {
+  return listing?.devices.find(
+    (d) => d.id === choice.id || (choice.avd !== undefined && d.avd === choice.avd),
+  );
+}
+
 export function virtualDevice(
   listing: TargetDevices | undefined,
   choice: { id: string; avd?: string },
@@ -243,7 +335,7 @@ export function virtualDevice(
   }
   const ios = listing.kind === "iosSim";
   const named = { noun: ios ? "simulator" : "emulator", platform: ios ? "iOS" : "Android" } as const;
-  const live = listing.devices.find((d) => d.id === choice.id);
+  const live = liveDevice(listing, choice);
   if (live) {
     // A physical phone is the one live device with nothing to offer. `kind` is the CLI's own
     // classification, and an unrecognized one is left alone rather than assumed startable.
@@ -256,7 +348,29 @@ export function virtualDevice(
   const startable = listing.bootable.find(
     (d) => d.id === choice.id || (choice.avd !== undefined && d.id === choice.avd),
   );
-  return startable ? { running: false, id: startable.id, ...named } : undefined;
+  if (startable) {
+    return { running: false, id: startable.id, ...named };
+  }
+  // An emulator row that cannot say which emulator it is. Startable once someone says.
+  return unidentified(listing.kind, choice) ? { running: false, ...named } : undefined;
+}
+
+/**
+ * Whether a row is an Android EMULATOR whose AVD is unknown — startable, but only after someone
+ * says which one it is.
+ *
+ * A row stored before the AVD was recorded holds an adb serial and nothing else, and a serial is a
+ * console port: once the emulator stops, `emulator-5554` matches no running device and no AVD, so
+ * every other reading of that row is "gone". It is not gone, though; it is unnamed, and the two
+ * deserve different offers — "gone" has nothing to do but Remove, while this can be adopted.
+ *
+ * `emulator-` is the CLI's own mark for an emulator (`adb devices` names them that way and
+ * `devices list` classifies on exactly that prefix), so a physical Android phone that is merely
+ * unplugged does not qualify — nor does an iOS UDID, where a simulator that is in neither list has
+ * really been deleted and asking "which one is this?" would be inventing an identity for it.
+ */
+function unidentified(kind: string | undefined, choice: { id: string; avd?: string }): boolean {
+  return kind === "android" && choice.id.startsWith("emulator-");
 }
 
 /**

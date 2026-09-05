@@ -1,11 +1,42 @@
 ## Unreleased
 
+- **An emulator that boots slowly no longer strands its row.** Two fixes, neither of them a timer.
+  The serial the CLI prints for the emulator it just started is now read rather than discarded, so
+  the row is keyed by the answer instead of by a guess raced against a machine that is still
+  settling. And a row is matched to a listed device **by its AVD** as well as by its id, so one
+  that missed its re-key reads `connected` and offers Stop the moment anything looks again,
+  rather than `not found` for as long as it survives.
+- After a boot that reported failure, the extension keeps looking for that one device for three
+  minutes; an emulator that arrives late clears its own `failed to start`. Scoped to the device it
+  was told to start rather than run on a clock, because enumerating Android leaves an `adb` server
+  behind and a periodic sweep would keep one alive on every machine with a Day project open.
+
+- **Adding a simulator or emulator that is not running now leaves a row.** It never did: the CLI
+  was asked to boot and answered as soon as the boot had been *requested*, so the listing that
+  followed found nothing under either the AVD name or a serial that did not exist yet, and the
+  whole thing ended in a status-bar line for a device that was on its way up. The row now goes in
+  **before** the boot, reads **Booting…** with a spinner while the CLI waits for the device to
+  finish coming up (`simctl bootstatus`, `sys.boot_completed`), and then settles to `connected` —
+  re-keyed onto whatever adb serial an emulator landed on.
+- A boot that fails reports twice over: an error dialog carrying the CLI's own diagnosis, and the
+  row itself, which reads **failed to start** in red until the device is actually seen. The row
+  stays put and keeps its **Start**, so the retry is on the row rather than through removing it and
+  starting again. Stopping a device marks its row **Stopping…** the same way.
+- `day devices list` reports a `flag` for the `bootable` half of its answer too, and an `avd` for
+  each AVD. Without them a row could not be shown for a device until after it existed, since
+  nothing said how a launch would select it.
+
 - **Play on a stopped simulator offers to start it.** A device row's Play used to build the app
   and then fail in the terminal with the CLI's "not connected", for a device the row had been
   reporting as `not running` the whole time. It now asks — *The "iPad (A16)" iOS simulator is not
   currently running.* — and **Launch It** starts the device, waits for it to boot, and runs on it.
   A physical phone is never asked about, and neither is a target whose devices have not been
   enumerated yet: both launch the way they always did.
+- **Android rows stored before the AVD was recorded can be started again.** Such a row holds only
+  an adb serial, which is a console port: once its emulator stops, `emulator-5554` matches nothing
+  at all, so the row read `not found` and offered neither Start nor Stop. Now a row whose emulator
+  is running learns its AVD without being asked, and one whose emulator is stopped offers **Start
+  Emulator…**, which asks which AVD it is, remembers the answer, and starts it.
 - **A device row can start and stop the device itself.** Right-click a simulator or emulator under
   a mobile target for **Start Simulator** when it is not running and **Stop Simulator** when it is
   — **Start Emulator** and **Stop Emulator** on Android. Stopping stops any app running on it

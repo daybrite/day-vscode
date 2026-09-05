@@ -36,8 +36,8 @@ import {
 import { editFor, Lint, mapFindings } from "../lint";
 import { composeArgs, describeSpec, visibleFields } from "../newproject";
 import { catalog, findTarget, isBuildableHere, nativeProjectFor } from "../targets";
-import { startPrompt, TargetDevices, virtualDevice } from "../devices";
-import { cliItem, orderTargets, targetContextValue } from "../tree";
+import { liveDevice, startPrompt, TargetDevices, virtualDevice } from "../devices";
+import { cliItem, deviceRowState, orderTargets, targetContextValue } from "../tree";
 import { buildDayTask, hideUnavailableTargets, toolchainEnv } from "../tasks";
 import {
   installChoices,
@@ -2405,9 +2405,212 @@ const checks: Check[] = [
         })!),
         'The "Pixel_6_API_31" Android emulator is not currently running.',
       );
-      // Without the AVD there is nothing to match: a serial names a console port, and a stopped
-      // emulator's port belongs to nobody.
-      assert.strictEqual(virtualDevice(android, { id: "emulator-5556" }), undefined);
+      // Without the AVD there is no id to start — but the row is still recognizably an EMULATOR,
+      // and one that can be adopted rather than one that is gone. That is the whole difference
+      // between a menu offering "Start Emulator…" and a menu offering nothing at all: every row
+      // stored before the AVD was recorded holds a serial and nothing else.
+      assert.deepStrictEqual(virtualDevice(android, { id: "emulator-5556" }), {
+        running: false,
+        noun: "emulator",
+        platform: "Android",
+      });
+      // A physical Android phone that is merely unplugged is NOT that: there is no AVD to pick.
+      assert.strictEqual(virtualDevice(android, { id: "19091FDF600BAY" }), undefined);
+      // Neither is a deleted simulator — asking "which one is this?" would invent an identity.
+      assert.strictEqual(virtualDevice(ios, { id: "UDID-DELETED" }), undefined);
+    },
+  ],
+  [
+    "an emulator that came up late is still recognised, by the AVD rather than the serial",
+    () => {
+      // The state a slow boot leaves behind: the row was seeded from the bootable AVD and never
+      // re-keyed, because the CLI stopped waiting before the emulator answered. The emulator is
+      // up all the same, under a serial the row has never heard of.
+      const listing: TargetDevices = {
+        target: "android-mdc",
+        kind: "android",
+        available: true,
+        devices: [
+          {
+            id: "emulator-5556",
+            name: "Pixel_9_API_36 (emulator-5556)",
+            kind: "emulator",
+            avd: "Pixel_9_API_36",
+            flag: "--android-device",
+          },
+        ],
+        // Excluded from bootable precisely because it IS running — which is what left the row
+        // matching nothing at all and reading `not found`.
+        bootable: [],
+      };
+      const stale = { id: "Pixel_9_API_36", avd: "Pixel_9_API_36" };
+
+      assert.strictEqual(
+        liveDevice(listing, stale)?.id,
+        "emulator-5556",
+        "a row still keyed by its AVD is the emulator running that AVD",
+      );
+      // …so it reads connected and offers Stop, on the serial the CLI actually answers to.
+      assert.deepStrictEqual(virtualDevice(listing, stale), {
+        running: true,
+        id: "emulator-5556",
+        noun: "emulator",
+        platform: "Android",
+      });
+      assert.deepStrictEqual(deviceRowState({
+        running: false,
+        pending: undefined,
+        loading: false,
+        listing,
+        device: stale,
+      }).bits, ["connected"]);
+
+      // A row whose AVD is genuinely absent is still not found, and an unrelated AVD is not it.
+      assert.strictEqual(liveDevice(listing, { id: "Pixel_5_API_30", avd: "Pixel_5_API_30" }), undefined);
+      // No AVD at all falls back to the id, which is the physical-device and iOS case.
+      assert.strictEqual(liveDevice(listing, { id: "emulator-5556" })?.id, "emulator-5556");
+      assert.strictEqual(liveDevice(undefined, stale), undefined);
+    },
+  ],
+  [
+    "a device being started reads Booting, and a boot that failed says so until it is seen",
+    () => {
+      const listing: TargetDevices = {
+        target: "android-mdc",
+        kind: "android",
+        available: true,
+        // The listing taken WHILE it boots: still nothing connected, still bootable. This is the
+        // reading that made adding a device look like it had done nothing at all.
+        devices: [],
+        bootable: [{ id: "Pixel_9_API_36", name: "Pixel_9_API_36" }],
+      };
+      const device = { id: "Pixel_9_API_36", avd: "Pixel_9_API_36" };
+      const base = { running: false, loading: false, listing, device };
+
+      // Booting outranks the listing, and offers nothing while it is in flight — a row cannot be
+      // asked to start what it is already starting, or to stop what is not up yet.
+      const booting = deviceRowState({ ...base, pending: "booting" });
+      assert.deepStrictEqual(booting.bits, ["Booting…"]);
+      assert.strictEqual(booting.icon, "loading~spin");
+      assert.strictEqual(booting.tag, undefined);
+
+      const stopping = deviceRowState({ ...base, pending: "stopping" });
+      assert.deepStrictEqual(stopping.bits, ["Stopping…"]);
+      assert.strictEqual(stopping.icon, "loading~spin");
+
+      // A boot that failed is marked, and keeps its Start so the retry is on the same row. The
+      // error dialog is the other half, and this is the half that survives dismissing it.
+      const failed = deviceRowState({ ...base, pending: "failed" });
+      assert.deepStrictEqual(failed.bits, ["failed to start"]);
+      assert.strictEqual(failed.icon, "error");
+      assert.strictEqual(failed.color, "list.errorForeground");
+      assert.strictEqual(failed.tag, "startEmulator");
+
+      // …and it stops being true the moment the device is actually there, however it got there.
+      const arrived: TargetDevices = {
+        ...listing,
+        devices: [
+          {
+            id: "emulator-5554",
+            name: "Pixel_9_API_36 (emulator-5554)",
+            kind: "emulator",
+            avd: "Pixel_9_API_36",
+            flag: "--android-device",
+          },
+        ],
+        bootable: [],
+      };
+      const back = deviceRowState({
+        running: false,
+        loading: false,
+        pending: "failed",
+        listing: arrived,
+        device: { id: "emulator-5554", avd: "Pixel_9_API_36" },
+      });
+      assert.deepStrictEqual(back.bits, ["connected"]);
+      assert.strictEqual(back.tag, "stopEmulator");
+
+      // Nothing pending is the ordinary row, and the app running on it still leads the line.
+      assert.deepStrictEqual(
+        deviceRowState({ ...base, pending: undefined }).bits,
+        ["not running"],
+      );
+      assert.deepStrictEqual(
+        deviceRowState({ ...base, pending: undefined, running: true }).bits,
+        ["running", "not running"],
+      );
+      assert.strictEqual(
+        deviceRowState({ ...base, pending: undefined, running: true }).icon,
+        "circle-filled",
+      );
+    },
+  ],
+  [
+    "an emulator row with no AVD offers to adopt one, and every other row keeps its own entry",
+    () => {
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const menus = ext.packageJSON.contributes.menus["view/item/context"] as {
+        command: string;
+        when: string;
+      }[];
+      const re = (command: string): RegExp => {
+        const entry = menus.find((m) => m.command === command);
+        assert.ok(entry, `${command} has no menu entry`);
+        const m = /viewItem =~ \/(.+?)\/(?:\s|$)/.exec(entry.when);
+        assert.ok(m, entry.when);
+        return new RegExp(m[1]);
+      };
+      const adopt = re("day.adoptEmulator");
+      const start = re("day.startEmulator");
+      assert.ok(adopt.test("dayDevice.adoptEmulator"));
+      // The two must not overlap: `.startEmulator` is a substring of nothing here, but a lazy
+      // pattern for either would put both entries on one row and one of them would do nothing.
+      assert.ok(!start.test("dayDevice.adoptEmulator"), "Start Emulator reached an unnamed row");
+      assert.ok(!adopt.test("dayDevice.startEmulator"), "Start Emulator… reached a named row");
+
+      // And its title carries the ellipsis, which is what tells the row apart in the menu.
+      const commands = ext.packageJSON.contributes.commands as { command: string; title: string }[];
+      const title = (id: string): string =>
+        commands.find((c) => c.command === id)?.title ?? "";
+      assert.strictEqual(title("day.adoptEmulator"), "Start Emulator…");
+      assert.strictEqual(title("day.startEmulator"), "Start Emulator");
+    },
+  ],
+  [
+    "a row learns the AVD behind its serial, and keeps its place, its tick and a live run's name",
+    () => {
+      const state = new State(fakeMemento());
+      const root = "/w/Day-Rise";
+      // The shape a workspace written before the AVD was recorded actually holds.
+      const legacy = {
+        id: "emulator-5554",
+        label: "Emulator (emulator-5554)",
+        flag: "--android-device",
+      };
+
+      return (async () => {
+        await state.addDevice(root, "android-mdc", legacy);
+        await state.addDevice(root, "android-mdc", { ...legacy, id: "emulator-5556" });
+        await state.setDeviceTicked(root, "android-mdc", "emulator-5556", false);
+
+        // Learned from a listing while that serial is live: same id, now with the AVD behind it.
+        await state.replaceDevice(root, "android-mdc", "emulator-5554", {
+          ...legacy,
+          label: "Pixel_9_API_36 (emulator-5554)",
+          avd: "Pixel_9_API_36",
+        });
+        assert.deepStrictEqual(
+          state.devicesFor(root, "android-mdc").map((d) => [d.id, d.avd]),
+          [["emulator-5554", "Pixel_9_API_36"], ["emulator-5556", undefined]],
+          "the row keeps its place and only the one that was seen learns anything",
+        );
+        assert.deepStrictEqual(
+          state.tickedDevicesFor(root, "android-mdc").map((d) => d.id),
+          ["emulator-5554"],
+          "and the tick survives an in-place update",
+        );
+      })();
     },
   ],
   [

@@ -22,8 +22,11 @@ export async function pickMode(current: Profile): Promise<Profile | undefined> {
 
 /** What the device picker came back with. `all` clears any pin; `boot` asks to start one first. */
 export type DevicePick =
+  /** Already connected — add it as it stands. */
   | { kind: "device"; device: DeviceChoice }
-  | { kind: "boot"; id: string; name: string };
+  /** Not running: start it, and show a row for it while it does. `device` is what that row holds
+   *  before the device exists, which is why a `bootable` entry has to name its own flag. */
+  | { kind: "boot"; device: DeviceChoice };
 
 /**
  * Choose a device to ADD to a target's configured list.
@@ -115,7 +118,11 @@ export async function pickDevice(
         label: `$(play) ${d.name}`,
         description: d.runtime,
         detail: "Start it, then launch on it",
-        pick: { kind: "boot", id: d.id, name: d.name },
+        // Skipped, like a connected device with no flag, rather than offered and then unable to
+        // say how a launch would select it.
+        pick: d.flag
+          ? { kind: "boot", device: { id: d.id, label: d.name, flag: d.flag, avd: d.avd } }
+          : undefined,
       });
     }
   }
