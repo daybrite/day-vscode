@@ -588,6 +588,13 @@ export async function activate(
         );
         return;
       }
+      // The host project references derived files under build/day/host (the asset catalog,
+      // the launcher mipmaps) that are never checked in; `day prepare` renders them from
+      // resource/icons/icon.svg. On a fresh clone Xcode would otherwise open onto red
+      // references, and Android Studio onto a module missing its icon resources.
+      if (!(await prepareHost(ref.root, ref.target, output))) {
+        return;
+      }
       await openInIde(native, full, output);
     });
 
@@ -1628,6 +1635,49 @@ function ideLauncher(ide: NativeIde): string | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * Run `day prepare -p <target>` so the derived host files the native project references exist
+ * and are current. Resolves true when the IDE may open; a failure is reported with the CLI's
+ * own words and answers false, since an IDE opened on a half-prepared project is a worse
+ * outcome than no IDE.
+ */
+async function prepareHost(
+  root: string,
+  target: string,
+  output: vscode.OutputChannel,
+): Promise<boolean> {
+  const cli = resolveCli(root);
+  const args = [...cli.baseArgs, "prepare", "-p", target];
+  output.appendLine(`[ide] ${renderCommand(cli, args.slice(cli.baseArgs.length))}`);
+  return new Promise((resolve) => {
+    childProcess.execFile(
+      cli.command,
+      args,
+      {
+        cwd: cli.cwd ?? root,
+        timeout: 120_000,
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, ...toolchainEnv() },
+      },
+      (err, stdout, stderr) => {
+        if (stdout.trim()) {
+          output.appendLine(stdout.trimEnd());
+        }
+        if (err) {
+          const detail = stderr.trim() || err.message;
+          output.appendLine(`[ide] ${detail}`);
+          void vscode.window.showErrorMessage(
+            `Day: \`day prepare -p ${target}\` failed, so the project was not opened. ${detail}`,
+          );
+          resolve(false);
+          return;
+        }
+        resolve(true);
+      },
+    );
+  });
 }
 
 /**
