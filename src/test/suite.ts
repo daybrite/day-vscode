@@ -2493,10 +2493,21 @@ const checks: Check[] = [
       assert.deepStrictEqual(booting.bits, ["Booting…"]);
       assert.strictEqual(booting.icon, "loading~spin");
       assert.strictEqual(booting.tag, undefined);
+      assert.strictEqual(booting.busy, true, "a booting row puts its Play away");
 
       const stopping = deviceRowState({ ...base, pending: "stopping" });
       assert.deepStrictEqual(stopping.bits, ["Stopping…"]);
       assert.strictEqual(stopping.icon, "loading~spin");
+      assert.strictEqual(stopping.busy, true);
+
+      // Play's first act is to ask the CLI where the device stands, which is seconds of adb or
+      // simctl. The row spins for exactly that long, so the click visibly landed, and drops its
+      // inline button so a second click cannot queue a second launch.
+      const checking = deviceRowState({ ...base, pending: "checking" });
+      assert.deepStrictEqual(checking.bits, ["checking…"]);
+      assert.strictEqual(checking.icon, "loading~spin");
+      assert.strictEqual(checking.tag, undefined);
+      assert.strictEqual(checking.busy, true);
 
       // A boot that failed is marked, and keeps its Start so the retry is on the same row. The
       // error dialog is the other half, and this is the half that survives dismissing it.
@@ -2505,6 +2516,8 @@ const checks: Check[] = [
       assert.strictEqual(failed.icon, "error");
       assert.strictEqual(failed.color, "list.errorForeground");
       assert.strictEqual(failed.tag, "startEmulator");
+      // A failed boot is over, so Play is back: the retry is one click on the same row.
+      assert.strictEqual(failed.busy, false);
 
       // …and it stops being true the moment the device is actually there, however it got there.
       const arrived: TargetDevices = {
@@ -2543,6 +2556,7 @@ const checks: Check[] = [
         deviceRowState({ ...base, pending: undefined, running: true }).icon,
         "circle-filled",
       );
+      assert.strictEqual(deviceRowState({ ...base, pending: undefined }).busy, false);
     },
   ],
   [

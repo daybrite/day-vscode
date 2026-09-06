@@ -67,11 +67,15 @@ interface Envelope {
  * a row rendered from the listing alone reads "not running" for the whole minute it spends coming
  * up — and reads the same afterwards if it never made it.
  *
+ * `checking` is the shortest of them: Play (or a Start/Stop entry) first asks the CLI whether the
+ * device is up, which is adb or simctl and takes seconds, and until it answers the row would look
+ * as if the click had been lost.
+ *
  * `failed` outlives the action deliberately. A boot that fails is reported in a dialog the user
  * may well dismiss before reading, and a row that then looks exactly like one nobody has touched
  * gives them nothing to come back to.
  */
-export type Pending = "booting" | "stopping" | "failed";
+export type Pending = "checking" | "booting" | "stopping" | "failed";
 
 const pendingState = new Map<string, Pending>();
 

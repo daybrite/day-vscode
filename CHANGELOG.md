@@ -1,5 +1,11 @@
 ## Unreleased
 
+- **A device row says so while Play is asking about it.** Play, Start, and Stop all begin by
+  asking the CLI where the device stands, and on Android that is `adb` plus a question to each
+  emulator: seconds during which the row used to sit unchanged with Play still lit, reading as a
+  click that had been lost. The row now spins and reads `checking…` for exactly that long, and
+  puts its inline button away, so a second click cannot queue a second launch. Booting and
+  stopping rows do the same.
 - **An emulator that boots slowly no longer strands its row.** Two fixes, neither of them a timer.
   The serial the CLI prints for the emulator it just started is now read rather than discarded, so
   the row is keyed by the answer instead of by a guess raced against a machine that is still

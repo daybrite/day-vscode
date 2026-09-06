@@ -53,6 +53,10 @@ Each device row has its own **Play**, which launches on that device alone whethe
 ticked. Remove a device with **Remove Device** on its right-click menu; removing one that is
 running stops it first.
 
+Play first asks the CLI where the device stands, which is `adb` or `simctl` and can take a
+few seconds. For that long the row reads `checking…` with a spinner and its Play button is
+put away, so the click has visibly landed and a second one cannot queue a second launch.
+
 Press Play on a simulator or emulator that is not running and you are asked first:
 
 > The "iPad (A16)" iOS simulator is not currently running.

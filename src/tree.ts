@@ -186,7 +186,7 @@ export function deviceRowState(input: {
   loading: boolean;
   listing: TargetDevices | undefined;
   device: { id: string; avd?: string } | undefined;
-}): { bits: string[]; icon: string; color?: string; tag?: string } {
+}): { bits: string[]; icon: string; color?: string; tag?: string; busy: boolean } {
   const { running, pending: doing, listing, device } = input;
   const bits: string[] = [];
   if (running) {
@@ -194,13 +194,19 @@ export function deviceRowState(input: {
   }
   // An in-flight action outranks the listing, which cannot see it: a device asked to boot is not
   // in `devices` yet and is still in `bootable`, so the listing's word for it is "not running".
+  // A busy row spins and drops its inline Play/Stop, so a second click cannot queue a second
+  // launch behind the first.
+  if (doing === "checking") {
+    bits.push("checking…");
+    return { bits, icon: "loading~spin", busy: true };
+  }
   if (doing === "booting") {
     bits.push("Booting…");
-    return { bits, icon: "loading~spin" };
+    return { bits, icon: "loading~spin", busy: true };
   }
   if (doing === "stopping") {
     bits.push("Stopping…");
-    return { bits, icon: "loading~spin" };
+    return { bits, icon: "loading~spin", busy: true };
   }
   const virtual = device && virtualDevice(listing, device);
   // The same matching rule the menu uses, so a row cannot read `not found` and offer Stop.
@@ -225,6 +231,7 @@ export function deviceRowState(input: {
       // Still offered, so the answer to a failed boot is the same row's own Start rather than
       // removing it and starting over.
       tag: tagFor(virtual),
+      busy: false,
     };
   }
   return {
@@ -232,6 +239,7 @@ export function deviceRowState(input: {
     icon: running ? "circle-filled" : "device-mobile",
     color: running ? "charts.green" : undefined,
     tag: tagFor(virtual),
+    busy: false,
   };
 }
 
@@ -556,8 +564,13 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     );
     // Tags accumulate the way a target row's `.studio`/`.mobile` do, and the base states keep
     // their meaning: `dayDevice` vs `dayDeviceRunning` is about the APP, the tag is about the
-    // device it would run on.
-    item.contextValue = running ? "dayDeviceRunning" : "dayDevice";
+    // device it would run on. A busy row is a third base: it matches neither inline-button
+    // clause, which is the only way VS Code lets a row put its button away for a moment.
+    item.contextValue = state.busy
+      ? "dayDeviceBusy"
+      : running
+        ? "dayDeviceRunning"
+        : "dayDevice";
     if (state.tag) {
       item.contextValue += `.${state.tag}`;
     }

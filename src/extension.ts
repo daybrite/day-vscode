@@ -647,6 +647,40 @@ export async function activate(
     return device ? { device, label: choice.label, avd: choice.avd } : undefined;
   };
 
+  /** A row already being checked, booted or stopped; its own spinner is the answer to a click. */
+  const busy = (node: { root: string; target: string; id: string }): boolean => {
+    const doing = devices.pending(node.root, node.target, node.id);
+    return doing !== undefined && doing !== "failed";
+  };
+
+  /**
+   * Ask where a row's device stands, with the row saying so while the CLI is asked.
+   *
+   * `virtualOf` re-lists the target when the cache has aged out, and on Android that is adb plus
+   * a question to each emulator, which takes seconds. Until this existed those seconds looked like
+   * a click that had done nothing: the row sat unchanged with Play still lit, and the natural
+   * response was to click it again. The row now spins, reads `checking…`, and puts its inline
+   * button away until the answer is in. `bootAndSettle` and Stop set their own marks after this,
+   * so the clear here is conditional: it only takes back the mark it made.
+   */
+  const checking = async (
+    node: Node,
+  ): Promise<{ device: devices.VirtualDevice; label: string; avd?: string } | undefined> => {
+    if (node.kind !== "device") {
+      return undefined;
+    }
+    devices.setPending(node.root, node.target, node.id, "checking");
+    tree.refresh();
+    try {
+      return await virtualOf(node);
+    } finally {
+      if (devices.pending(node.root, node.target, node.id) === "checking") {
+        devices.setPending(node.root, node.target, node.id, undefined);
+        tree.refresh();
+      }
+    }
+  };
+
   /**
    * Start the simulator or emulator a device row names, and hand back the row's device as it now
    * stands — or `undefined` when it did not start.
@@ -873,8 +907,8 @@ export async function activate(
         return;
       }
       let device = state.devicesFor(node.root, node.target).find((d) => d.id === node.id);
-      if (!device) {
-        return; // removed between the click and the handler
+      if (!device || busy(node)) {
+        return; // removed between the click and the handler, or already on its way
       }
       // Play onto a simulator or emulator that is not up used to fail in the terminal, several
       // seconds and one build later, with the CLI's own "not connected" — the row said
@@ -883,7 +917,7 @@ export async function activate(
       // Only where the answer is KNOWN: `virtualOf` withholds a physical phone and a target
       // nothing has been enumerated for, and both of those go straight to the launch the way they
       // always did. Guessing would put a dialog in front of a run that was about to work.
-      const what = await virtualOf(node);
+      const what = await checking(node);
       if (what && !what.device.running) {
         const LAUNCH = "Launch It";
         const answer = await vscode.window.showInformationMessage(
@@ -929,8 +963,11 @@ export async function activate(
    */
   const startVirtualDevice = (node?: Node): Promise<void> =>
     guard(async () => {
-      const what = await virtualOf(node);
-      if (!node || node.kind !== "device" || !what) {
+      if (!node || node.kind !== "device" || busy(node)) {
+        return;
+      }
+      const what = await checking(node);
+      if (!what) {
         return;
       }
       await startAdopting(node, what);
@@ -994,8 +1031,11 @@ export async function activate(
 
   const adoptEmulator = (node?: Node): Promise<void> =>
     guard(async () => {
-      const what = await virtualOf(node);
-      if (!node || node.kind !== "device" || !what || what.device.id) {
+      if (!node || node.kind !== "device" || busy(node)) {
+        return;
+      }
+      const what = await checking(node);
+      if (!what || what.device.id) {
         return;
       }
       await startAdopting(node, what);
@@ -1003,8 +1043,11 @@ export async function activate(
 
   const stopVirtualDevice = (node?: Node): Promise<void> =>
     guard(async () => {
-      const what = await virtualOf(node);
-      if (!node || node.kind !== "device" || !what?.device.id) {
+      if (!node || node.kind !== "device" || busy(node)) {
+        return;
+      }
+      const what = await checking(node);
+      if (!what?.device.id) {
         return;
       }
       // The app first. Stopping the device out from under a live run leaves a task attached to a
