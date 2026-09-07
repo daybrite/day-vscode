@@ -37,10 +37,12 @@
 
 <br />
 
-[Day](https://daybrite.dev) builds one app in Rust and ships it as a real native app on macOS,
-Windows, Linux, iOS, Android, HarmonyOS and the web, each one drawn with that platform's own
-widgets. This extension puts that loop in your editor: pick the platforms, press Run, and watch
-them build and launch side by side.
+[Day](https://daybrite.dev) is a complete application framework in Rust. One codebase ships as a
+real native app on macOS, Windows, Linux, iOS, Android, HarmonyOS, and the web, each one drawn with
+that platform's own widgets, and the CLI, CI workflows, localization, accessibility, and dayscript
+automation come with it. This extension is the framework's editor half: pick the platforms, press
+Run, and watch them build and launch side by side; run dayscript walkthroughs; and open the host
+project in Xcode or Android Studio after the extension prepares it.
 
 <br />
 
