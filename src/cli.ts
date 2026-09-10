@@ -351,6 +351,35 @@ export function cleanArgs(projectRoot: string): string[] {
 }
 
 /**
+ * Args for `day patch --local <checkout>…`, which points a project's cargo resolution at the
+ * checkouts open beside it (see localdeps.ts).
+ *
+ * Every checkout in one invocation, and `--project` for the same reason the others carry it. The
+ * table is rewritten whole each time, so a second call naming one checkout drops the first — which
+ * is why the caller collects them rather than looping.
+ */
+export function patchArgs(projectRoot: string, checkouts: string[]): string[] {
+  return [
+    ...projectArgs(projectRoot),
+    "patch",
+    ...checkouts.flatMap((dir) => ["--local", dir]),
+  ];
+}
+
+/**
+ * Args for `day prepare -p <target>`, which renders the derived host files (icon catalogs,
+ * launcher mipmaps, HarmonyOS media) a native project references before an IDE opens on it.
+ *
+ * `--project` for the same reason `clean` and `lint` carry it, and it is not decoration: this one
+ * runs on the way to Xcode or Android Studio, so without it the whole command fails in dev-mode
+ * with "no Day.toml found in this directory or any ancestor" — the cwd being the day checkout,
+ * which has no Day.toml of its own — and the IDE never opens.
+ */
+export function prepareArgs(projectRoot: string, target: string): string[] {
+  return [...projectArgs(projectRoot), "prepare", "-p", target];
+}
+
+/**
  * Args for `day stop -p <target>`, the CLI's own verb for ending a launch.
  *
  * Terminating the task is not enough for a target whose app does not run as a child of `day`. On

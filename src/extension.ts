@@ -10,6 +10,7 @@ import {
   cleanArgs,
   MCP_PROVIDER_ID,
   mcpServerSpecs,
+  prepareArgs,
   renderCommand,
   resolveCli,
   setExtensionRoot,
@@ -21,6 +22,7 @@ import { checkVersions, CliVersions, promptToInstall } from "./install";
 import { editFor, Lint, LintActions } from "./lint";
 import { askAll, composeArgs, describeSpec } from "./newproject";
 import * as devices from "./devices";
+import { offerLocalCheckouts } from "./localdeps";
 import { DayProject, findProjects, ProjectLoadFailure } from "./project";
 import {
   pickDevice,
@@ -244,6 +246,23 @@ export async function activate(
   };
 
   await refreshProjects();
+  // A workspace holding an app AND a checkout of something it depends on is the local-development
+  // shape, and cargo does not notice on its own (localdeps.ts). Deliberately not awaited: it reads
+  // a few files and may put up a prompt, and activation must not wait on an answer.
+  void offerLocalCheckouts(projects, output, context.workspaceState);
+
+  // A folder added later is the same situation arriving in a different order — dragging the day
+  // checkout into a window that already has the app is how this usually happens.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() =>
+      guard(async () => {
+        await refreshProjects();
+        tree.refresh();
+        await offerLocalCheckouts(projects, output, context.workspaceState);
+      }),
+    ),
+  );
+
   // The editor that is already open when the window starts decides the first focus, so reopening a
   // workspace lands on whatever was being worked on rather than on whichever project sorts first.
   await followEditor(vscode.window.activeTextEditor);
@@ -479,6 +498,12 @@ export async function activate(
     // The install runs in a terminal we do not wait on, so this only re-reads what is
     // known now; `day.refresh` re-checks once the CLI has actually changed.
   });
+
+  // Manual: reports the nothing-to-do cases out loud, and ignores both an earlier "Not now" and
+  // the `never` setting — asking for it by name is the answer to the question it would ask.
+  register("day.useLocalCheckouts", () =>
+    guard(() => offerLocalCheckouts(projects, output, context.workspaceState, true)),
+  );
 
   register("day.run", () =>
     guard(async () => {
@@ -1692,7 +1717,7 @@ async function prepareHost(
   output: vscode.OutputChannel,
 ): Promise<boolean> {
   const cli = resolveCli(root);
-  const args = [...cli.baseArgs, "prepare", "-p", target];
+  const args = [...cli.baseArgs, ...prepareArgs(root, target)];
   output.appendLine(`[ide] ${renderCommand(cli, args.slice(cli.baseArgs.length))}`);
   return new Promise((resolve) => {
     childProcess.execFile(

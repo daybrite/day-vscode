@@ -333,6 +333,11 @@
         "command": "day.relintAfterFix",
         "title": "Re-check After a Lint Fix",
         "category": "Day"
+      },
+      {
+        "command": "day.useLocalCheckouts",
+        "title": "Build Against Local Checkouts",
+        "category": "Day"
       }
     ],
     "menus": {
@@ -836,6 +841,30 @@
               "OHOS_NDK_HOME",
               "hdc",
               "harmony-arkui"
+            ]
+          },
+          "day.localCheckouts": {
+            "type": "string",
+            "enum": [
+              "prompt",
+              "always",
+              "never"
+            ],
+            "enumDescriptions": [
+              "Ask once when a workspace holds a checkout a project here depends on.",
+              "Build against them as soon as they are detected, without asking.",
+              "Leave cargo resolution alone; `Day: Build Against Local Checkouts` still works on demand."
+            ],
+            "default": "prompt",
+            "scope": "window",
+            "markdownDescription": "What to do when this workspace holds a crate checkout one of its Day projects depends on — the `day` framework itself, or an external piece or part repository. Building against it runs `day patch --local <checkout>`, which writes the project's gitignored `.cargo/config.toml` so an edit in that checkout reaches the very next build. Without it cargo fetches the published git revision and the edit never arrives, with nothing to see. A project already pointed at a checkout is left alone.",
+            "order": 16,
+            "keywords": [
+              "patch",
+              "cargo",
+              "checkout",
+              "local",
+              "development"
             ]
           }
         }
