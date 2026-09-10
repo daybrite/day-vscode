@@ -1,5 +1,14 @@
 ## Unreleased
 
+- **A target row spins until its build is through.** Play used to light the green dot the
+  moment the launch task started, so a two-minute compile read as an app that was already up.
+  The row now spins and reads `building` while `day launch` compiles, and shows the dot only once
+  the CLI has recorded the app's session — the same `build/day/sessions.json` entry `day drive`
+  and `day stop` attach to, written right after the app process starts. Device rows and the
+  status-bar tooltip do the same, and the target chip's spinner now means "still building" rather
+  than "something is running"; the stop button already says that. Stop stays on the row
+  throughout, since ending the task is how a build is cancelled.
+
 - **A device row says so while Play is asking about it.** Play, Start, and Stop all begin by
   asking the CLI where the device stands, and on Android that is `adb` plus a question to each
   emulator: seconds during which the row used to sit unchanged with Play still lit, reading as a

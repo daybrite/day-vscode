@@ -7,6 +7,8 @@
 // already running", stopped the other app's, and left one Stop button for two processes.
 
 import * as childProcess from "child_process";
+import * as fs from "fs";
+import * as path from "path";
 import * as vscode from "vscode";
 
 import { DeviceChoice, State } from "./config";
@@ -35,16 +37,65 @@ interface Running {
   ref: RunRef;
   execution: vscode.TaskExecution;
   pid?: number;
+  /** When the launch was asked for. A session recorded before this is an earlier launch's. */
+  startedAt: number;
+  /** The CLI has recorded this launch's session: the build finished and the app was started. */
+  live: boolean;
 }
+
+/** A launch from the native Run and Debug UI, tracked the same way a task launch is. */
+interface Debugging {
+  session: vscode.DebugSession;
+  startedAt: number;
+  live: boolean;
+}
+
+/**
+ * Whether `sessions` (the parsed `build/day/sessions.json`) records a launch of `target` made no
+ * earlier than `launchedAt`.
+ *
+ * The CLI writes that entry right after `ops::launch` returns, which is after the build and after
+ * the app process exists — so its appearance is the moment a run stops being a build. An entry
+ * whose `startedAt` predates the launch is a leftover from an earlier run of the same target (a
+ * crash leaves one behind; `day stop` removes it, but a launch that raced the stop may still see
+ * it), and does not count. The file is read defensively: it is best-effort JSON written by another
+ * process, and anything that is not a list of `{target, startedAt}` rows simply means "not yet".
+ */
+export function sessionIsLive(sessions: unknown, target: string, launchedAt: number): boolean {
+  if (!Array.isArray(sessions)) {
+    return false;
+  }
+  return sessions.some((s) => {
+    if (!s || typeof s !== "object") {
+      return false;
+    }
+    const row = s as { target?: unknown; startedAt?: unknown };
+    return (
+      row.target === target && typeof row.startedAt === "number" && row.startedAt >= launchedAt
+    );
+  });
+}
+
+/** Where the CLI keeps a project's live sessions (docs/agent.md). */
+function sessionsFile(root: string): string {
+  return path.join(root, "build", "day", "sessions.json");
+}
+
+/** How often a launch that has not yet produced a session is checked for one. */
+const SESSION_POLL_MS = 500;
 
 export class Runner implements vscode.Disposable {
   private running = new Map<string, Running>();
   // Launches from the native Run and Debug UI (F5 / Run menu). Tracked alongside task-launched
   // ones so the cockpit's "running" view, Stop, and restart cover both paths.
-  private debug = new Map<string, vscode.DebugSession>();
+  private debug = new Map<string, Debugging>();
   private emitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.emitter.event;
   private subs: vscode.Disposable[] = [];
+  // Armed while any launch is still building, cleared once every one is live or gone. Polling
+  // the sessions file rather than watching it: the CLI writes it by rename, `build/` may sit
+  // outside every workspace folder, and a 500 ms read of a few hundred bytes costs nothing.
+  private sessionPoll?: ReturnType<typeof setInterval>;
 
   constructor(
     private readonly state: State,
@@ -69,7 +120,12 @@ export class Runner implements vscode.Disposable {
       vscode.debug.onDidStartDebugSession((s) => {
         const ref = this.debugRef(s);
         if (ref) {
-          this.debug.set(key(ref.root, ref.target), s);
+          this.debug.set(key(ref.root, ref.target), {
+            session: s,
+            startedAt: Date.now(),
+            live: false,
+          });
+          this.watchSessions();
           this.emitter.fire();
         }
       }),
@@ -118,19 +174,96 @@ export class Runner implements vscode.Disposable {
     return this.running.has(k) || this.debug.has(k);
   }
 
+  /**
+   * Whether a target's launch has got past its build on ANY device: the CLI has recorded the
+   * session, so the app is up. A target that is running but not live is still compiling — the
+   * row spins rather than showing the green dot a finished launch earns.
+   */
+  isLive(root: string, target: string): boolean {
+    for (const r of this.running.values()) {
+      if (r.ref.root === root && r.ref.target === target && r.live) {
+        return true;
+      }
+    }
+    const d = this.debug.get(key(root, target));
+    return !!d && d.live;
+  }
+
+  /** Whether one configured device's run is past its build. */
+  isDeviceLive(root: string, target: string, device: string): boolean {
+    const k = key(root, target, device);
+    return !!this.running.get(k)?.live || !!this.debug.get(k)?.live;
+  }
+
   /** Every live launch, across every project. */
   runningRefs(): RunRef[] {
     const out = new Map<string, RunRef>();
     for (const [k, r] of this.running) {
       out.set(k, r.ref);
     }
-    for (const [k, s] of this.debug) {
-      const ref = this.debugRef(s);
+    for (const [k, d] of this.debug) {
+      const ref = this.debugRef(d.session);
       if (ref) {
         out.set(k, ref);
       }
     }
     return [...out.values()];
+  }
+
+  /** Start checking for sessions, if a launch that has none is being tracked. */
+  private watchSessions(): void {
+    if (!this.sessionPoll) {
+      this.sessionPoll = setInterval(() => void this.pollSessions(), SESSION_POLL_MS);
+    }
+  }
+
+  /**
+   * One check: every launch still waiting on its build is looked up in its project's sessions
+   * file. The poll retires itself once nothing is waiting — a build that fails ends the task
+   * process, which drops the run, so a broken build never keeps this ticking.
+   */
+  private async pollSessions(): Promise<void> {
+    const waiting = new Map<string, { target: string; startedAt: number; mark: () => void }[]>();
+    for (const r of this.running.values()) {
+      if (!r.live) {
+        const list = waiting.get(r.ref.root) ?? [];
+        list.push({ target: r.ref.target, startedAt: r.startedAt, mark: () => (r.live = true) });
+        waiting.set(r.ref.root, list);
+      }
+    }
+    for (const d of this.debug.values()) {
+      const ref = !d.live ? this.debugRef(d.session) : undefined;
+      if (ref) {
+        const list = waiting.get(ref.root) ?? [];
+        list.push({ target: ref.target, startedAt: d.startedAt, mark: () => (d.live = true) });
+        waiting.set(ref.root, list);
+      }
+    }
+    if (waiting.size === 0) {
+      if (this.sessionPoll) {
+        clearInterval(this.sessionPoll);
+        this.sessionPoll = undefined;
+      }
+      return;
+    }
+    let changed = false;
+    for (const [root, runs] of waiting) {
+      let sessions: unknown;
+      try {
+        sessions = JSON.parse(await fs.promises.readFile(sessionsFile(root), "utf8"));
+      } catch {
+        continue; // not written yet, or mid-rename: the next tick will look again
+      }
+      for (const run of runs) {
+        if (sessionIsLive(sessions, run.target, run.startedAt)) {
+          run.mark();
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      this.emitter.fire();
+    }
   }
 
   /** The targets running in one project, each named once however many devices it is live on. */
@@ -230,13 +363,19 @@ export class Runner implements vscode.Disposable {
     target: string,
     device: DeviceChoice | undefined,
   ): Promise<void> {
+    // Stamped before the task starts, so the CLI's own timestamp — taken after the build, when it
+    // records the session — can only be later than this one.
+    const startedAt = Date.now();
     const exec = await vscode.tasks.executeTask(
       buildDayTask(this.definition("launch", root, target, device)),
     );
     this.running.set(key(root, target, device?.id), {
       ref: { root, target, device: device?.id },
       execution: exec,
+      startedAt,
+      live: false,
     });
+    this.watchSessions();
   }
 
   /** Run one target on ONE of its configured devices — a device row's own Play button. */
@@ -260,10 +399,10 @@ export class Runner implements vscode.Disposable {
 
   /** End any debug session for this target, whichever device it was launched against. */
   private async stopDebugFor(root: string, target: string): Promise<void> {
-    for (const [k, session] of [...this.debug]) {
-      const ref = this.debugRef(session);
+    for (const [k, d] of [...this.debug]) {
+      const ref = this.debugRef(d.session);
       if (ref && ref.root === root && ref.target === target) {
-        await vscode.debug.stopDebugging(session);
+        await vscode.debug.stopDebugging(d.session);
         this.debug.delete(k);
         this.emitter.fire();
       }
@@ -330,6 +469,9 @@ export class Runner implements vscode.Disposable {
   }
 
   dispose(): void {
+    if (this.sessionPoll) {
+      clearInterval(this.sessionPoll);
+    }
     this.subs.forEach((d) => d.dispose());
     this.emitter.dispose();
   }

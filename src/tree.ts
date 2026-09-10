@@ -178,8 +178,10 @@ export function orderTargets(
  * shut down, which is exactly the reading that made "add a device" look like it had done nothing.
  */
 export function deviceRowState(input: {
-  /** The app is live on this device. */
+  /** The app has been launched onto this device (building or live). */
   running: boolean;
+  /** The launch is still compiling: the CLI has not recorded its session yet. */
+  building?: boolean;
   /** What this session is doing to the device itself. */
   pending: Pending | undefined;
   /** A listing for this target is being fetched right now. */
@@ -188,9 +190,10 @@ export function deviceRowState(input: {
   device: { id: string; avd?: string } | undefined;
 }): { bits: string[]; icon: string; color?: string; tag?: string; busy: boolean } {
   const { running, pending: doing, listing, device } = input;
+  const building = running && !!input.building;
   const bits: string[] = [];
   if (running) {
-    bits.push("running");
+    bits.push(building ? "building" : "running");
   }
   // An in-flight action outranks the listing, which cannot see it: a device asked to boot is not
   // in `devices` yet and is still in `bootable`, so the listing's word for it is "not running".
@@ -234,10 +237,12 @@ export function deviceRowState(input: {
       busy: false,
     };
   }
+  // The green dot is earned when the app is up; until the build is through, the row spins with
+  // the same glyph the target row uses, so a long compile is not mistaken for a running app.
   return {
     bits,
-    icon: running ? "circle-filled" : "device-mobile",
-    color: running ? "charts.green" : undefined,
+    icon: building ? "sync~spin" : running ? "circle-filled" : "device-mobile",
+    color: running && !building ? "charts.green" : undefined,
     tag: tagFor(virtual),
     busy: false,
   };
@@ -549,6 +554,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     const running = this.deps.runner.isDeviceRunning(root, target, id);
     const state = deviceRowState({
       running,
+      building: running && !this.deps.runner.isDeviceLive(root, target, id),
       pending: pending(root, target, id),
       loading: loading(target),
       // Read from the cache only. Deliberately no query is started here: `getTreeItem` is
@@ -591,6 +597,9 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
   private targetItem(root: string, name: string): vscode.TreeItem {
     const target = findTarget(name);
     const running = this.deps.runner.isRunning(root, name);
+    // Launched but not yet live: `day launch` is still compiling. The row spins for exactly that
+    // long, and shows the green dot only once the CLI has recorded the app's session.
+    const building = running && !this.deps.runner.isLive(root, name);
     const buildable = target ? isBuildableHere(target) : true;
     const selected = this.deps.state.selectionFor(root).targets.includes(name);
 
@@ -611,7 +620,9 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     if (target) {
       parts.push(kindLabel(target));
     }
-    if (running) {
+    if (building) {
+      parts.push("building");
+    } else if (running) {
       parts.push("running");
     } else if (!buildable) {
       parts.push(`needs a ${target?.host} host`);
@@ -633,7 +644,10 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     item.description = parts.join(" · ");
 
     if (running) {
-      item.iconPath = new vscode.ThemeIcon("circle-filled", new vscode.ThemeColor("charts.green"));
+      // Stop stays available while the build runs: ending the task is how a launch is cancelled.
+      item.iconPath = building
+        ? new vscode.ThemeIcon("sync~spin")
+        : new vscode.ThemeIcon("circle-filled", new vscode.ThemeColor("charts.green"));
       item.contextValue = "dayTargetRunning";
     } else if (!buildable) {
       item.iconPath = new vscode.ThemeIcon("circle-slash", new vscode.ThemeColor("disabledForeground"));

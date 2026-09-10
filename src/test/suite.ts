@@ -38,6 +38,7 @@ import { composeArgs, describeSpec, visibleFields } from "../newproject";
 import { catalog, findTarget, isBuildableHere, nativeProjectFor } from "../targets";
 import { liveDevice, startPrompt, TargetDevices, virtualDevice } from "../devices";
 import { cliItem, deviceRowState, orderTargets, targetContextValue } from "../tree";
+import { sessionIsLive } from "../runner";
 import { buildDayTask, hideUnavailableTargets, toolchainEnv } from "../tasks";
 import {
   installChoices,
@@ -2470,6 +2471,65 @@ const checks: Check[] = [
       // No AVD at all falls back to the id, which is the physical-device and iOS case.
       assert.strictEqual(liveDevice(listing, { id: "emulator-5556" })?.id, "emulator-5556");
       assert.strictEqual(liveDevice(undefined, stale), undefined);
+    },
+  ],
+  [
+    "a launch counts as live only once the CLI records a session made after it started",
+    () => {
+      const launchedAt = 1_700_000_000_000;
+      const fresh = [{ target: "macos-appkit", startedAt: launchedAt + 4_000 }];
+      const stale = [{ target: "macos-appkit", startedAt: launchedAt - 60_000 }];
+      const other = [{ target: "linux-gtk", startedAt: launchedAt + 4_000 }];
+
+      assert.strictEqual(sessionIsLive(fresh, "macos-appkit", launchedAt), true);
+      // The CLI stamps the session after the build, so an entry older than the launch is an
+      // earlier run's leftover — a crash leaves one — and must not end the spinner early.
+      assert.strictEqual(sessionIsLive(stale, "macos-appkit", launchedAt), false);
+      assert.strictEqual(sessionIsLive(other, "macos-appkit", launchedAt), false);
+      // Recorded in the same millisecond still counts: the stamp cannot precede the launch.
+      assert.strictEqual(
+        sessionIsLive([{ target: "macos-appkit", startedAt: launchedAt }], "macos-appkit", launchedAt),
+        true,
+      );
+      // Best-effort JSON written by another process: anything malformed reads as "not yet".
+      assert.strictEqual(sessionIsLive(undefined, "macos-appkit", launchedAt), false);
+      assert.strictEqual(sessionIsLive({ target: "macos-appkit" }, "macos-appkit", launchedAt), false);
+      assert.strictEqual(sessionIsLive([null, 3, "x"], "macos-appkit", launchedAt), false);
+      assert.strictEqual(
+        sessionIsLive([{ target: "macos-appkit", startedAt: "soon" }], "macos-appkit", launchedAt),
+        false,
+      );
+    },
+  ],
+  [
+    "a device row spins while its launch is still building and earns the green dot once live",
+    () => {
+      const listing: TargetDevices = {
+        target: "ios-uikit",
+        kind: "iosSim",
+        available: true,
+        devices: [{ id: "SIM-1", name: "iPhone 17" }],
+        bootable: [],
+      };
+      const device = { id: "SIM-1" };
+      const base = { pending: undefined, loading: false, listing, device };
+
+      const building = deviceRowState({ ...base, running: true, building: true });
+      assert.deepStrictEqual(building.bits, ["building", "connected"]);
+      assert.strictEqual(building.icon, "sync~spin");
+      assert.strictEqual(building.color, undefined, "no green until the app is up");
+      // Not busy: Stop stays on the row, because ending the task is how a build is cancelled.
+      assert.strictEqual(building.busy, false);
+
+      const live = deviceRowState({ ...base, running: true, building: false });
+      assert.deepStrictEqual(live.bits, ["running", "connected"]);
+      assert.strictEqual(live.icon, "circle-filled");
+      assert.strictEqual(live.color, "charts.green");
+
+      // `building` without `running` is meaningless and reads as a plain idle row.
+      const idle = deviceRowState({ ...base, running: false, building: true });
+      assert.deepStrictEqual(idle.bits, ["connected"]);
+      assert.strictEqual(idle.icon, "device-mobile");
     },
   ],
   [

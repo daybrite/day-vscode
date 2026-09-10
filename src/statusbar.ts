@@ -68,6 +68,9 @@ export class StatusBar implements vscode.Disposable {
     // calls Stop All), while the target chip below describes the focused project alone.
     const runningAll = this.runner.runningRefs();
     const running = this.runner.runningIn(project.root);
+    // Launched but still compiling. The chip's spinner means this and only this now — a running
+    // app is the stop button's business — so the two surfaces tell the same story as the tree.
+    const building = running.filter((t) => !this.runner.isLive(project.root, t));
 
     // ---- run / stop toggle -------------------------------------------------
     if (runningAll.length > 0) {
@@ -89,11 +92,11 @@ export class StatusBar implements vscode.Disposable {
       const shorts = chosen.map(short);
       const label =
         shorts.length <= 2 ? shorts.join(" · ") : `${shorts.slice(0, 2).join(" · ")} +${shorts.length - 2}`;
-      const spin = running.length > 0 ? "$(sync~spin) " : "";
+      const spin = building.length > 0 ? "$(sync~spin) " : "";
       this.targets.text = `${spin}$(vm) ${label}`;
       this.targets.backgroundColor = undefined;
     }
-    this.targets.tooltip = this.targetsTooltip(project, running);
+    this.targets.tooltip = this.targetsTooltip(project, running, building);
     this.targets.command = "day.selectTargets";
     this.targets.show();
 
@@ -176,7 +179,11 @@ export class StatusBar implements vscode.Disposable {
   }
 
   /** The targets hover: one row per project target with live state + inline actions. */
-  private targetsTooltip(project: DayProject, running: string[]): vscode.MarkdownString {
+  private targetsTooltip(
+    project: DayProject,
+    running: string[],
+    building: string[],
+  ): vscode.MarkdownString {
     const md = new vscode.MarkdownString(undefined, true);
     md.isTrusted = true;
     md.supportThemeIcons = true;
@@ -191,7 +198,13 @@ export class StatusBar implements vscode.Disposable {
         md.appendMarkdown(`$(circle-slash) ${name} — _not buildable on this host_\n\n`);
         continue;
       }
-      const dot = isRunning ? "$(circle-filled)" : picked ? "$(circle-outline)" : "$(blank)";
+      const dot = isRunning
+        ? building.includes(name)
+          ? "$(sync~spin)"
+          : "$(circle-filled)"
+        : picked
+          ? "$(circle-outline)"
+          : "$(blank)";
       const actions = isRunning
         ? `[stop](${cmd("day.stop", name)}) · [restart](${cmd("day.restart", name)})`
         : `[run](${cmd("day.runTarget", name)}) · [build](${cmd("day.buildTarget", name)})`;
