@@ -793,7 +793,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Sets `DEVELOPER_DIR` for every `day` command this extension runs — the Xcode to build Apple targets with, named either as the `.app` itself or as its `Contents/Developer`. `xcrun`, `xcodebuild` and `simctl` read that variable directly, so this is how a machine with several Xcodes points `macos-appkit` and `ios-uikit` at one of them. Empty = whatever `xcode-select` points to.",
-            "order": 16,
+            "order": 17,
             "keywords": [
               "DEVELOPER_DIR",
               "Xcode",
@@ -808,7 +808,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Path to the Android SDK (the directory holding `platform-tools/` and `emulator/`). Exported as both `ANDROID_HOME` and `ANDROID_SDK_ROOT` for every `day` command this extension runs — builds, launches, `day doctor` and device listing — and its `platform-tools/` and `emulator/` are added to the task `PATH`, which is what lets `adb` and the emulator be found when the editor was launched from the Dock and inherited no shell environment. Empty = whatever the environment already provides.",
-            "order": 17,
+            "order": 18,
             "keywords": [
               "ANDROID_HOME",
               "ANDROID_SDK_ROOT",
@@ -821,7 +821,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Path to the Android NDK used to cross-compile the Rust cdylib for `android-mdc`. Exported as `ANDROID_NDK_HOME`. Empty = the CLI picks the newest NDK inside the SDK.",
-            "order": 18,
+            "order": 19,
             "keywords": [
               "ANDROID_NDK_HOME",
               "NDK",
@@ -833,7 +833,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Sets `OHOS_NDK_HOME` for the `harmony-arkui` target — the path to the HarmonyOS (OpenHarmony) NDK `native` directory, e.g. `~/ohos-sdk/native`. The SDK's sibling `toolchains/` directory, which carries `hdc`, joins the task `PATH` as well. Leave empty to auto-detect: an existing `OHOS_NDK_HOME`, then `~/ohos/ndk-extract/native`, then `~/ohos-sdk/native`.",
-            "order": 19,
+            "order": 20,
             "keywords": [
               "HarmonyOS",
               "OpenHarmony",
@@ -857,7 +857,7 @@
             ],
             "default": "prompt",
             "scope": "window",
-            "markdownDescription": "What to do when this workspace holds a crate checkout one of its Day projects depends on — the `day` framework itself, or an external piece or part repository. Building against it runs `day patch --local <checkout>`, which writes the project's gitignored `.cargo/config.toml` so an edit in that checkout reaches the very next build. Without it cargo fetches the published git revision and the edit never arrives, with nothing to see. A project already pointed at a checkout is left alone.",
+            "markdownDescription": "What to do when this workspace holds a crate checkout one of its Day projects depends on — the `day` framework itself, or an external piece or part repository. Building against it runs `day patch --local <checkout>`, which writes the project's gitignored `.cargo/config.toml` so an edit in that checkout reaches the very next build. Without it cargo fetches the published git revision and the edit never arrives, with nothing to see. A project already pointed at a checkout is left alone.\n\nA `day` checkout in the workspace also offers to become `#day.cliSource#`, so the editor runs that checkout's CLI rather than the installed one. That is a separate question, asked separately, and it writes a workspace setting.",
             "order": 16,
             "keywords": [
               "patch",

@@ -149,6 +149,21 @@ function alreadyPatched(root: string, checkout: LocalCheckout): boolean {
   return read(path.join(root, ".cargo", "config.toml")).includes(checkout.dir);
 }
 
+/** The `day` checkout this workspace holds, when it holds one the CLI could be run from.
+ *
+ * `crates/day-cli/Cargo.toml`, not the `crates/day` that identifies the framework for patching:
+ * this asks whether the checkout can BUILD the CLI, which is the thing `day.cliSource` needs and
+ * the thing resolveCli refuses without. */
+function cliSourceCandidate(checkouts: LocalCheckout[]): LocalCheckout | undefined {
+  const already = (vscode.workspace.getConfiguration("day").get<string>("cliSource") ?? "").trim();
+  if (already) {
+    // Set already, and possibly on purpose to a checkout that is not in this window. Offering to
+    // change it would be overriding an answer rather than asking a question.
+    return undefined;
+  }
+  return checkouts.find((c) => fs.existsSync(path.join(c.dir, "crates", "day-cli", "Cargo.toml")));
+}
+
 /** What each project could be built against but is not. Projects with nothing to do are left out,
  *  so an empty result means there is nothing to offer. */
 export async function planPatches(
@@ -246,7 +261,8 @@ export async function offerLocalCheckouts(
   }
   const checkouts = workspaceCheckouts(projects);
   const plans = await planPatches(projects, checkouts);
-  if (plans.length === 0) {
+  const cliRepo = cliSourceCandidate(checkouts);
+  if (plans.length === 0 && !cliRepo) {
     if (manual) {
       void vscode.window.showInformationMessage(
         checkouts.length === 0
@@ -259,6 +275,27 @@ export async function offerLocalCheckouts(
     return;
   }
 
+  if (plans.length > 0) {
+    await offerPatches(plans, mode, output, memento, manual);
+  }
+  if (cliRepo) {
+    // Re-read: "Never" on the question above answers this one too, and the value read at the top
+    // of this function predates that answer.
+    const now = vscode.workspace.getConfiguration("day").get<string>("localCheckouts", "prompt");
+    if (now !== "never" || manual) {
+      await offerCliSource(cliRepo, now, output, memento, manual);
+    }
+  }
+}
+
+/** "Build these projects against these checkouts?" — the cargo-resolution half. */
+async function offerPatches(
+  plans: PatchPlan[],
+  mode: string,
+  output: vscode.OutputChannel,
+  memento: vscode.Memento,
+  manual: boolean,
+): Promise<void> {
   const names = [...new Set(plans.flatMap((p) => p.checkouts.map((c) => c.name)))];
   const subjects = plans.map((p) => p.project.name);
   if (mode === "always" && !manual) {
@@ -288,6 +325,57 @@ export async function offerLocalCheckouts(
   } else if (choice === "Never") {
     // Global, not workspace: "never" is a preference about how the extension behaves, and someone
     // who says it here means it for the next window too.
-    await cfg.update("localCheckouts", "never", vscode.ConfigurationTarget.Global);
+    await vscode.workspace
+      .getConfiguration("day")
+      .update("localCheckouts", "never", vscode.ConfigurationTarget.Global);
+  }
+}
+
+/**
+ * "Run the CLI from that checkout too?" — the other half of what `scripts/dev.sh` sets up.
+ *
+ * Patching decides which day crates the APP builds against; this decides which `day` binary the
+ * EDITOR runs. They are worth asking separately because the answers differ: the patch table is a
+ * gitignored file, while this is a workspace setting, and it costs about a second per invocation
+ * for cargo's freshness check (`day.cliSource` says so in full).
+ *
+ * Workspace scope, not global: it names a checkout by absolute path, and a path that is right in
+ * this window is wrong in every window that does not hold it.
+ */
+async function offerCliSource(
+  repo: LocalCheckout,
+  mode: string,
+  output: vscode.OutputChannel,
+  memento: vscode.Memento,
+  manual: boolean,
+): Promise<void> {
+  const use = async (): Promise<void> => {
+    await vscode.workspace
+      .getConfiguration("day")
+      .update("cliSource", repo.dir, vscode.ConfigurationTarget.Workspace);
+    output.appendLine(`[local] day.cliSource is now ${repo.dir} — the editor runs that checkout's CLI`);
+  };
+  if (mode === "always" && !manual) {
+    await use();
+    return;
+  }
+  const key = `cli:${repo.dir}`;
+  if (!manual && memento.get<string[]>(DISMISSED, []).includes(key)) {
+    return;
+  }
+  const choice = await vscode.window.showInformationMessage(
+    `Day: run the day CLI from the ${repo.name} checkout open here, so an edit to day-cli reaches the next build, launch or scan? Saved in this workspace's settings.`,
+    "Use That CLI",
+    "Not Now",
+    "Never",
+  );
+  if (choice === "Use That CLI") {
+    await use();
+  } else if (choice === "Not Now") {
+    await memento.update(DISMISSED, [...memento.get<string[]>(DISMISSED, []), key]);
+  } else if (choice === "Never") {
+    await vscode.workspace
+      .getConfiguration("day")
+      .update("localCheckouts", "never", vscode.ConfigurationTarget.Global);
   }
 }
