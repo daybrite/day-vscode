@@ -2,7 +2,7 @@
   "name": "day-vscode",
   "displayName": "Day",
   "description": "Build, launch, script, and package Day apps from VS Code: native apps for every platform from one Rust codebase, with the day CLI's whole pipeline behind the editor.",
-  "version": "0.4.12",
+  "version": "0.4.13",
   "publisher": "daybrite",
   "repository": {
     "type": "git",
