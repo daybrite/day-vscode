@@ -66,6 +66,11 @@
     cd ..\Day-Games; ..\day-vscode\scripts\dev.ps1
 
 .NOTES
+    Building the CLI compiles ring, whose Windows assembly needs clang. This script looks for it
+    on PATH, then in the usual LLVM and Visual Studio install locations, and puts it on PATH for
+    this process only - nothing is installed and your own PATH is left alone. Set DAY_CLANG to a
+    clang executable to override that choice.
+
     If PowerShell refuses to run this file, the execution policy is blocking unsigned local
     scripts. Start it as:  powershell -ExecutionPolicy Bypass -File scripts\dev.ps1
 #>
@@ -188,6 +193,78 @@ error: cargo is not on PATH
        install Rust from https://rustup.rs - the day CLI is built from the checkout at
        $DayRepo, never taken from PATH
 "@
+}
+
+# The C dependencies on the way to day-cli need clang: ring (under rustls, under ureq) assembles
+# its Windows asm with it, and cc-rs looks the tool up by NAME on PATH. Neither the standalone
+# LLVM installer nor Visual Studio's "C++ Clang tools for Windows" component puts it there, so a
+# machine that HAS clang still fails - as a wall of cc-rs output ending in `failed to find tool
+# "clang"`, nowhere near anything this script printed. Find it here instead.
+function Find-Clang {
+    # An explicit override wins and is never second-guessed: a DAY_CLANG that does not resolve is
+    # a typo worth reporting, not a reason to quietly build with some other clang.
+    if ($env:DAY_CLANG) {
+        $override = $env:DAY_CLANG
+        if (Test-Path -LiteralPath $override -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $override).Path
+        }
+        # Naming the directory instead of the executable is the likely slip - take it either way.
+        if (Test-Path -LiteralPath $override -PathType Container) {
+            $inside = Join-Path $override 'clang.exe'
+            if (Test-Path -LiteralPath $inside -PathType Leaf) {
+                return (Resolve-Path -LiteralPath $inside).Path
+            }
+        }
+        Fail @"
+error: DAY_CLANG does not name a clang executable: $override
+       point it at clang.exe (or the directory holding it), or clear it to search the
+       usual install locations
+"@
+    }
+    $onPath = Get-Command clang -ErrorAction SilentlyContinue
+    if ($onPath) { return $onPath.Source }
+    # Where clang actually lands on Windows. Globbed rather than version-pinned, so an LLVM or
+    # Visual Studio upgrade needs no edit here.
+    $patterns = @(
+        "$env:ProgramFiles\LLVM\bin\clang.exe"
+        "${env:ProgramFiles(x86)}\LLVM\bin\clang.exe"
+        "$env:ProgramFiles\Microsoft Visual Studio\*\*\VC\Tools\Llvm\ARM64\bin\clang.exe"
+        "$env:ProgramFiles\Microsoft Visual Studio\*\*\VC\Tools\Llvm\x64\bin\clang.exe"
+        "$env:ProgramFiles\Microsoft Visual Studio\*\*\VC\Tools\Llvm\bin\clang.exe"
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\*\*\VC\Tools\Llvm\*\bin\clang.exe"
+        "$env:USERPROFILE\scoop\apps\llvm\current\bin\clang.exe"
+        "$env:ProgramData\chocolatey\bin\clang.exe"
+        'C:\msys64\clang64\bin\clang.exe'
+        'C:\msys64\mingw64\bin\clang.exe'
+    )
+    foreach ($pattern in $patterns) {
+        # An unset ProgramFiles(x86) would leave a root-relative path that could match something
+        # unintended - skip those rather than resolve them.
+        if (-not $pattern -or $pattern.StartsWith('\')) { continue }
+        # Descending, so the newest Visual Studio (2022 ahead of 2019) wins among several matches.
+        $hit = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending | Select-Object -First 1
+        if ($hit) { return $hit.FullName }
+    }
+    return $null
+}
+
+$Clang = Find-Clang
+if (-not $Clang) {
+    Fail @"
+error: clang was not found, and cargo needs it to build ring's assembly for this target
+       install LLVM (winget install LLVM.LLVM), or add the "C++ Clang tools for Windows"
+       component to your Visual Studio install, then re-run
+       already have one elsewhere? point DAY_CLANG at it:
+         `$env:DAY_CLANG = 'C:\path\to\clang.exe'
+"@
+}
+$ClangOnPath = Get-Command clang -ErrorAction SilentlyContinue
+if (-not $ClangOnPath -or $ClangOnPath.Source -ne $Clang) {
+    # Prepended, and only for this process and the children it starts: an override has to beat
+    # whatever clang was already on PATH, and the machine's own PATH is never edited.
+    $env:PATH = "$(Split-Path $Clang -Parent);$env:PATH"
+    Step "using clang at $Clang"
 }
 
 Step "building day-cli from $DayRepo"
