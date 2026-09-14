@@ -1,5 +1,11 @@
 ## Unreleased
 
+- **A project row shows the app's own icon.** The Day view draws each project with the icon
+  master `day prepare` renders the app's icons from (`resource/icons/icon.svg`, else
+  `day-icon.svg` or `icon.png`), masked round the way an Android launcher shows it. A window of
+  several apps now reads at a glance. While an app runs, its icon stays and a green ring surrounds
+  it. A project without an icon master keeps the box, and the green play glyph while it runs.
+
 - **A target row spins until its build is through.** Play used to light the green dot the
   moment the launch task started, so a two-minute compile read as an app that was already up.
   The row now spins and reads `building` while `day launch` compiles, and shows the dot only once

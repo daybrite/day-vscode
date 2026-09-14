@@ -6,6 +6,7 @@
 // apps and the point is to see and drive them together. Targets belong to a project — the row
 // carries its root — so ticking `ios-uikit` under one app says nothing about the next.
 
+import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -65,6 +66,8 @@ export interface TreeDeps {
   /** What is known about the CLI: the version it reports, and the newest release. Both may be
    *  absent — no CLI on this machine, or no answer from the network — and the row says which. */
   versions: () => CliVersions;
+  /** Where the round project icons are written: the extension's own storage, never the project. */
+  iconDir: string;
 }
 
 /**
@@ -260,6 +263,99 @@ function tagFor(virtual: ReturnType<typeof virtualDevice>): string | undefined {
   return `${verb}${noun}`;
 }
 
+/**
+ * The app's own icon for its project row: the master `day prepare` renders every platform's icons
+ * from, looked up in the CLI's order. Undefined when the project has none yet, and the row keeps
+ * its box.
+ */
+export function projectIcon(root: string): string | undefined {
+  for (const name of ["icon.svg", "day-icon.svg", "icon.png"]) {
+    const file = path.join(root, "resource", "icons", name);
+    if (fs.statSync(file, { throwIfNoEntry: false })?.isFile()) {
+      return file;
+    }
+  }
+  return undefined;
+}
+
+/** VS Code's `charts.green` in light and dark themes. An icon file cannot read theme colors. */
+const RUNNING_GREEN = { light: "#388A34", dark: "#89D185" } as const;
+
+/**
+ * A project row's icon as SVG: the app's icon master masked to a circle, as an Android launcher
+ * draws it, ringed in `ring` while the app runs. The icon is the same size in both states, so a row
+ * does not jump when its app starts. The master rides inside as a data URI, because an SVG drawn as
+ * an image loads nothing from outside itself.
+ */
+export function roundIconSvg(master: Buffer, mime: string, ring?: string): string {
+  const href = `data:${mime};base64,${master.toString("base64")}`;
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">` +
+    `<defs><clipPath id="round"><circle cx="16" cy="16" r="12"/></clipPath></defs>` +
+    `<image href="${href}" x="4" y="4" width="24" height="24" ` +
+    `preserveAspectRatio="xMidYMid slice" clip-path="url(#round)"/>` +
+    (ring
+      ? `<circle cx="16" cy="16" r="14.75" fill="none" stroke="${ring}" stroke-width="2.5"/>`
+      : "") +
+    `</svg>`
+  );
+}
+
+/** Master path, mtime and size → the hash its round icons are named for, so a row redrawn on every
+ *  refresh does not re-read an icon that has not changed. */
+const iconHashes = new Map<string, string>();
+
+/**
+ * The round icon files for a project row, written under `dir` on first use. Undefined when the
+ * project has no icon master, or the files cannot be written, and the row falls back to a glyph.
+ * The files are named for the master's bytes, so an edited icon gets new ones and VS Code cannot
+ * keep drawing a copy it cached under the old name.
+ */
+export function roundProjectIcon(
+  root: string,
+  running: boolean,
+  dir: string,
+): { light: vscode.Uri; dark: vscode.Uri } | undefined {
+  const master = projectIcon(root);
+  if (!master) {
+    return undefined;
+  }
+  try {
+    const stat = fs.statSync(master);
+    const key = `${master}:${stat.mtimeMs}:${stat.size}`;
+    let bytes: Buffer | undefined;
+    let hash = iconHashes.get(key);
+    if (hash === undefined) {
+      bytes = fs.readFileSync(master);
+      hash = crypto.createHash("sha1").update(bytes).digest("hex").slice(0, 16);
+      iconHashes.set(key, hash);
+    }
+    const name = hash;
+    const mime = master.endsWith(".png") ? "image/png" : "image/svg+xml";
+    const write = (variant: string, ring?: string): vscode.Uri => {
+      const file = path.join(dir, `${name}-${variant}.svg`);
+      if (!fs.existsSync(file)) {
+        if (!bytes) {
+          bytes = fs.readFileSync(master);
+        }
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(file, roundIconSvg(bytes, mime, ring));
+      }
+      return vscode.Uri.file(file);
+    };
+    if (!running) {
+      const idle = write("idle");
+      return { light: idle, dark: idle };
+    }
+    return {
+      light: write("running-light", RUNNING_GREEN.light),
+      dark: write("running-dark", RUNNING_GREEN.dark),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export class DayTree implements vscode.TreeDataProvider<Node> {
   private emitter = new vscode.EventEmitter<Node | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
@@ -451,10 +547,15 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     item.tooltip = new vscode.MarkdownString(
       `**${p?.title ?? label}**\n\n\`${p?.id ?? ""}\`\n\n${root}`,
     );
-    item.iconPath = new vscode.ThemeIcon(
-      running > 0 ? "play-circle" : "package",
-      running > 0 ? new vscode.ThemeColor("charts.green") : undefined,
-    );
+    // The app's own icon, masked round as an Android launcher draws it, so a window of many apps
+    // reads at a glance. It keeps its place while the app runs and gains a green ring. A project
+    // with no icon master keeps the glyphs: the box, and the green play icon while it runs.
+    item.iconPath =
+      roundProjectIcon(root, running > 0, this.deps.iconDir) ??
+      new vscode.ThemeIcon(
+        running > 0 ? "play-circle" : "package",
+        running > 0 ? new vscode.ThemeColor("charts.green") : undefined,
+      );
     // `dayProjectFocused` vs `dayProject` so the context menu can offer "Focus" only where it does
     // something. Both stay projects for the menus that apply to either.
     item.contextValue = focused ? "dayProjectFocused" : "dayProject";

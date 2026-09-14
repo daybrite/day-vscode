@@ -358,6 +358,7 @@ export async function activate(
     projects: allProjects,
     versions: () => cliVersions,
     refreshDevices,
+    iconDir: path.join(context.globalStorageUri.fsPath, "project-icons"),
   });
   const view = vscode.window.createTreeView("dayTargets", {
     treeDataProvider: tree,

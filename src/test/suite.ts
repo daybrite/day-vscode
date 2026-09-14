@@ -37,7 +37,15 @@ import { editFor, Lint, mapFindings } from "../lint";
 import { composeArgs, describeSpec, visibleFields } from "../newproject";
 import { catalog, findTarget, isBuildableHere, nativeProjectFor } from "../targets";
 import { liveDevice, startPrompt, TargetDevices, virtualDevice } from "../devices";
-import { cliItem, deviceRowState, orderTargets, targetContextValue } from "../tree";
+import {
+  cliItem,
+  deviceRowState,
+  orderTargets,
+  projectIcon,
+  roundIconSvg,
+  roundProjectIcon,
+  targetContextValue,
+} from "../tree";
 import { sessionIsLive } from "../runner";
 import { buildDayTask, hideUnavailableTargets, toolchainEnv } from "../tasks";
 import {
@@ -1607,6 +1615,71 @@ const checks: Check[] = [
       // Every state acts through the one command.
       for (const item of [missing, current, stale, unknown]) {
         assert.strictEqual(item.command?.command, "day.installCli");
+      }
+    },
+  ],
+  [
+    "a project row wears the app's icon master, found in the CLI's order",
+    () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "day-project-icon-"));
+      try {
+        const icons = path.join(root, "resource", "icons");
+        assert.strictEqual(projectIcon(root), undefined, "no master: the row keeps its box");
+        // A directory by the master's name is not a master.
+        fs.mkdirSync(path.join(icons, "icon.svg"), { recursive: true });
+        assert.strictEqual(projectIcon(root), undefined);
+        fs.rmSync(path.join(icons, "icon.svg"), { recursive: true });
+        // `day prepare` reads icon.svg, then day-icon.svg, then icon.png; the row agrees.
+        fs.writeFileSync(path.join(icons, "icon.png"), "");
+        assert.strictEqual(projectIcon(root), path.join(icons, "icon.png"));
+        fs.writeFileSync(path.join(icons, "day-icon.svg"), "<svg/>");
+        assert.strictEqual(projectIcon(root), path.join(icons, "day-icon.svg"));
+        fs.writeFileSync(path.join(icons, "icon.svg"), "<svg/>");
+        assert.strictEqual(projectIcon(root), path.join(icons, "icon.svg"));
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    },
+  ],
+  [
+    "a project icon is masked round, and ringed in the theme's green while the app runs",
+    () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "day-round-icon-"));
+      const dir = path.join(root, "storage");
+      try {
+        assert.strictEqual(roundProjectIcon(root, false, dir), undefined, "no master: a glyph");
+        const icons = path.join(root, "resource", "icons");
+        fs.mkdirSync(icons, { recursive: true });
+        const master = path.join(icons, "icon.svg");
+        fs.writeFileSync(master, `<svg xmlns="http://www.w3.org/2000/svg"/>`);
+
+        const bytes = fs.readFileSync(master);
+        const svg = roundIconSvg(bytes, "image/svg+xml");
+        assert.ok(svg.includes(`<clipPath id="round"><circle`), "the master is clipped round");
+        assert.ok(
+          svg.includes(`data:image/svg+xml;base64,${bytes.toString("base64")}`),
+          "the master is embedded, since an SVG drawn as an image loads nothing outside itself",
+        );
+        assert.ok(!svg.includes("stroke="), "no ring while idle");
+        assert.ok(roundIconSvg(bytes, "image/png", "#89D185").includes(`stroke="#89D185"`));
+
+        const idle = roundProjectIcon(root, false, dir);
+        assert.ok(idle);
+        assert.strictEqual(idle.light.fsPath, idle.dark.fsPath, "idle needs no theme variant");
+        assert.ok(!fs.readFileSync(idle.light.fsPath, "utf8").includes("stroke="));
+
+        const running = roundProjectIcon(root, true, dir);
+        assert.ok(running);
+        assert.ok(fs.readFileSync(running.light.fsPath, "utf8").includes(`stroke="#388A34"`));
+        assert.ok(fs.readFileSync(running.dark.fsPath, "utf8").includes(`stroke="#89D185"`));
+
+        // An edited icon is a new file, so VS Code cannot keep drawing the picture it cached.
+        fs.writeFileSync(master, `<svg xmlns="http://www.w3.org/2000/svg" width="2"/>`);
+        const edited = roundProjectIcon(root, false, dir);
+        assert.ok(edited);
+        assert.notStrictEqual(edited.light.fsPath, idle.light.fsPath);
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
       }
     },
   ],
