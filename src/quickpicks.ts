@@ -9,7 +9,7 @@ import { DeviceChoice, Profile } from "./config";
 import { TargetDevices } from "./devices";
 import { DayProject } from "./project";
 import { LogLevel } from "./tasks";
-import { catalog, findTarget, isBuildableHere } from "./targets";
+import { catalog, findTarget, isBuildableHere, Target } from "./targets";
 
 export async function pickMode(current: Profile): Promise<Profile | undefined> {
   const items: (vscode.QuickPickItem & { value: Profile })[] = [
@@ -134,6 +134,65 @@ export async function pickDevice(
     qp.activeItems = [active];
   }
   return result;
+}
+
+/** One row of the Add Toolkit picker. `name` is absent on a target the project already has. */
+export type ToolkitChoice = vscode.QuickPickItem & { name?: string };
+
+const HOST_NAMES: Record<string, string> = { macos: "macOS", linux: "Linux", windows: "Windows" };
+
+/**
+ * The Add Toolkit picker's rows: the CLI's whole target catalog, in its order.
+ *
+ * A target the project already declares stays on the list, checked and with nothing to add, the
+ * way the device picker shows a device that is already configured. A quick pick has no disabled
+ * row, and leaving those targets out would make the list read as incomplete. A target this host
+ * cannot build is still offered, because CI can build it, and says which OS builds it.
+ */
+export function toolkitChoices(declared: string[], targets: Target[] = catalog()): ToolkitChoice[] {
+  return targets.map((t) => {
+    const added = declared.includes(t.name);
+    const notes = [
+      t.label,
+      added ? "already in this project" : undefined,
+      !added && !isBuildableHere(t) ? `builds on ${HOST_NAMES[t.host] ?? t.host}` : undefined,
+      t.experimental ? "experimental" : undefined,
+    ];
+    return {
+      label: added ? `$(check) ${t.name}` : t.name,
+      description: notes.filter(Boolean).join(" · "),
+      name: added ? undefined : t.name,
+    };
+  });
+}
+
+/**
+ * Choose a target to add to `project` with `day app add-toolkit`. `undefined` means cancelled, or
+ * that a target the project already has was chosen.
+ */
+export async function pickToolkit(project: DayProject): Promise<string | undefined> {
+  const items = toolkitChoices(project.targets);
+  // Built by hand so the picker opens on the first target that can be added, not on one the
+  // project already has.
+  const qp = vscode.window.createQuickPick<ToolkitChoice>();
+  qp.title = `Day: Add a Toolkit to ${project.title ?? project.name}`;
+  qp.placeholder = "Adds the target to Day.toml and writes any native project it needs under platform/";
+  qp.items = items;
+  const first = items.find((i) => i.name);
+  if (first) {
+    qp.activeItems = [first];
+  }
+  return new Promise((resolve) => {
+    qp.onDidAccept(() => {
+      resolve(qp.selectedItems[0]?.name);
+      qp.hide();
+    });
+    qp.onDidHide(() => {
+      resolve(undefined);
+      qp.dispose();
+    });
+    qp.show();
+  });
 }
 
 export async function pickLogLevel(current: LogLevel): Promise<LogLevel | undefined> {

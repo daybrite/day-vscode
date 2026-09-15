@@ -42,6 +42,10 @@ All of these are under the **Day** category in the command palette.
 |---|---|
 | New Project… | The [scaffolding wizard](/docs/new-project) — an app, a piece or a part |
 | Get Started with Day | Opens the walkthrough |
+| Add Toolkit… | Adds a target to the focused project with `day app add-toolkit` |
+| Open Day.toml | Opens the focused project's `Day.toml` in the editor |
+| Reveal in Explorer View | Selects the focused project's folder in the Explorer |
+| Open Day Extension Settings | Opens the Settings editor on the focused project's own Day settings |
 | Lint Project | Runs [`day lint`](/docs/linting) and shows the findings in the editor |
 | Doctor (check toolchains) | Runs `day doctor` in a terminal |
 | Refresh | Re-reads every project |
@@ -53,6 +57,19 @@ Per-target **Run**, **Stop**, **Restart** and **Build**, per-project **Run** and
 that adds a device to a mobile target, and a device row's own **Play**, **Stop**, **Remove
 Device** and **Start**/**Stop Simulator** (**Emulator** on Android) are inline buttons and
 context-menu entries on their rows rather than palette commands.
+
+**Add Toolkit…** is also the **+** on each project's **Targets** row, and an entry on that row's
+and the project row's context menus. From a row it adds to that row's project, whichever project
+is focused. Targets the project already has are listed with a check mark.
+
+A project row's context menu starts with **Open Day.toml**, **Reveal in Explorer View** and **Open
+Day Extension Settings**, which act on that row's project. Opening `Day.toml` focuses the project
+too, as opening any of its files does. When the project is the only folder in the window, the
+Explorer has no row for that folder, so Reveal in Explorer View selects the project's `Day.toml`
+instead. Open Day Extension Settings shows this extension's settings where the project's own
+values live: the **Workspace** tab in a window with one folder, and the project's folder tab in a
+window with several. **Open Settings** shows the same settings on the **User** tab. Clicking the
+row itself focuses the project without opening anything.
 
 Two more commands sit on the targets that carry a native project to open:
 

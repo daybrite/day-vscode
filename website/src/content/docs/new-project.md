@@ -59,6 +59,8 @@ Nothing here is permanent. Adding a platform later is one command:
 day app add-toolkit android-mdc
 ```
 
+In the Day view, the **+** on a project's **Targets** row runs it for you.
+
 [Platforms](https://daybrite.dev/docs/platforms/) lists every target and what it needs.
 
 ### Window title

@@ -7,6 +7,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 import {
+  addToolkitArgs,
   cleanArgs,
   MCP_PROVIDER_ID,
   mcpServerSpecs,
@@ -32,11 +33,19 @@ import {
   pickProject,
   pickScript,
   pickTargets,
+  pickToolkit,
 } from "./quickpicks";
 import { RunRef, Runner } from "./runner";
 import { StatusBar } from "./statusbar";
 import { DayTaskProvider } from "./taskProvider";
-import { logLevel, setLogLevel, toggleVerbose, toolchainEnv } from "./tasks";
+import {
+  explorerTarget,
+  logLevel,
+  setLogLevel,
+  toggleVerbose,
+  toolchainEnv,
+  workspaceUri,
+} from "./tasks";
 import {
   findTarget,
   isBuildableHere,
@@ -1374,6 +1383,155 @@ export async function activate(
         return;
       }
       await cleanProject(root);
+    }),
+  );
+
+  // Adds a target to a project: from the + on its Targets row, from that row's or the project
+  // row's context menu, or from the palette for the focused project. It asks for no confirmation.
+  // The picker says what the command writes, and `day app add-toolkit` only adds files, never
+  // overwriting one, so the result is a plain diff to review or revert. `targets` skips the
+  // picker, for a caller that already knows what to add.
+  register("day.addToolkit", (node?: Node, targets?: string[]) =>
+    guard(async () => {
+      const root = configRoot(node);
+      const project = projects.find((p) => p.root === root);
+      if (!project) {
+        vscode.window.showInformationMessage("Open a Day project first.");
+        return;
+      }
+      let wanted = targets;
+      if (!wanted) {
+        const pick = await pickToolkit(project);
+        wanted = pick ? [pick] : [];
+      }
+      if (wanted.length === 0) {
+        return;
+      }
+      const label = project.title ?? project.name;
+      const cli = resolveCli(project.root);
+      const args = [...cli.baseArgs, ...addToolkitArgs(project.root, wanted)];
+      output.appendLine(`$ ${renderCommand(cli, args.slice(cli.baseArgs.length))}`);
+      const failure = await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Day: adding ${wanted.join(", ")} to ${label}`,
+        },
+        () =>
+          new Promise<string | undefined>((resolve) => {
+            childProcess.execFile(
+              cli.command,
+              args,
+              {
+                cwd: cli.cwd ?? project.root,
+                timeout: 300_000,
+                env: { ...process.env, ...toolchainEnv() },
+              },
+              (err, stdout, stderr) => {
+                // eslint-disable-next-line no-control-regex -- stripping ANSI color IS matching the ESC byte
+                const ansi = /\u001b\[[0-9;]*m/g;
+                // The CLI narrates on stderr: the "Added …" line, then the next steps it suggests.
+                for (const text of [stdout, stderr]) {
+                  if (text.trim()) {
+                    output.appendLine(text.replace(ansi, "").trimEnd());
+                  }
+                }
+                if (!err) {
+                  resolve(undefined);
+                  return;
+                }
+                const lines = stderr.replace(ansi, "").split("\n").map((l) => l.trim()).filter(Boolean);
+                resolve(lines.find((l) => l.startsWith("error")) ?? lines.pop() ?? err.message);
+              },
+            );
+          }),
+      );
+      if (failure !== undefined) {
+        const choice = await vscode.window.showErrorMessage(
+          `Day: \`day app add-toolkit\` failed: ${failure}`,
+          "Show Log",
+        );
+        if (choice === "Show Log") {
+          output.show(true);
+        }
+        return;
+      }
+      // The Day.toml watcher re-reads the project as well, but only after this has returned.
+      // Reading it here puts the new row on screen before the message below says it is there.
+      await refreshProjects();
+      tree.refresh();
+      try {
+        await view.reveal({ kind: "target", root: project.root, name: wanted[0] }, { focus: false });
+      } catch {
+        // `reveal` throws for a row that is not drawn, such as one day.hideUnavailableTargets hides.
+      }
+      void vscode.window
+        .showInformationMessage(
+          `Day: added ${wanted.join(", ")} to ${label}.`,
+          "Open Day.toml",
+          "Check Toolchains",
+        )
+        .then((choice) => {
+          if (choice === "Open Day.toml") {
+            void vscode.commands.executeCommand("day.openManifest", { kind: "project", root: project.root });
+          } else if (choice === "Check Toolchains") {
+            void vscode.commands.executeCommand("day.doctor");
+          }
+        });
+    }),
+  );
+
+  // A project row's own files: its Day.toml in the editor, and its folder in the Explorer. From the
+  // palette they act on the focused project. Clicking the row stays what it was, focusing the
+  // project, because that is the gesture for switching which app Run acts on, and an editor
+  // opening on every switch would take the editor away each time.
+  register("day.openManifest", (node?: Node) =>
+    guard(async () => {
+      const root = configRoot(node);
+      if (!root) {
+        vscode.window.showInformationMessage("Open a Day project first.");
+        return;
+      }
+      // With day.followActiveEditor on (the default), this focuses the project as well.
+      await vscode.window.showTextDocument(workspaceUri(path.join(root, "Day.toml")));
+    }),
+  );
+
+  register("day.revealProject", (node?: Node) =>
+    guard(async () => {
+      const root = configRoot(node);
+      if (!root) {
+        vscode.window.showInformationMessage("Open a Day project first.");
+        return;
+      }
+      await vscode.commands.executeCommand("revealInExplorer", explorerTarget(root));
+    }),
+  );
+
+  // The project's own Day settings: the Settings editor filtered to this extension, on the scope
+  // the Day view writes a project's settings to (configResource in tasks.ts). In a single-folder
+  // window that is the Workspace tab, which is the folder's .vscode/settings.json. In a multi-root
+  // window it is the project's folder tab. No public command opens a folder tab without asking
+  // which folder, so the filtered Workspace tab opens first and then switches to the folder through
+  // `_workbench.action.openFolderSettings`, the command the Explorer's own Open Folder Settings
+  // uses. It is internal to VS Code, so if it is ever gone the public command runs instead and asks.
+  register("day.openProjectSettings", (node?: Node) =>
+    guard(async () => {
+      const root = configRoot(node);
+      if (!root) {
+        vscode.window.showInformationMessage("Open a Day project first.");
+        return;
+      }
+      const query = `@ext:${context.extension.id}`;
+      await vscode.commands.executeCommand("workbench.action.openWorkspaceSettings", { query });
+      const folder = vscode.workspace.getWorkspaceFolder(workspaceUri(root));
+      if (!folder || (vscode.workspace.workspaceFolders ?? []).length <= 1) {
+        return;
+      }
+      try {
+        await vscode.commands.executeCommand("_workbench.action.openFolderSettings", folder.uri);
+      } catch {
+        await vscode.commands.executeCommand("workbench.action.openFolderSettings", { query });
+      }
     }),
   );
 

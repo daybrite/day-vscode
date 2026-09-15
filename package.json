@@ -211,6 +211,30 @@
         "icon": "$(add)"
       },
       {
+        "command": "day.addToolkit",
+        "title": "Add Toolkit…",
+        "category": "Day",
+        "icon": "$(add)"
+      },
+      {
+        "command": "day.openManifest",
+        "title": "Open Day.toml",
+        "category": "Day",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "day.revealProject",
+        "title": "Reveal in Explorer View",
+        "category": "Day",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "day.openProjectSettings",
+        "title": "Open Day Extension Settings",
+        "category": "Day",
+        "icon": "$(settings-gear)"
+      },
+      {
         "command": "day.removeDevice",
         "title": "Remove Device",
         "category": "Day",
@@ -430,6 +454,21 @@
           "group": "1_toggle@1"
         },
         {
+          "command": "day.openManifest",
+          "when": "view == dayTargets && viewItem =~ /^dayProject/",
+          "group": "0_open@0"
+        },
+        {
+          "command": "day.revealProject",
+          "when": "view == dayTargets && viewItem =~ /^dayProject/",
+          "group": "0_open@1"
+        },
+        {
+          "command": "day.openProjectSettings",
+          "when": "view == dayTargets && viewItem =~ /^dayProject/",
+          "group": "0_open@2"
+        },
+        {
           "command": "day.lintProject",
           "when": "view == dayTargets && viewItem =~ /^dayProject/",
           "group": "2_tools@0"
@@ -438,6 +477,16 @@
           "command": "day.clean",
           "when": "view == dayTargets && viewItem =~ /^dayProject/",
           "group": "2_tools@1"
+        },
+        {
+          "command": "day.addToolkit",
+          "when": "view == dayTargets && viewItem == dayGroup-targets",
+          "group": "inline@0"
+        },
+        {
+          "command": "day.addToolkit",
+          "when": "view == dayTargets && (viewItem == dayGroup-targets || viewItem =~ /^dayProject/)",
+          "group": "1_project@0"
         },
         {
           "command": "day.openInAndroidStudio",

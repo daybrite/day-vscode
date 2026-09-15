@@ -1,5 +1,18 @@
 ## Unreleased
 
+- **Open a project's Day.toml, its folder, or its settings from its row.** Right-click a project in
+  the Day view for **Open Day.toml**, **Reveal in Explorer View**, and **Open Day Extension
+  Settings**, which opens the Settings editor filtered to Day on that project's own settings. All
+  three are also in the command palette, where they act on the focused project. Clicking a project
+  row still only focuses it.
+
+- **Add a toolkit from the Day view.** The **+** on a project's **Targets** row lists every
+  target the `day` CLI knows, with the ones the project already has checked. Choosing one runs
+  `day app add-toolkit`, which adds the target to `Day.toml` and writes any native project it
+  needs under `platform/`, and the new target appears under **Targets** when it finishes. The
+  same picker is **Add Toolkit…** on the Targets row's and the project row's context menus, and
+  in the command palette for the focused project.
+
 - **A project row shows the app's own icon.** The Day view draws each project with the icon
   master `day prepare` renders the app's icons from (`resource/icons/icon.svg`, else
   `day-icon.svg` or `icon.png`), masked round the way an Android launcher shows it. A window of

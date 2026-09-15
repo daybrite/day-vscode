@@ -55,6 +55,7 @@ ones you want and press Run.
 
 - Each target builds in its own terminal, and stops and restarts on its own.
 - Targets your machine cannot build are shown greyed, rather than hidden.
+- The **+** on a project's **Targets** row adds another platform to the app.
 - Mobile targets expand to a **Device** row — a booted simulator, a plugged-in phone, an emulator,
   or every one at once. Right-click one to start or stop the simulator or emulator itself.
 - Open a dozen apps together: each keeps its own targets, build mode, locale and log level.

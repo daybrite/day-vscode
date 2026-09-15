@@ -468,6 +468,57 @@ try {
   await win.waitForTimeout(12_000);
   await shot(win, "10-doctor", `day doctor reporting this host's toolchains (${process.platform})`);
 
+  // ── A project's own files ──────────────────────────────────────────────────────────────────
+  // Through the palette, which acts on the focused project (the fixture, since `focusProject`
+  // above). The same commands lead a project row's context menu, but that is a native menu on
+  // macOS, which this harness cannot see. The integration suite cannot read the Explorer's
+  // selection at all: there the Explorer never takes the keyboard focus. So this is where Reveal
+  // is checked on screen.
+  enter("opening Day.toml and revealing the project");
+  // Focus drifts during the captures above (the Doctor terminal is already named for hello-day by
+  // now), and both commands act on the focused project, so hand it back to the fixture first.
+  await command(win, "Day: Focus on Build & Run View");
+  await focusProject(win, fixtureName);
+  await command(win, "Day: Open Day.toml");
+  await win
+    .locator(".tab.active", { hasText: "Day.toml" })
+    .waitFor({ state: "visible", timeout: 10_000 });
+  await command(win, "Day: Reveal in Explorer View");
+  // The fixture's folder is its own row once the new app has joined the workspace. In a window
+  // holding only the fixture the Explorer has no row for it, and Day.toml is selected instead
+  // (explorerTarget in src/tasks.ts); either one is the project's own entry.
+  const revealed = win.locator(".explorer-folders-view .monaco-list-row.selected");
+  await revealed.first().waitFor({ state: "visible", timeout: 10_000 });
+  const picked = (await revealed.allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim());
+  console.log(`  revealed: ${JSON.stringify(picked)}`);
+  if (!picked.some((t) => t.startsWith(fixtureName) || t === "Day.toml")) {
+    throw new Error(`Reveal in Explorer View selected ${JSON.stringify(picked)}, not ${fixtureName}`);
+  }
+  await command(win, "View: Close All Editors");
+
+  // Open Day Extension Settings: filtered to this extension, on the fixture's own folder tab, since
+  // the new app has made this a two-folder window (a one-folder window gets the Workspace tab).
+  await command(win, "Day: Focus on Build & Run View");
+  await focusProject(win, fixtureName);
+  await command(win, "Day: Open Day Extension Settings");
+  const settings = win.locator(".settings-editor").first();
+  await settings.waitFor({ state: "visible", timeout: 10_000 });
+  await win.waitForTimeout(1000);
+  const search = (
+    await settings.locator(".settings-header .monaco-editor .view-lines").first().innerText()
+  ).trim();
+  const tab = (await settings.locator(".settings-tabs-widget .action-label.checked").first().innerText())
+    .replace(/\s+/g, " ")
+    .trim();
+  console.log(`  settings: search=${JSON.stringify(search)} tab=${JSON.stringify(tab)}`);
+  if (search !== "@ext:daybrite.day-vscode" || !tab.startsWith(fixtureName)) {
+    throw new Error(
+      `Open Day Extension Settings showed ${JSON.stringify(tab)} searching ${JSON.stringify(search)}`,
+    );
+  }
+  await command(win, "View: Close All Editors");
+  await command(win, "Day: Focus on Build & Run View");
+
   if (RUN_APP) {
     // ── Build and run the host's own combo, through the extension ────────────────────────────
     await command(win, "Day: Focus on Build & Run View");

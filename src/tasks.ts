@@ -77,6 +77,49 @@ function realPath(p: string): string {
 }
 
 /**
+ * `p` as the workspace spells it, for anything VS Code matches by URI, such as the Explorer's tree
+ * and the open editors.
+ *
+ * The same mismatch as `configResource`: `day metadata` reports a canonical root (`/private/tmp/…`
+ * on macOS) while the workspace folder keeps the path as opened (`/tmp/…`), and the Explorer cannot
+ * find a folder under a spelling it does not hold. A path outside every folder comes back as given.
+ */
+export function workspaceUri(p: string): vscode.Uri {
+  const direct = vscode.Uri.file(p);
+  if (vscode.workspace.getWorkspaceFolder(direct)) {
+    return direct;
+  }
+  const resolved = realPath(p);
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    const here = realPath(folder.uri.fsPath);
+    if (resolved === here) {
+      return folder.uri;
+    }
+    const prefix = here.endsWith(path.sep) ? here : here + path.sep;
+    if (resolved.startsWith(prefix)) {
+      return vscode.Uri.joinPath(folder.uri, ...resolved.slice(prefix.length).split(path.sep));
+    }
+  }
+  return direct;
+}
+
+/**
+ * What Reveal in Explorer View selects for the project at `root`: its folder, or its Day.toml when
+ * the folder is the only one in the window. A single-folder window's Explorer lists that folder's
+ * contents with no row for the folder itself, so revealing it would open the Explorer and select
+ * nothing. In a multi-root window every folder has a row, and so does a project in a subfolder.
+ */
+export function explorerTarget(
+  root: string,
+  folders: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
+): vscode.Uri {
+  const uri = workspaceUri(root);
+  const same = (a: vscode.Uri, b: vscode.Uri): boolean =>
+    process.platform === "win32" ? a.fsPath.toLowerCase() === b.fsPath.toLowerCase() : a.fsPath === b.fsPath;
+  return folders.length === 1 && same(folders[0].uri, uri) ? vscode.Uri.joinPath(uri, "Day.toml") : uri;
+}
+
+/**
  * Where a sidebar edit to a per-project setting is written.
  *
  * The project's own folder when it is one, so the Verbose checkbox and Log level row edit the app

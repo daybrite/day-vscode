@@ -35,7 +35,8 @@ import {
 } from "../debug";
 import { editFor, Lint, mapFindings } from "../lint";
 import { composeArgs, describeSpec, visibleFields } from "../newproject";
-import { catalog, findTarget, isBuildableHere, nativeProjectFor } from "../targets";
+import { toolkitChoices } from "../quickpicks";
+import { catalog, findTarget, isBuildableHere, nativeProjectFor, Target } from "../targets";
 import { liveDevice, startPrompt, TargetDevices, virtualDevice } from "../devices";
 import {
   cliItem,
@@ -47,7 +48,13 @@ import {
   targetContextValue,
 } from "../tree";
 import { sessionIsLive } from "../runner";
-import { buildDayTask, hideUnavailableTargets, toolchainEnv } from "../tasks";
+import {
+  buildDayTask,
+  explorerTarget,
+  hideUnavailableTargets,
+  toolchainEnv,
+  workspaceUri,
+} from "../tasks";
 import {
   installChoices,
   installRoutes,
@@ -3116,6 +3123,238 @@ const checks: Check[] = [
       assert.ok(
         logged.some((m) => m.includes("android-mdc")),
         `expected a logged reason, got ${JSON.stringify(logged)}`,
+      );
+    },
+  ],
+  [
+    "Add Toolkit lists the whole catalog and marks the targets a project already has",
+    () => {
+      const targets: Target[] = [
+        { name: "macos-appkit", toolkit: "appkit", kind: "desktop", host: "macos", label: "macOS" },
+        { name: "windows-xaml", toolkit: "xaml", kind: "desktop", host: "windows", label: "Windows" },
+        { name: "web-dom", toolkit: "dom", kind: "web", host: "any", label: "Web", experimental: true },
+      ];
+      const rows = toolkitChoices(["macos-appkit"], targets);
+      assert.deepStrictEqual(
+        rows.map((r) => r.label),
+        ["$(check) macos-appkit", "windows-xaml", "web-dom"],
+        "every catalog target is listed, in the catalog's order",
+      );
+      // A declared target stays visible but carries nothing to add.
+      assert.strictEqual(rows[0].name, undefined);
+      assert.strictEqual(rows[0].description, "macOS · already in this project");
+      assert.strictEqual(rows[1].name, "windows-xaml");
+      assert.strictEqual(
+        rows[1].description,
+        process.platform === "win32" ? "Windows" : "Windows · builds on Windows",
+        "a target this host cannot build is still offered, and says where it builds",
+      );
+      assert.strictEqual(rows[2].description, "Web · experimental");
+    },
+  ],
+  [
+    "Add Toolkit adds a target to the row's own project and re-reads it",
+    async () => {
+      // Through the command the Targets row's + calls, on the project that is NOT focused, with the
+      // target passed in so no picker has to be answered. The target is one this host builds (the
+      // task list skips the rest) whose platform files the fixture already has, so Day.toml is the
+      // only file the CLI changes, and it is put back afterwards.
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      assert.strictEqual(folders.length, 2, "this check needs the two-project fixture");
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const api = (await ext.activate()) as {
+        focusedProject(): string | undefined;
+      };
+      const rootOf = async (folder: vscode.WorkspaceFolder): Promise<string> => {
+        const doc = await vscode.workspace.openTextDocument(
+          vscode.Uri.file(`${folder.uri.fsPath}/Day.toml`),
+        );
+        await vscode.window.showTextDocument(doc, { preview: false });
+        for (let i = 0; i < 50 && !api.focusedProject(); i++) {
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        return api.focusedProject()!;
+      };
+      const second = await rootOf(folders[1]);
+      const first = await rootOf(folders[0]);
+      assert.notStrictEqual(first, second);
+
+      const added =
+        process.platform === "darwin" ? "macos-qt" : process.platform === "win32" ? "windows-qt" : "linux-qt";
+      const manifest = path.join(second, "Day.toml");
+      const original = fs.readFileSync(manifest, "utf8");
+      assert.ok(!original.includes(`"${added}"`), `the fixture must not already declare ${added}`);
+      const hasTask = async (): Promise<boolean> =>
+        (await vscode.tasks.fetchTasks({ type: "day" })).some(
+          (t) => t.name.includes(` ${added} `) && t.name.endsWith(`(${baseName(second)})`),
+        );
+      assert.ok(!(await hasTask()), `no ${added} task should exist before it is added`);
+
+      try {
+        await vscode.commands.executeCommand(
+          "day.addToolkit",
+          { kind: "group", root: second, id: "targets", label: "Targets" },
+          [added],
+        );
+        assert.ok(
+          fs.readFileSync(manifest, "utf8").includes(`"${added}"`),
+          "Day.toml should declare the added target",
+        );
+        assert.ok(
+          await hasTask(),
+          "the project should have been re-read by the time the command returns",
+        );
+        assert.strictEqual(
+          api.focusedProject(),
+          first,
+          "adding to a row's project must not move the focus to it",
+        );
+      } finally {
+        fs.writeFileSync(manifest, original);
+        for (let i = 0; i < 100 && (await hasTask()); i++) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      }
+    },
+  ],
+  [
+    "a project row's menu leads with Open Day.toml, Reveal in Explorer View and Open Day Extension Settings",
+    () => {
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const menus = ext.packageJSON.contributes.menus["view/item/context"] as {
+        command: string;
+        when: string;
+        group?: string;
+      }[];
+      const commands = (ext.packageJSON.contributes.commands ?? []) as {
+        command: string;
+        title: string;
+      }[];
+      for (const [id, title] of [
+        ["day.openManifest", "Open Day.toml"],
+        ["day.revealProject", "Reveal in Explorer View"],
+        ["day.openProjectSettings", "Open Day Extension Settings"],
+      ]) {
+        assert.strictEqual(commands.find((c) => c.command === id)?.title, title);
+        const entry = menus.find((m) => m.command === id);
+        assert.ok(entry, `${id} is not on any row's menu`);
+        const m = /viewItem =~ \/(.+?)\/(?:\s|\)|$)/.exec(entry.when);
+        assert.ok(m, `${id}'s when clause has no viewItem regex: ${entry.when}`);
+        const matches = new RegExp(m[1]);
+        for (const value of ["dayProject", "dayProjectFocused"]) {
+          assert.ok(matches.test(value), `${id} should be on a ${value} row`);
+        }
+        for (const value of ["dayGroup-targets", "dayTarget", "dayTargetRunning.xcode", "dayDevice"]) {
+          assert.ok(!matches.test(value), `${id} should not be on a ${value} row`);
+        }
+        // Groups sort by name, so `0_` puts both above Add Toolkit, Lint Project and Clean Project.
+        assert.ok(entry.group?.startsWith("0_"), `${id} should lead the menu, got ${entry.group}`);
+      }
+    },
+  ],
+  [
+    "Open Day.toml and Reveal in Explorer View act on the row's own project",
+    async () => {
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      assert.strictEqual(folders.length, 2, "this check needs the two-project fixture");
+      const real = (p: string): string => {
+        try {
+          return fs.realpathSync.native(p);
+        } catch {
+          return p;
+        }
+      };
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const api = (await ext.activate()) as {
+        focusedProject(): string | undefined;
+      };
+      const wait = async (done: () => boolean | Promise<boolean>): Promise<void> => {
+        for (let i = 0; i < 50 && !(await done()); i++) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      };
+      // The roots as the extension knows them (canonical, `/private/tmp/…` on macOS), found by
+      // letting the focus follow each project's Day.toml.
+      const rootOf = async (folder: vscode.WorkspaceFolder): Promise<string> => {
+        const doc = await vscode.workspace.openTextDocument(
+          vscode.Uri.file(`${folder.uri.fsPath}/Day.toml`),
+        );
+        await vscode.window.showTextDocument(doc, { preview: false });
+        await wait(() => real(api.focusedProject() ?? "") === real(folder.uri.fsPath));
+        return api.focusedProject()!;
+      };
+      const second = await rootOf(folders[1]);
+      const first = await rootOf(folders[0]);
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+
+      // Open Day.toml from the row of the project that is NOT focused.
+      await vscode.commands.executeCommand("day.openManifest", { kind: "project", root: second });
+      const opened = vscode.window.activeTextEditor?.document.uri;
+      assert.ok(opened, "Open Day.toml should leave an editor active");
+      assert.strictEqual(real(opened.fsPath), real(path.join(second, "Day.toml")));
+      assert.ok(
+        vscode.workspace.getWorkspaceFolder(opened),
+        `the editor should hold the workspace's own spelling of the path, got ${opened.fsPath}`,
+      );
+      await wait(() => real(api.focusedProject() ?? "") === real(second));
+      assert.strictEqual(
+        real(api.focusedProject() ?? ""),
+        real(second),
+        "opening a project's Day.toml should focus that project",
+      );
+      // The Explorer's selection cannot be read from here: in the test host the Explorer never
+      // takes the keyboard focus, so `copyFilePath` has nothing to copy. What Reveal selects is
+      // covered by `explorerTarget`'s check below, and on screen by test/e2e/drive.mjs.
+      void first;
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    },
+  ],
+  [
+    "a canonical project path maps back to the workspace's own spelling of it",
+    () => {
+      // `day metadata` reports canonical roots, and the Explorer only finds a folder under the path
+      // the workspace holds. On macOS the fixture sits under /tmp, which resolves to /private/tmp,
+      // so this exercises the mismatch itself; elsewhere the two spellings agree.
+      const folder = (vscode.workspace.workspaceFolders ?? [])[0];
+      assert.ok(folder, "this check needs a workspace folder");
+      const same = (a: vscode.Uri, b: vscode.Uri): boolean =>
+        process.platform === "win32"
+          ? a.fsPath.toLowerCase() === b.fsPath.toLowerCase()
+          : a.fsPath === b.fsPath;
+      const canonical = fs.realpathSync.native(folder.uri.fsPath);
+      assert.ok(
+        same(workspaceUri(canonical), folder.uri),
+        `${canonical} should map to the folder as opened, ${folder.uri.fsPath}`,
+      );
+      const manifest = workspaceUri(path.join(canonical, "Day.toml"));
+      assert.ok(same(manifest, vscode.Uri.joinPath(folder.uri, "Day.toml")), manifest.fsPath);
+      assert.ok(vscode.workspace.getWorkspaceFolder(manifest), "the mapped file should sit in the folder");
+      const outside = path.join(os.tmpdir(), "not-in-this-workspace", "Day.toml");
+      assert.ok(same(workspaceUri(outside), vscode.Uri.file(outside)), "a path outside every folder comes back as given");
+    },
+  ],
+  [
+    "Reveal in Explorer View selects a folder the Explorer lists, else the project's Day.toml",
+    () => {
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      assert.strictEqual(folders.length, 2, "this check needs the two-project fixture");
+      const same = (a: vscode.Uri, b: vscode.Uri): boolean =>
+        process.platform === "win32"
+          ? a.fsPath.toLowerCase() === b.fsPath.toLowerCase()
+          : a.fsPath === b.fsPath;
+      const root = fs.realpathSync.native(folders[0].uri.fsPath);
+      // Multi-root: every folder is a row of its own.
+      assert.ok(same(explorerTarget(root, folders), folders[0].uri));
+      // Single-folder: the folder has no row, so its Day.toml is what gets selected.
+      assert.ok(
+        same(explorerTarget(root, [folders[0]]), vscode.Uri.joinPath(folders[0].uri, "Day.toml")),
+      );
+      // A project in a subfolder has a row in either kind of window.
+      assert.ok(
+        same(explorerTarget(path.join(root, "demo"), [folders[0]]), vscode.Uri.joinPath(folders[0].uri, "demo")),
       );
     },
   ],

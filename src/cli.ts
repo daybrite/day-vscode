@@ -350,6 +350,11 @@ export function cleanArgs(projectRoot: string): string[] {
   return [...projectArgs(projectRoot), "clean"];
 }
 
+/** Args for `day app add-toolkit <target>…`, with `--project` explicit for the same reason. */
+export function addToolkitArgs(projectRoot: string, targets: string[]): string[] {
+  return [...projectArgs(projectRoot), "app", "add-toolkit", ...targets];
+}
+
 /**
  * Args for `day patch --local <checkout>…`, which points a project's cargo resolution at the
  * checkouts open beside it (see localdeps.ts).
