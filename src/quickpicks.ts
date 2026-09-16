@@ -22,17 +22,17 @@ export async function pickMode(current: Profile): Promise<Profile | undefined> {
 
 /** What the device picker came back with. `all` clears any pin; `boot` asks to start one first. */
 export type DevicePick =
-  /** Already connected — add it as it stands. */
+  /** Already connected: add it as it stands. */
   | { kind: "device"; device: DeviceChoice }
   /** Not running: start it, and show a row for it while it does. `device` is what that row holds
    *  before the device exists, which is why a `bootable` entry has to name its own flag. */
   | { kind: "boot"; device: DeviceChoice };
 
 /**
- * Choose a device to ADD to a target's configured list.
+ * Choose a device to add to a target's configured list.
  *
  * `undefined` means cancelled. There is no "all connected" entry any more: launching on every
- * connected device is what a target with an EMPTY list does, so offering it here as a pick would
+ * connected device is what a target with an empty list does, so offering it here as a pick would
  * be offering to configure the absence of configuration.
  *
  * Connected devices come first because they are the ones that can be launched onto right now;
@@ -50,7 +50,7 @@ export async function pickDevice(
   // Built by hand rather than through `showQuickPick`, which cannot be shown before its items are
   // known: enumerating devices shells out to simctl, adb and hdc, and the wait for those was
   // happening with nothing on screen at all. This opens immediately, spins while the CLI answers,
-  // and fills in — Escape cancels it at any point, including mid-query.
+  // and fills in; Escape cancels it at any point, including mid-query.
   const qp = vscode.window.createQuickPick<Item>();
   qp.title = `Day: add a device for ${target}`;
   qp.matchOnDetail = true;
@@ -58,7 +58,7 @@ export async function pickDevice(
   qp.placeholder = "Looking for connected devices…";
   qp.show();
 
-  // Closed covers BOTH ways out — Escape and accept — because everything below mutates the
+  // Closed covers both ways out (Escape and accept) because everything below mutates the
   // QuickPick, and doing that after it is disposed throws. The wait is exactly the window in
   // which a user can walk away from it, so this is the common path, not the edge case.
   let closed = false;
@@ -81,7 +81,7 @@ export async function pickDevice(
   qp.busy = false;
 
   if (found && !found.available) {
-    // A missing toolchain is an answer, not an empty list — say it where the user is looking
+    // A missing toolchain is an answer, not an empty list, so say it where the user is looking
     // rather than in a notification behind the picker.
     qp.placeholder = found.note ?? "this target's toolchain was not found";
     return result;

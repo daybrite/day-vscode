@@ -1,18 +1,18 @@
 # CI + release + (gated) Marketplace publication for the Day VS Code extension.
 #
 # Structure follows microsoft/vscode-platform-specific-sample (build → artifact → publish-on-tag);
-# this extension is pure JS, so the sample's 9-target matrix collapses to one universal .vsix —
-# if we ever bundle per-platform helper binaries, reintroduce the matrix here and package with
+# this extension is pure JS, so the sample's 9-target matrix collapses to one universal .vsix.
+# If we ever bundle per-platform helper binaries, reintroduce the matrix here and package with
 # `vsce package --target <target>` per entry.
 #
-# Every push/PR validates PUBLISHABILITY (strict `vsce package` — the same manifest validation
-# the Marketplace runs — plus a checklist of the documented requirements). Pushing a `v*` tag
+# Every push/PR validates publishability (strict `vsce package`, the same manifest validation
+# the Marketplace runs, plus a checklist of the documented requirements). Pushing a `v*` tag
 # attaches the .vsix to a GitHub Release (today's distribution channel; the website's install
-# instructions curl it). ACTUAL Marketplace/Open VSX publication is fully wired but OFF until
-# you flip the repository variables below — the release cycle is independent of day-cli's.
+# instructions curl it). Marketplace/Open VSX publication itself is fully wired but off until
+# you flip the repository variables below; the release cycle is independent of day-cli's.
 #
 # ── Turning publication on ───────────────────────────────────────────────────────────────────
-# Marketplace auth is TOKENLESS. Azure DevOps global PATs retire **December 1, 2026** (stated in
+# Marketplace auth is tokenless. Azure DevOps global PATs retire on December 1, 2026 (stated in
 # code.visualstudio.com/api/working-with-extensions/publishing-extension), and the same page now
 # recommends Entra ID auth outright: "We recommend that extension publishing use Microsoft Entra
 # ID-based authentication with workload identity federation and managed identities."
@@ -21,36 +21,36 @@
 # the doc's own YAML targets Azure Pipelines, and azure/login is the GitHub equivalent (the same
 # pairing github/vscode-codeql publishes with). One-time setup:
 #
-#   1. Azure: create a USER-ASSIGNED MANAGED IDENTITY (any subscription/resource group). Record
+#   1. Azure: create a user-assigned managed identity (any subscription/resource group). Record
 #      its Client ID and Tenant ID; the Subscription ID is optional (see step 4).
-#   2. On that identity, add a FEDERATED CREDENTIAL for GitHub Actions:
+#   2. On that identity, add a federated credential for GitHub Actions:
 #        issuer   https://token.actions.githubusercontent.com
 #        subject  repo:daybrite/day-vscode:environment:marketplace   (matches this job's
 #                 `environment:`; tighten/loosen as desired)
 #        audience api://AzureADTokenExchange
-#   3. Marketplace: add the identity as a MEMBER of the `daybrite` publisher, Contributor role.
-#      The Members tab wants the identity's AZURE DEVOPS PROFILE ID — NOT the federated subject
+#   3. Marketplace: add the identity as a member of the `daybrite` publisher, Contributor role.
+#      The Members tab wants the identity's Azure DevOps profile id, not the federated subject
 #      from step 2, which it rejects with "Not a valid User Id". You cannot look that id up from
 #      a laptop, because it belongs to the identity and only the identity can read it. Get it by
 #      running this workflow first: Actions → ci → Run workflow → dry-run = true. The step
 #      "Verify federated identity…" prints it and posts it as a job notice. Steps 2 and 3 are
 #      therefore done in that order: federate, dry-run to learn the id, then add the member.
 #      (Microsoft documents this same `az rest … profiles/me` call as an Azure Pipelines task.)
-#   4. Repo Settings → Secrets and variables → Actions → VARIABLES (none of these are secrets —
+#   4. Repo Settings → Secrets and variables → Actions → Variables (none of these are secrets;
 #      OIDC federation means there is nothing to leak):
 #        MARKETPLACE_PUBLISH   = true
 #        AZURE_CLIENT_ID       = <identity client id>
 #        AZURE_TENANT_ID       = <tenant id>
 #        AZURE_SUBSCRIPTION_ID = <subscription id>
-#      AZURE_SUBSCRIPTION_ID is OPTIONAL — publishing authenticates against the Azure DevOps
+#      AZURE_SUBSCRIPTION_ID is optional: publishing authenticates against the Azure DevOps
 #      resource, not a subscription (the login passes `allow-no-subscriptions`).
-#      Open VSX (optional; unaffected by the Microsoft PAT retirement — it has its own tokens):
+#      Open VSX (optional; unaffected by the Microsoft PAT retirement, since it has its own tokens):
 #        OPENVSX_PUBLISH = true   + secret OVSX_PAT (namespace `daybrite` at open-vsx.org).
 #        Open VSX additionally requires an eclipse.org account and a signed Eclipse Foundation
 #        Publisher Agreement, plus `ovsx create-namespace daybrite` once.
 #
 # Note on `vsce publish --oidc`: a true trusted-publishing path (no Azure at all) exists in the
-# vsce source but is NOT in the released npm `latest`, and is hidden from `--help` as
+# vsce source but is not in the released npm `latest`, and is hidden from `--help` as
 # unannounced. Worth revisiting before December; not something to wait on.
 #
 # First flight without a tag: Actions → ci → "Run workflow" with dry-run = true exercises the
@@ -111,8 +111,8 @@ jobs:
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "▸ $VERSION (pre-release channel: $PRERELEASE)"
 
-      # THE publishability gate: `vsce package` runs the same manifest validation `vsce publish`
-      # does (publisher, engines, icon format, activation events, …) with NO --allow-* escapes,
+      # The publishability gate: `vsce package` runs the same manifest validation `vsce publish`
+      # does (publisher, engines, icon format, activation events, …) with no --allow-* escapes,
       # and fails the build on anything the Marketplace would reject.
       - name: Validate publishability (vsce package, strict)
         run: npx @vscode/vsce package -o day-vscode.vsix
@@ -154,7 +154,7 @@ jobs:
   # Installs the .vsix this run packaged into a real VS Code, opens a project `day new app`
   # scaffolded on the runner, and drives the extension the way a user does: tick the host's own
   # combo, hit Run, watch the app build and launch. Each leg photographs its own platform, and
-  # the screenshots are the artifact — CI evidence first, README and Marketplace images second.
+  # the screenshots are the artifact: CI evidence first, README and Marketplace images second.
   #
   # Not on pull requests. A leg is 15–30 minutes (a cargo build of the Day framework from git
   # dominates it) and UI automation flakes; neither belongs in front of a merge. `build` above
@@ -163,7 +163,7 @@ jobs:
   # Prerequisites per host mirror the day repository's own combo jobs (day/.github/workflows/
   # ci.yml): macOS and Windows need nothing beyond Rust, Linux needs the GTK 4 development
   # libraries. The whole Linux leg runs under one xvfb, which is what puts VS Code and the app
-  # it launches on the same display — `day launch` skips its own xvfb wrapper when DISPLAY is
+  # it launches on the same display; `day launch` skips its own xvfb wrapper when DISPLAY is
   # already set, so the app renders where the screenshot can see it.
   e2e:
     name: e2e ${{ matrix.combo }}
@@ -171,7 +171,7 @@ jobs:
     needs: [build]
     runs-on: ${{ matrix.os }}
     # The default is 360 minutes. A UI run that stops answering would sit there for six hours,
-    # and macOS bills at ten times the rate — one wedged `screencapture` cost 2h22m of macos-26
+    # and macOS bills at ten times the rate; one wedged `screencapture` cost 2h22m of macos-26
     # before anyone noticed. The harness has its own watchdog (DAY_E2E_WATCHDOG_MS); this is the
     # backstop for the case where the watchdog is what breaks.
     timeout-minutes: 60
@@ -227,14 +227,14 @@ jobs:
       - name: Install the day CLI
         uses: daybrite/actions/.github/actions/setup-day-cli@main
         with:
-          # `main`, built from git — NOT `latest`. day-cli IS published now (0.3.0), so `latest`
+          # `main`, built from git, not `latest`. day-cli is published now (0.3.0), so `latest`
           # would install and quietly lag: this extension calls CLI surfaces as they land on main
           # (`day lint --json`, `day new --describe`), and against a published build those come
           # back as "unknown argument", which reads like an extension bug rather than a stale CLI.
           version: main
 
       # Prove it, rather than trusting the input. `cargo install --list` records the exact source
-      # of what is on PATH — the git URL, the branch and the commit — which is the only
+      # of what is on PATH (the git URL, the branch and the commit), which is the only
       # authoritative answer. `day version` cannot serve here: the ref it bakes in is whatever
       # cargo named its checkout branch, and a `--branch main` install reported "branch master" on
       # the Windows runner while being a perfectly correct build of main.
@@ -295,20 +295,20 @@ jobs:
             fi
           }
           # `day doctor` answers "is a device attached?" with `adb devices`, and any adb command
-          # forks a SERVER DAEMON that outlives it. The daemon inherits THIS step's stdout, and a
-          # step cannot finish while anything holds that pipe — so the harness printed its last
+          # forks a server daemon that outlives it. The daemon inherits this step's stdout, and a
+          # step cannot finish while anything holds that pipe, so the harness printed its last
           # line, the step sat idle, and 60 minutes later the job backstop cancelled it with the
           # runner reporting `Terminate orphan process: (adb)`. Every macOS run from 32654426569
           # to 33013290539 ended that way.
           #
-          # On the trap rather than after the command, so a failing run is cleaned up too — and
+          # On the trap rather than after the command, so a failing run is cleaned up too, and
           # inside this step rather than a later one, because a step that runs after the hanging
           # step never runs at all. Not in the harness itself: a developer running it locally has
           # an adb session of their own, and stopping their server would be a rude side effect of
           # taking screenshots. On a runner nothing else uses it.
           # `if`, not `&&`: under `set -e` a failing `&&` compound aborts the shell, and the first
           # candidate path is expected to miss on a host with no Android SDK. Always returns 0 so
-          # an EXIT trap cannot rewrite the step's own result.
+          # an `EXIT` trap cannot rewrite the step's own result.
           stop_adb() {
             for adb in "${ANDROID_HOME:-}/platform-tools/adb" "${ANDROID_SDK_ROOT:-}/platform-tools/adb" adb; do
               if command -v "$adb" >/dev/null 2>&1; then
@@ -334,7 +334,7 @@ jobs:
   # Builds on every event so a broken site fails the PR that broke it; deploys only from main.
   #
   # The gallery's images come from the `screenshots-<combo>` artifacts the e2e job uploads. It
-  # reads them from the REPOSITORY's artifact list rather than from this run, newest first, which
+  # reads them from the repository's artifact list rather than from this run, newest first, which
   # gets the right answer in all three cases: a run that just captured them (its uploads are the
   # newest entries), a docs-only push with e2e skipped (the previous run's captures), and a run
   # where one leg failed (that platform keeps its last good set instead of vanishing).
@@ -386,7 +386,7 @@ jobs:
           npm run build
 
       # Every docs page is emitted as `<slug>/index.html`, so a relative `./sibling` link resolves
-      # one level too deep and 404s — invisibly, since the Markdown reads fine and the build is
+      # one level too deep and 404s, invisibly, since the Markdown reads fine and the build is
       # clean. Thirteen of them shipped that way. This resolves every internal href and fragment
       # against the files actually built. External links are not fetched: they fail for reasons
       # unrelated to the commit, and a check that cries wolf gets ignored.
@@ -401,8 +401,8 @@ jobs:
           path: website/dist
 
   # Deployment is its own job for one reason: an environment's protection rules are evaluated when
-  # the JOB STARTS, before any step-level `if` is read. The `github-pages` environment admits only
-  # `main`, so the build job — which merely CONTAINED a main-gated deploy step — was rejected
+  # the job starts, before any step-level `if` is read. The `github-pages` environment admits only
+  # `main`, so the build job, which merely contained a main-gated deploy step, was rejected
   # outright on a tag push: "Tag v0.4.7 is not allowed to deploy to github-pages due to environment
   # protection rules" (run 33042935539). Keeping `environment:` on a job that cannot start unless
   # the ref is `main` is what makes the guard and the rule agree.
@@ -414,8 +414,8 @@ jobs:
     needs: [website]
     if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
-    # A job-level block REPLACES the workflow-level one rather than adding to it, so `contents`
-    # has to be restated here — the same trio GitHub's own Pages starter grants.
+    # A job-level block replaces the workflow-level one rather than adding to it, so `contents`
+    # has to be restated here, the same trio GitHub's own Pages starter grants.
     permissions:
       contents: read
       pages: write
@@ -432,8 +432,8 @@ jobs:
         uses: actions/deploy-pages@v5
 
   # ── GitHub Release (tags): today's install channel ─────────────────────────────────────────
-  # The website's Getting Started curls .../releases/latest/download/day-vscode.vsix — keep the
-  # asset name STABLE.
+  # The website's Getting Started curls .../releases/latest/download/day-vscode.vsix, so keep
+  # the asset name stable.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [build]
@@ -450,7 +450,7 @@ jobs:
           generate_release_notes: true
           prerelease: ${{ needs.build.outputs.prerelease == 'true' }}
 
-  # ── Marketplace + Open VSX publication (tags; OFF until the repo variables flip) ───────────
+  # ── Marketplace + Open VSX publication (tags; off until the repo variables flip) ───────────
   # Tokenless Marketplace auth: GitHub OIDC → Entra workload-identity federation → the managed
   # identity that is a Contributor on the `daybrite` publisher → `vsce publish
   # --azure-credential` (vsce ≥ 2.26.1 picks the credential up from the azure/login session).
@@ -463,7 +463,7 @@ jobs:
     environment: marketplace   # the federated credential's subject names this environment
     permissions:
       contents: read
-      id-token: write          # mint the GitHub OIDC token azure/login exchanges — no secrets
+      id-token: write          # mint the GitHub OIDC token azure/login exchanges; no secrets
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -474,7 +474,7 @@ jobs:
 
       # Fail fast with a clear message before attempting the OIDC exchange.
       # A tag that disagrees with package.json publishes the wrong version under the right name,
-      # and the Marketplace will not let you replace a published version — so check before the
+      # and the Marketplace will not let you replace a published version, so check before the
       # upload, not after. The `build` job already computed the manifest version.
       - name: The tag matches package.json
         if: startsWith(github.ref, 'refs/tags/v')
@@ -489,7 +489,7 @@ jobs:
           echo "▸ publishing $PKG (pre-release: ${{ needs.build.outputs.prerelease }})"
 
       # Only the client and tenant are required. Publishing talks to the Azure DevOps resource,
-      # not to a subscription, so an Entra tenant with the federated identity is enough — see
+      # not to a subscription, so an Entra tenant with the federated identity is enough; see
       # `allow-no-subscriptions` below. Set AZURE_SUBSCRIPTION_ID only if you have one to scope to.
       - name: Check federation configuration
         run: |
@@ -516,17 +516,17 @@ jobs:
           allow-no-subscriptions: true
 
       # The dry-run stops here: a successful login proves the federated credential, subject,
-      # and identity are all wired correctly — the only parts that can't be checked locally.
-      # Proves the federated credential works AND prints the one value the Marketplace Members tab
+      # and identity are all wired correctly, the only parts that can't be checked locally.
+      # Proves the federated credential works and prints the one value the Marketplace Members tab
       # will accept. The two identifiers are different things and are easy to confuse:
       #
       #   repo:daybrite/day-vscode:environment:marketplace
-      #       the federated credential SUBJECT. Lives in Azure, on the identity. It tells Entra
+      #       the federated credential subject. Lives in Azure, on the identity. It tells Entra
       #       which workflow may assume the identity. The Marketplace rejects it as "Not a valid
       #       User Id" because it is not a user id.
       #
       #   the `id` printed below
-      #       the identity's AZURE DEVOPS PROFILE ID. This is what you add as a publisher member.
+      #       the identity's Azure DevOps profile id. This is what you add as a publisher member.
       #
       # Microsoft documents this call only as an Azure Pipelines `AzureCLI@2` task; the same call
       # works here because azure/login has already signed this job in as the identity. 499b84ac-…

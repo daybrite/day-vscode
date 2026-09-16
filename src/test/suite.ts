@@ -1,11 +1,11 @@
-// Integration suite — runs INSIDE the extension host, so the whole `vscode` API is in scope.
+// Integration suite: runs inside the extension host, so the whole `vscode` API is in scope.
 // Launched by test/run-integration.mjs through @vscode/test-electron, against a workspace that
 // `day new app` scaffolded (test/e2e/fixture.mjs) with a real `day` CLI on hand.
 //
-// The assertions deliberately go through public surfaces rather than the extension's internals:
-// what a user sees is the command list, the task list, and the tree. The task list matters most —
-// tasks exist only if `day metadata --json` was spawned, parsed, and turned into targets, so one
-// assertion covers the whole CLI seam.
+// The assertions go through public surfaces rather than the extension's internals: what a user
+// sees is the command list, the task list, and the tree. The task list matters most: tasks exist
+// only if `day metadata --json` was spawned, parsed, and turned into targets, so one assertion
+// covers the whole path through the CLI.
 //
 // No mocha: the whole suite is a handful of named checks, and a test framework would be a
 // dependency shipped for four helper functions. `run()` throws on the first failure, which is
@@ -83,8 +83,8 @@ function fakeMemento(seed?: Record<string, unknown>): vscode.Memento {
   };
 }
 
-/** Last path segment, on either separator. `split("/")` alone returns the WHOLE path on Windows,
- *  where a fixture root is `d:\a\day-vscode\…` — the task lookups below then match nothing. */
+/** Last path segment, on either separator. `split("/")` alone returns the whole path on Windows,
+ *  where a fixture root is `d:\a\day-vscode\…`, and the task lookups below then match nothing. */
 function baseName(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 }
@@ -98,8 +98,8 @@ const checks: Check[] = [
   [
     "each project keeps its own targets, mode, locale and script",
     async () => {
-      // The point of the per-project store: with a dozen apps in one window, ticking a target in
-      // one must not tick it in the next, and switching focus must not carry a mode across.
+      // The per-project store exists for this: with a dozen apps in one window, ticking a target
+      // in one must not tick it in the next, and switching focus must not carry a mode across.
       const state = new State(fakeMemento());
       const sketch = "/w/Day-Sketch";
       const showcase = "/w/Day-Showcase";
@@ -141,7 +141,7 @@ const checks: Check[] = [
         "ios-uikit",
       ]);
 
-      // Editing an UNFOCUSED project (the fan-out tree does this) leaves focus alone.
+      // Editing an unfocused project (the fan-out tree does this) leaves focus alone.
       await state.updateFor(sketch, { script: "dayscript/demo.yaml" });
       assert.strictEqual(
         state.focusedRoot,
@@ -221,7 +221,7 @@ const checks: Check[] = [
     "both projects are discovered, and each gets its own tasks",
     async () => {
       // The end this whole feature serves: two apps in one window, each buildable and launchable
-      // without one standing in for the other. Tasks are the public proof — they exist only for
+      // without one standing in for the other. Tasks are the public proof: they exist only for
       // projects the extension actually discovered and loaded through `day metadata`.
       const tasks = await vscode.tasks.fetchTasks({ type: "day" });
       const projectOf = (name: string) => name.match(/\(([^)]+)\)$/)?.[1];
@@ -232,7 +232,7 @@ const checks: Check[] = [
         projects.has("day-fixture") && projects.has("day-fixture-two"),
         `expected tasks for both fixtures, saw ${JSON.stringify([...projects])}`,
       );
-      // Same target, two projects, two distinct tasks — the collision that used to make one app's
+      // Same target, two projects, two distinct tasks: the collision that used to make one app's
       // launch stop the other's.
       if (COMBO) {
         const both = tasks
@@ -250,7 +250,7 @@ const checks: Check[] = [
     "day.toggleVerbose flips the FOCUSED project, and its tasks carry --verbose",
     async () => {
       // Read through the tasks, not through `getConfiguration("day")`: `day.verbose` is
-      // folder-scoped now, and the toggle writes it to the focused project's folder — a
+      // folder-scoped now, and the toggle writes it to the focused project's folder, so a
       // window-level read cannot see that value at all, and asserting on one would only prove
       // which scope the test itself guessed. The command line is the thing that matters anyway.
       const ext = vscode.extensions.getExtension("daybrite.day-vscode");
@@ -282,14 +282,14 @@ const checks: Check[] = [
             `task "${t.name}" should carry --verbose: ${t.detail}`,
           );
         }
-        // The other project must be untouched — the toggle belongs to one app, not the window.
+        // The other project must be untouched: the toggle belongs to one app, not the window.
         for (const t of await tasksFor((n) => !n.endsWith(mine))) {
           assert.ok(
             !(t.detail ?? "").includes("--verbose"),
             `--verbose leaked into another project's task "${t.name}": ${t.detail}`,
           );
         }
-        // …and OFF again, which must leave the command line exactly as it was before the feature.
+        // …and off again, which must leave the command line exactly as it was before the feature.
         await vscode.commands.executeCommand("day.toggleVerbose");
         for (const t of await tasksFor((n) => n.endsWith(mine))) {
           assert.ok(
@@ -313,7 +313,7 @@ const checks: Check[] = [
           t.name.startsWith("run "),
         );
       try {
-        // Default: debug — the framework's own diagnostics, without day-persistence's
+        // The default is debug: the framework's diagnostics, without day-persistence's
         // per-statement SQL firehose, which `trace` adds and few people want unasked. `detail` is
         // the rendered command line, so this covers the whole path from the setting to argv.
         for (const t of await runTasks()) {
@@ -385,7 +385,7 @@ const checks: Check[] = [
         ["new", "app", "my-app", "--toolkit", "macos-appkit", "--toolkit", "linux-gtk", "--no-input"],
       );
 
-      // A blank optional field is OMITTED, not passed empty — that is what lets the CLI apply
+      // A blank optional field is omitted, not passed empty, which is what lets the CLI apply
       // `dev.example.<name>` and the title-cased name instead of this file recomputing them.
       assert.deepStrictEqual(
         composeArgs(app, { name: "a", id: "", title: "", targets: ["web-dom"] }),
@@ -442,7 +442,7 @@ const checks: Check[] = [
     async () => {
       // The e2e leg installs the day CLI from day's main branch, which may predate
       // `day new --describe`. Missing it must leave the command reporting rather than throwing,
-      // so this asserts the SHAPE of the answer: a usable spec, or a clean undefined.
+      // so this asserts the shape of the answer: a usable spec, or a clean undefined.
       const output = vscode.window.createOutputChannel("Day describe check");
       try {
         const spec = await describeSpec(output);
@@ -483,9 +483,8 @@ const checks: Check[] = [
     "the scripts set settings this extension actually declares",
     async () => {
       // The dev launchers and the capture harness write settings into generated files by name. A
-      // typo there is silent — VS Code ignores an unknown setting — and the welcome page would
-      // simply not appear, or the capture run would stop at a native dialog, with nothing to say
-      // why.
+      // typo there is silent (VS Code ignores an unknown setting), and the welcome page would not
+      // appear, or the capture run would stop at a native dialog, with nothing to say why.
       const ext = vscode.extensions.getExtension("daybrite.day-vscode");
       assert.ok(ext);
       const declared = new Set(
@@ -540,8 +539,8 @@ const checks: Check[] = [
       }
       assert.ok(buttons >= 3, `expected buttons on most steps, found ${buttons}`);
 
-      // Each step gets its OWN media. Three of them once shared one file, so selecting Install,
-      // Update or Create all filled the pane with the same page — and that pane is the larger half
+      // Each step gets its own media. Three of them once shared one file, so selecting Install,
+      // Update or Create all filled the pane with the same page, and that pane is the larger half
       // of the walkthrough editor (VS Code's grid gives it 8fr against the steps' 5fr), which
       // makes a duplicate the most visible thing on screen.
       const files: string[] = welcome.steps.map(
@@ -554,8 +553,8 @@ const checks: Check[] = [
         `walkthrough steps share media files: ${files.join(", ")}`,
       );
 
-      // And each markdown pane carries at least one link into the documentation — the point of
-      // that half of the page is to send the reader somewhere fuller than the step itself.
+      // And each markdown pane carries at least one link into the documentation, since that half
+      // of the page exists to send the reader somewhere fuller than the step itself.
       for (const step of welcome.steps) {
         const md = step.media?.markdown;
         if (!md) {
@@ -589,7 +588,7 @@ const checks: Check[] = [
     "the new-project picker offers real targets, from the catalog",
     async () => {
       // This list used to be hand-copied into extension.ts and named `windows-winui`, which is
-      // not a target — picking it scaffolded nothing and failed in the CLI.
+      // not a target; picking it scaffolded nothing and failed in the CLI.
       const names = catalog().map((t) => t.name);
       assert.ok(names.includes("windows-xaml"), "the Windows target is windows-xaml");
       assert.ok(!names.includes("windows-winui"), "windows-winui is not a Day target");
@@ -639,7 +638,7 @@ const checks: Check[] = [
           waived: true,
           file: "store/en/short.txt",
         },
-        // No file — a locale that exists on no surface has nowhere to point.
+        // No file: a locale that exists on no surface has nowhere to point.
         {
           code: "day::lint::locale-sync",
           severity: "warning",
@@ -686,7 +685,7 @@ const checks: Check[] = [
         "the fix must be reachable from the diagnostic's code and line",
       );
 
-      // The fix replaces the file WHOLE, so the range has to span it exactly — a range that fell
+      // The fix replaces the file whole, so the range has to span it exactly; a range that fell
       // short would append the new text to the old instead of replacing it.
       const document = await vscode.workspace.openTextDocument({
         content: "  Day Rise  \n\ntrailing\n",
@@ -713,7 +712,7 @@ const checks: Check[] = [
       assert.ok(commands.includes("day.fixAllInFile"));
 
       // The e2e leg installs the day CLI from day's main branch, which may not carry `--json`
-      // yet. Missing it must leave the extension usable, so this asserts the SHAPE of the answer
+      // yet. Missing it must leave the extension usable, so this asserts the shape of the answer
       // rather than that findings came back: an envelope, or a clean `undefined`.
       const output = vscode.window.createOutputChannel("Day lint check");
       try {
@@ -734,10 +733,10 @@ const checks: Check[] = [
   [
     "Stop asks the CLI to stop the app, not just the task that launched it",
     () => {
-      // Ending the task kills what `day` launched as its own child — the whole story on a
-      // desktop, and none of it on a device. An Android app is started with `am start` and lives
-      // in the device's process table, so terminating the launcher (which is what VS Code does,
-      // without letting it clean up) left the app on screen and its session in the registry.
+      // Ending the task kills what `day` launched as its own child: all of the app on a desktop,
+      // and none of it on a device. An Android app is started with `am start` and lives in the
+      // device's process table, so terminating the launcher (which is what VS Code does, without
+      // letting it clean up) left the app on screen and its session in the registry.
       // Verified against a real emulator: SIGKILL the launcher and the app keeps its pid;
       // `day stop -p android-mdc` is what ends it.
       const args = stopArgs("/w/Day-Rise", "android-mdc");
@@ -762,7 +761,7 @@ const checks: Check[] = [
     "lint names its project on the command line, not by where it happens to run",
     async () => {
       // With `day.cliSource` set, the command is `cargo run --manifest-path <checkout>` and its
-      // cwd is the CHECKOUT — so a lint that relied on cwd-based Day.toml discovery looked for
+      // cwd is the checkout, so a lint that relied on cwd-based Day.toml discovery looked for
       // the manifest in day's own repo and failed with "no Day.toml found".
       const args = lintArgs("/w/Day-Showcase");
       assert.deepStrictEqual(args, [
@@ -819,7 +818,7 @@ const checks: Check[] = [
 
         const document = await vscode.workspace.openTextDocument(uri);
         assert.ok(await vscode.workspace.applyEdit(editFor(document, fix)));
-        // The CLI reads from DISK, so an unsaved buffer would leave it linting the old text and
+        // The CLI reads from disk, so an unsaved buffer would leave it linting the old text and
         // reporting a finding the author has already fixed.
         assert.ok(await document.save());
 
@@ -853,7 +852,7 @@ const checks: Check[] = [
   [
     "the install picker offers the released CLI first and the source build last",
     () => {
-      // Order is the whole point of this list. The released CLI is what almost everyone wants and
+      // Order is what this list is for. The released CLI is what almost everyone wants and
       // the extension owns that copy; the source build needs a Rust toolchain and takes minutes,
       // so it goes last among the things that actually install something.
       const choices = installChoices(installRoutes("darwin"), true);
@@ -873,8 +872,8 @@ const checks: Check[] = [
         "Homebrew was dropped from the picker",
       );
 
-      // Exactly ONE row installs from crates.io. There were two — the managed one and a plain
-      // `cargo install day-cli` onto PATH — which differed only in where the binary landed.
+      // Exactly one row installs from crates.io. There were two (the managed one and a plain
+      // `cargo install day-cli` onto PATH), which differed only in where the binary landed.
       assert.strictEqual(
         labels.filter((l) => /crates\.io|cargo install day-cli/.test(l)).length,
         1,
@@ -903,9 +902,9 @@ const checks: Check[] = [
   [
     "every PATH route is Rust-free, and no row is long enough to be truncated",
     () => {
-      // The routes that touch PATH exist for someone who has no Rust toolchain — that is the
-      // whole reason they are separate from the managed rows. `cargo install day-cli` used to sit
-      // among them and needed one, which is what made it the wrong thing to offer here.
+      // The routes that touch PATH exist for someone who has no Rust toolchain, which is why they
+      // are separate from the managed rows. `cargo install day-cli` used to sit among them and
+      // needed one, which is what made it the wrong thing to offer here.
       for (const platform of [
         "darwin",
         "linux",
@@ -931,7 +930,7 @@ const checks: Check[] = [
       }
 
       // A quick pick truncates a long `detail` with an ellipsis, and the description column shows
-      // whatever it is given — a raw install command is long enough to be cut mid-flag. Both are
+      // whatever it is given, and a raw install command is long enough to be cut mid-flag. Both are
       // bounded here because both looked wrong in the picker before they were.
       for (const platform of ["darwin", "win32"] as NodeJS.Platform[]) {
         for (const c of installChoices(
@@ -943,9 +942,9 @@ const checks: Check[] = [
             c.detail.length <= 70,
             `"${c.label}" detail is ${c.detail.length} chars: ${c.detail}`,
           );
-          // Bounded rather than ellipsis-free: one row elides a long flag list on purpose
-          // (`cargo install --git … --tag`), which is not the same as a command cut mid-flag by
-          // a width limit. Length is what the picker actually punishes.
+          // Bounded rather than ellipsis-free: one row writes its own ellipsis to elide a long
+          // flag list (`cargo install --git … --tag`), which is not the same as a command cut
+          // mid-flag by a width limit. Length is what the picker punishes.
           assert.ok(
             c.description.length <= 50,
             `"${c.label}" description is ${c.description.length} chars: ${c.description}`,
@@ -1002,7 +1001,7 @@ const checks: Check[] = [
           db.includes("--env DAY_LOG=error"),
           `second project's level missing: ${db}`,
         );
-        // Verbose set on ONE project must not leak into the other's command line.
+        // Verbose set on one project must not leak into the other's command line.
         assert.ok(
           da.includes("--verbose"),
           `first project should be verbose: ${da}`,
@@ -1030,7 +1029,7 @@ const checks: Check[] = [
   [
     "a chosen device rides the command line as the flag the CLI named",
     async () => {
-      // The device's OWN flag is what gets used, never one derived from the target: iOS needs
+      // The device's flag is what gets used, never one derived from the target: iOS needs
       // `--ios-simulator` for a booted simulator and `--ios-device` for a plugged-in phone, and
       // only the listing knows which a given device is.
       const base = {
@@ -1055,7 +1054,7 @@ const checks: Check[] = [
         );
       }
 
-      // …and the store keeps it per project AND per target, so a phone picked for one app's
+      // …and the store keeps it per project and per target, so a phone picked for one app's
       // ios-uikit says nothing about another app's.
       const state = new State(fakeMemento());
       const rise = "/w/Day-Rise";
@@ -1088,9 +1087,9 @@ const checks: Check[] = [
   [
     "a configuration row edits the project it sits under, not the focused one",
     async () => {
-      // The point of moving Configuration inside each project: with a dozen apps open, a row that
+      // Configuration moved inside each project because, with a dozen apps open, a row that
       // quietly edited whichever project happened to be focused would be indistinguishable from a
-      // bug. Verbose is the row to test with — it is the only one that takes no quick pick.
+      // bug. Verbose is the row to test with: it is the only one that takes no quick pick.
       const folders = vscode.workspace.workspaceFolders ?? [];
       assert.strictEqual(
         folders.length,
@@ -1130,7 +1129,7 @@ const checks: Check[] = [
           .every((t) => (t.detail ?? "").includes("--verbose"));
 
       try {
-        // Toggle the UNFOCUSED project's row, by passing the node that row would pass.
+        // Toggle the unfocused project's row, by passing the node that row would pass.
         await vscode.commands.executeCommand("day.toggleVerbose", {
           kind: "config",
           root: second,
@@ -1200,7 +1199,7 @@ const checks: Check[] = [
         );
         assert.strictEqual(env.ANDROID_NDK_HOME, `${sdk}/ndk`);
         // An `.app` is what a person picks; the variable wants the Developer dir inside it.
-        // Asserted with forward slashes on EVERY host: an Xcode path is a macOS path wherever
+        // Asserted with forward slashes on every host: an Xcode path is a macOS path wherever
         // the editor runs, and joining it with the host separator handed `xcrun`
         // `\Applications\Xcode.app\Contents\Developer` on the Windows leg.
         assert.strictEqual(
@@ -1221,7 +1220,7 @@ const checks: Check[] = [
           "a trailing separator is the same bundle",
         );
 
-        // A Developer dir given directly is already what the variable wants — passed through.
+        // A Developer dir given directly is already what the variable wants and passes through.
         await cfg.update(
           "xcodeDeveloperDirectory",
           "/Applications/Xcode-beta.app/Contents/Developer",
@@ -1300,7 +1299,7 @@ const checks: Check[] = [
             );
           }
         }
-        // A folder that is not a day checkout must not hijack the CLI — it falls through to the
+        // A folder that is not a day checkout must not hijack the CLI; it falls through to the
         // normal resolution instead of spawning cargo somewhere meaningless.
         await cfg.update(
           "cliSource",
@@ -1346,8 +1345,8 @@ const checks: Check[] = [
 
       for (const [i, root] of [rise, sketch].entries()) {
         // The tail is what each server reports on. Drop `--project` and a CLI resolved from a
-        // checkout runs with THAT checkout as its cwd, so the agent inspects, builds and drives
-        // the wrong tree — the same trap `lintArgs` exists to close.
+        // checkout runs with that checkout as its cwd, so the agent inspects, builds and drives
+        // the wrong tree, the same trap `lintArgs` exists to close.
         assert.deepStrictEqual(specs[i].args.slice(-3), [
           "--project",
           root,
@@ -1390,7 +1389,7 @@ const checks: Check[] = [
     "an MCP server resolved from a checkout runs in that checkout",
     async () => {
       // The cwd only exists when the CLI resolves to `cargo run`, and neither CI nor a plain
-      // install has a day checkout to produce one — so the checkout is synthesised. `isDayCheckout`
+      // install has a day checkout to produce one, so the checkout is synthesized. `isDayCheckout`
       // asks for exactly these two manifests, which is all that is needed to reach the cargo path.
       const checkout = fs.mkdtempSync(`${os.tmpdir()}/day-checkout-`);
       fs.mkdirSync(path.join(checkout, "crates", "day-cli"), {
@@ -1425,8 +1424,8 @@ const checks: Check[] = [
             `expected a manifest-path invocation in ${spec.args}`,
           );
         } else {
-          // `cargo` is not spawnable from this extension host, so resolveCli deliberately fell
-          // back; the fallback is a plain binary, which needs no cwd.
+          // `cargo` is not spawnable from this extension host, so resolveCli fell back; the
+          // fallback is a plain binary, which needs no cwd.
           assert.match(
             spec.command,
             /day(\.exe)?$/,
@@ -1441,8 +1440,8 @@ const checks: Check[] = [
         ]);
 
         // The server shells back into the CLI for every tool call, and by default that is its own
-        // executable — the `target/debug/day` cargo produced when it started. In a cliSource
-        // window that is NOT the CLI the editor uses, so a day-cli edit would reach Build and Run
+        // executable, the `target/debug/day` cargo produced when it started. In a cliSource
+        // window that is not the CLI the editor uses, so a day-cli edit would reach Build and Run
         // but not the agent's tools, and one window would be running two different CLIs.
         if (spec.command === "cargo") {
           const self = spec.env.DAY_SELF_COMMAND;
@@ -1526,7 +1525,7 @@ const checks: Check[] = [
       );
       // VS Code pairs the manifest's id with the id passed to
       // registerMcpServerDefinitionProvider. A mismatch raises nothing anywhere: the provider is
-      // simply never consulted, and agent mode quietly offers no Day tools.
+      // never consulted, and agent mode quietly offers no Day tools.
       assert.strictEqual(providers[0].id, MCP_PROVIDER_ID);
       assert.ok(
         providers[0].label,
@@ -1540,9 +1539,9 @@ const checks: Check[] = [
       const root =
         process.platform === "win32" ? "c:\\store\\cli" : "/store/cli";
 
-      // Unset is the newest RELEASE, from crates.io — the same answer the Day view compares
+      // Unset is the newest release, from crates.io, the same answer the Day view compares
       // against, so "latest" means one thing rather than two that can disagree. Asserted against
-      // the DECLARED default so the two cannot drift.
+      // the declared default so the two cannot drift.
       const ext = vscode.extensions.getExtension("daybrite.day-vscode");
       assert.ok(ext);
       assert.strictEqual(
@@ -1560,7 +1559,7 @@ const checks: Check[] = [
       );
       assert.ok(!releaseCmd.includes("--git"), releaseCmd);
 
-      // `main` is a BRANCH — `--tag main` would fail, since no such tag exists.
+      // `main` is a branch: `--tag main` would fail, since no such tag exists.
       const main = resolveSourceVersion("main");
       assert.deepStrictEqual(main.ref, ["--branch", "main"]);
       assert.ok(main.fromGit);
@@ -1593,7 +1592,7 @@ const checks: Check[] = [
   [
     "the Day view's CLI row shows the version, and offers the update when there is one",
     () => {
-      // The row exists because a walkthrough cannot render these numbers — its text is fixed in
+      // The row exists because a walkthrough cannot render these numbers; its text is fixed in
       // package.json. Every state it can be in is checked here, since each is a different message
       // and getting one wrong means the view quietly says the wrong thing about the toolchain.
       const missing = cliItem({});
@@ -1712,7 +1711,7 @@ const checks: Check[] = [
       // The whole reason this is not a string compare: lexicographically "0.10.0" < "0.4.0".
       assert.ok(isNewer("0.4.0", "0.10.0"), "0.10.0 is newer than 0.4.0");
       assert.ok(!isNewer("0.10.0", "0.4.0"));
-      // Unreadable on either side means no claim — never a spurious update prompt.
+      // Unreadable on either side means no claim, never a spurious update prompt.
       assert.ok(!isNewer("main", "0.4.0"));
       assert.ok(!isNewer("0.4.0", "unknown"));
     },
@@ -1729,7 +1728,7 @@ const checks: Check[] = [
       }[];
       const update = steps.find((s) => s.id === "update-cli");
       assert.ok(update, "the walkthrough offers an update step");
-      // A walkthrough cannot render the version numbers — its text is fixed here — so `when` is
+      // A walkthrough cannot render the version numbers (its text is fixed here), so `when` is
       // the only way it reacts at all. Gated on the wrong key it would either never appear or
       // always appear, and both look like the feature is broken.
       assert.strictEqual(update.when, UPDATE_CONTEXT);
@@ -1746,7 +1745,7 @@ const checks: Check[] = [
       assert.ok(ext);
       const pkg = ext.packageJSON;
       // VS Code's own enum (workbench `AB`). The Marketplace ignores anything outside it and
-      // files the extension under "Other" — silently, which is how the listing sat there
+      // files the extension under "Other", silently, which is how the listing sat there
       // reading "Other" without anyone noticing.
       const LEGAL = [
         "AI",
@@ -1834,7 +1833,7 @@ const checks: Check[] = [
         "orders must be unique and contiguous from 1, or the page order is not what it reads as",
       );
 
-      // The platform SDK locations are the least-touched settings here — most people never set
+      // The platform SDK locations are the least-touched settings here: most people never set
       // one, and the ones who do set it once. They belong after everything else.
       const byOrder = entries
         .slice()
@@ -1959,8 +1958,8 @@ const checks: Check[] = [
   [
     "each target offers the native IDE its own scaffold wrote, and only where that IDE runs",
     () => {
-      // These are committed source under `platform/`, written by `day new` — not build output —
-      // so the row can offer them without a build having happened.
+      // These are committed source under `platform/`, written by `day new` rather than build
+      // output, so the row can offer them without a build having happened.
       for (const platform of [
         "darwin",
         "linux",
@@ -1968,12 +1967,12 @@ const checks: Check[] = [
       ] as NodeJS.Platform[]) {
         const studio = nativeProjectFor("android-mdc", platform);
         assert.strictEqual(studio?.ide, "studio", `${platform}: android-mdc`);
-        // The Gradle ROOT, not the app module and not a lone build.gradle.kts: Studio imports the
+        // The Gradle root, not the app module and not a lone build.gradle.kts: Studio imports the
         // directory holding settings.gradle.kts, and treats a bare build file as a stray.
         assert.strictEqual(studio?.relative, "platform/android");
       }
 
-      // Both Apple targets open in Xcode, each from its OWN platform directory — swapping the two
+      // Both Apple targets open in Xcode, each from its platform directory; swapping the two
       // would hand Xcode the wrong project, and both paths exist so neither would error.
       const apple: [string, string][] = [
         ["ios-uikit", "platform/ios/DayApp.xcodeproj"],
@@ -2040,7 +2039,7 @@ const checks: Check[] = [
         "dayTarget",
       );
 
-      // A project WITHOUT the scaffolding — the directory decides, not the target name. Otherwise
+      // A project without the scaffolding: the directory decides, not the target name. Otherwise
       // the row would offer Studio for a project that has no Gradle build to open.
       const bare = fs.mkdtempSync(path.join(os.tmpdir(), "day-no-platform-"));
       try {
@@ -2121,7 +2120,7 @@ const checks: Check[] = [
         );
       }
 
-      // A disabled row cannot be run, stopped or ticked — that was true before and stays true with
+      // A disabled row cannot be run, stopped or ticked; that was true before and stays true with
       // a suffix on it.
       for (const command of ["day.runTarget", "day.stop", "day.toggleTarget"]) {
         const re = matcher(command);
@@ -2149,8 +2148,8 @@ const checks: Check[] = [
   [
     "unavailable targets sink to the bottom, or drop out when the setting says so",
     () => {
-      // `findTarget`/`isBuildableHere` answer against THIS host, so the expected split is computed
-      // the same way rather than hard-coded — the suite runs on all three OSes in CI, and a fixed
+      // `findTarget`/`isBuildableHere` answer against this host, so the expected split is computed
+      // the same way rather than hard-coded: the suite runs on all three OSes in CI, and a fixed
       // list would encode whichever one wrote it.
       const names = catalog().map((t) => t.name);
       const buildable = names.filter((n) => {
@@ -2170,7 +2169,7 @@ const checks: Check[] = [
         [...buildable, ...not],
         "every buildable target comes before every unbuildable one",
       );
-      // Nothing is lost by reordering — a row that vanished would be a worse bug than a mis-sorted
+      // Nothing is lost by reordering; a row that vanished would be a worse bug than a mis-sorted
       // one, and is exactly what a filter written in place of a partition would do.
       assert.deepStrictEqual([...listed.shown].sort(), [...names].sort());
 
@@ -2192,7 +2191,7 @@ const checks: Check[] = [
     "a target the catalog does not know stays listed rather than being buried or hidden",
     () => {
       // A CLI newer than this extension can report a target the static fallback has never heard of.
-      // Treating unknown as unavailable would bury it under the greyed-out rows — or, with hiding
+      // Treating unknown as unavailable would bury it under the grayed-out rows or, with hiding
       // on by default, drop it from the view entirely.
       const invented = "plan9-rio";
       assert.strictEqual(findTarget(invented), undefined, "the fixture target must be unknown");
@@ -2260,8 +2259,8 @@ const checks: Check[] = [
           ["UDID-B"],
         );
 
-        // A workspace written before multi-device support pinned ONE device per target. It has to
-        // come back as that device, not as "all connected" — a silent revert would send the next
+        // A workspace written before multi-device support pinned one device per target. It has to
+        // come back as that device, not as "all connected"; a silent revert would send the next
         // launch to every phone in the room.
         const legacy = new State(
           fakeMemento({
@@ -2302,7 +2301,7 @@ const checks: Check[] = [
         assert.ok(entry, `${command} has no menu entry`);
         const m = /viewItem =~ \/(.+?)\/(?:\s|$)/.exec(entry.when);
         if (!m) {
-          // An `==` clause, not a regex — turn it into one so both forms can be checked together.
+          // An `==` clause, not a regex; turn it into one so both forms can be checked together.
           const eq = /viewItem == (\w+)/.exec(entry.when);
           assert.ok(eq, `${command}: ${entry.when}`);
           return new RegExp(`^${eq[1]}$`);
@@ -2316,10 +2315,10 @@ const checks: Check[] = [
       const remove = matcher("day.removeDevice");
       assert.ok(play.test("dayDevice") && !play.test("dayDeviceRunning"));
       assert.ok(stop.test("dayDeviceRunning") && !stop.test("dayDevice"));
-      // Remove is offered whichever state it is in — a running device must still be removable.
+      // Remove is offered whichever state it is in; a running device must still be removable.
       assert.ok(remove.test("dayDevice") && remove.test("dayDeviceRunning"));
 
-      // Play and Stop are about the APP; the tag a row grows for its simulator or emulator rides
+      // Play and Stop are about the app; the tag a row grows for its simulator or emulator rides
       // behind them and must not take either off the row. An `==` clause did exactly that.
       assert.ok(play.test("dayDevice.startSimulator"), "Play lost to a device-state tag");
       assert.ok(stop.test("dayDeviceRunning.stopEmulator"), "Stop lost to a device-state tag");
@@ -2347,7 +2346,7 @@ const checks: Check[] = [
           );
         }
       }
-      // An untagged row — a physical phone, or a target nothing has been enumerated for — offers
+      // An untagged row (a physical phone, or a target nothing has been enumerated for) offers
       // none of them. Offering Start there would promise something no toolchain can do.
       for (const bare of ["dayDevice", "dayDeviceRunning", "dayTarget.mobile"]) {
         for (const entry of [startSim, stopSim, startEmu, stopEmu]) {
@@ -2375,7 +2374,7 @@ const checks: Check[] = [
         assert.ok(!add.test(no), `+ offered on ${no}`);
       }
 
-      // The IDE rows survive a SECOND tag after theirs. `.mobile` is appended after `.studio`, and
+      // The IDE rows survive a second tag after theirs. `.mobile` is appended after `.studio`, and
       // an end-anchored `\.studio$` silently dropped the entry from every Android row.
       const studio = matcher("day.openInAndroidStudio");
       const xcode = matcher("day.openInXcode");
@@ -2418,7 +2417,7 @@ const checks: Check[] = [
       assert.strictEqual(virtualDevice(ios, { id: "00008110-PHONE" }), undefined);
       // A simulator that has since been deleted is neither running nor startable.
       assert.strictEqual(virtualDevice(ios, { id: "UDID-GONE" }), undefined);
-      // Nothing enumerated yet, and a target whose toolchain is missing, are both "not known" —
+      // Nothing enumerated yet, and a target whose toolchain is missing, are both "not known",
       // and a menu that guessed "stopped" there would offer Start on a running simulator.
       assert.strictEqual(virtualDevice(undefined, { id: "UDID-UP" }), undefined);
       assert.strictEqual(
@@ -2444,8 +2443,8 @@ const checks: Check[] = [
         undefined,
       );
 
-      // Android keys its running emulators by adb SERIAL and its startable ones by AVD NAME, so a
-      // stopped row matches nothing by id — the AVD it was stored with is the whole link back.
+      // Android keys its running emulators by adb serial and its startable ones by AVD name, so a
+      // stopped row matches nothing by id; the AVD it was stored with is the whole link back.
       const android: TargetDevices = {
         target: "android-mdc",
         kind: "android",
@@ -2474,7 +2473,7 @@ const checks: Check[] = [
       );
 
       // The prompt a device row's Play puts up names the device and the kind of thing it is, in
-      // the platform's own words — the whole point is that agreeing starts THAT one.
+      // the platform's words, since agreeing starts that one.
       assert.strictEqual(
         startPrompt("iPad (A16)", off!),
         'The "iPad (A16)" iOS simulator is not currently running.',
@@ -2486,7 +2485,7 @@ const checks: Check[] = [
         })!),
         'The "Pixel_6_API_31" Android emulator is not currently running.',
       );
-      // Without the AVD there is no id to start — but the row is still recognizably an EMULATOR,
+      // Without the AVD there is no id to start, but the row is still recognizably an emulator,
       // and one that can be adopted rather than one that is gone. That is the whole difference
       // between a menu offering "Start Emulator…" and a menu offering nothing at all: every row
       // stored before the AVD was recorded holds a serial and nothing else.
@@ -2495,9 +2494,9 @@ const checks: Check[] = [
         noun: "emulator",
         platform: "Android",
       });
-      // A physical Android phone that is merely unplugged is NOT that: there is no AVD to pick.
+      // A physical Android phone that is merely unplugged is not that: there is no AVD to pick.
       assert.strictEqual(virtualDevice(android, { id: "19091FDF600BAY" }), undefined);
-      // Neither is a deleted simulator — asking "which one is this?" would invent an identity.
+      // Neither is a deleted simulator: asking "which one is this?" would invent an identity.
       assert.strictEqual(virtualDevice(ios, { id: "UDID-DELETED" }), undefined);
     },
   ],
@@ -2520,8 +2519,8 @@ const checks: Check[] = [
             flag: "--android-device",
           },
         ],
-        // Excluded from bootable precisely because it IS running — which is what left the row
-        // matching nothing at all and reading `not found`.
+        // Excluded from bootable because it is running, which is what left the row matching
+        // nothing at all and reading `not found`.
         bootable: [],
       };
       const stale = { id: "Pixel_9_API_36", avd: "Pixel_9_API_36" };
@@ -2546,7 +2545,7 @@ const checks: Check[] = [
         device: stale,
       }).bits, ["connected"]);
 
-      // A row whose AVD is genuinely absent is still not found, and an unrelated AVD is not it.
+      // A row whose AVD is absent is still not found, and an unrelated AVD is not it.
       assert.strictEqual(liveDevice(listing, { id: "Pixel_5_API_30", avd: "Pixel_5_API_30" }), undefined);
       // No AVD at all falls back to the id, which is the physical-device and iOS case.
       assert.strictEqual(liveDevice(listing, { id: "emulator-5556" })?.id, "emulator-5556");
@@ -2563,7 +2562,7 @@ const checks: Check[] = [
 
       assert.strictEqual(sessionIsLive(fresh, "macos-appkit", launchedAt), true);
       // The CLI stamps the session after the build, so an entry older than the launch is an
-      // earlier run's leftover — a crash leaves one — and must not end the spinner early.
+      // earlier run's leftover (a crash leaves one) and must not end the spinner early.
       assert.strictEqual(sessionIsLive(stale, "macos-appkit", launchedAt), false);
       assert.strictEqual(sessionIsLive(other, "macos-appkit", launchedAt), false);
       // Recorded in the same millisecond still counts: the stamp cannot precede the launch.
@@ -2619,7 +2618,7 @@ const checks: Check[] = [
         target: "android-mdc",
         kind: "android",
         available: true,
-        // The listing taken WHILE it boots: still nothing connected, still bootable. This is the
+        // The listing taken while it boots: still nothing connected, still bootable. This is the
         // reading that made adding a device look like it had done nothing at all.
         devices: [],
         bootable: [{ id: "Pixel_9_API_36", name: "Pixel_9_API_36" }],
@@ -2627,7 +2626,7 @@ const checks: Check[] = [
       const device = { id: "Pixel_9_API_36", avd: "Pixel_9_API_36" };
       const base = { running: false, loading: false, listing, device };
 
-      // Booting outranks the listing, and offers nothing while it is in flight — a row cannot be
+      // Booting outranks the listing, and offers nothing while it is in flight: a row cannot be
       // asked to start what it is already starting, or to stop what is not up yet.
       const booting = deviceRowState({ ...base, pending: "booting" });
       assert.deepStrictEqual(booting.bits, ["Booting…"]);
@@ -2823,9 +2822,9 @@ const checks: Check[] = [
         device: { id: "UDID-B", flag: "--ios-simulator", label: "iPhone SE" },
       });
 
-      // The NAME is the task's identity, and the presentation asks for a dedicated panel per
+      // The name is the task's identity, and the presentation asks for a dedicated panel per
       // identity. Two same-named launches share one terminal and each `clear: true` wipes the one
-      // before it, so two of three runs would be invisible — the device has to be in the name.
+      // before it, so two of three runs would be invisible; the device has to be in the name.
       assert.notStrictEqual(a.name, b.name, "two devices must not share a task identity");
       assert.ok(a.name.includes("iPhone 16"), a.name);
       assert.ok(b.name.includes("iPhone SE"), b.name);
@@ -2917,7 +2916,7 @@ const checks: Check[] = [
 
       await state.addDevice(root, t, a);
       await state.addDevice(root, t, b);
-      // Absent tick state means all of them — a project that predates ticking, or one where
+      // Absent tick state means all of them: a project that predates ticking, or one where
       // nobody has unticked anything, launches on everything it lists.
       assert.deepStrictEqual(
         state.tickedDevicesFor(root, t).map((d) => d.id),
@@ -2933,7 +2932,7 @@ const checks: Check[] = [
       );
 
       // Re-ticking restores both, and they read back in configured order however they were
-      // toggled — reads filter the configured list rather than replaying toggle order.
+      // toggled, because reads filter the configured list rather than replaying toggle order.
       await state.setDeviceTicked(root, t, a.id, true);
       assert.deepStrictEqual(state.tickedDevicesFor(root, t).map((d) => d.id), [a.id, b.id]);
 
@@ -2943,7 +2942,7 @@ const checks: Check[] = [
       await state.setAllDevicesTicked(root, t, true);
       assert.strictEqual(state.tickedDevicesFor(root, t).length, 2);
 
-      // A device added AFTER something was unticked still arrives ticked: adding it is saying you
+      // A device added after something was unticked still arrives ticked: adding it is saying you
       // want to run on it. With the tick map already present this is the case that would
       // otherwise land unticked and silently never launch.
       await state.setDeviceTicked(root, t, a.id, false);
@@ -2968,9 +2967,9 @@ const checks: Check[] = [
   [
     "a partially ticked target still reads as selected, and says how many of its devices run",
     () => {
-      // VS Code tree checkboxes are two-state — `TreeItemCheckboxState` is Checked/Unchecked and
-      // the workbench renders a plain toggle with no indeterminate path — so a partly ticked
-      // target cannot show a third state. It stays CHECKED while any device is ticked, because
+      // VS Code tree checkboxes are two-state (`TreeItemCheckboxState` is Checked/Unchecked and
+      // the workbench renders a plain toggle with no indeterminate path), so a partly ticked
+      // target cannot show a third state. It stays checked while any device is ticked, because
       // that is exactly when it still launches, and the count in the row carries the rest.
       assert.strictEqual(
         Object.keys(vscode.TreeItemCheckboxState).filter((k) => isNaN(Number(k))).length,
@@ -3073,7 +3072,7 @@ const checks: Check[] = [
       const logged: string[] = [];
       const log = (m: string) => logged.push(m);
       // Shaped like real `day build --format json` output: day's own status lines go to stderr, so
-      // stdout is result events only — but the parser must still survive a stray non-JSON line.
+      // stdout is result events only, but the parser must still survive a stray non-JSON line.
       const stream = [
         "not json at all",
         JSON.stringify({
@@ -3105,7 +3104,7 @@ const checks: Check[] = [
         DAY_IMAGE_ROOT: "/app/resource/images",
       });
 
-      // A target the CLI reported without a plan (a device or browser runtime) is not an error —
+      // A target the CLI reported without a plan (a device or browser runtime) is not an error;
       // it means "run this one without a debugger", and it has to say so rather than throw.
       const noPlan = JSON.stringify({
         event: "result",
@@ -3155,7 +3154,7 @@ const checks: Check[] = [
   [
     "Add Toolkit adds a target to the row's own project and re-reads it",
     async () => {
-      // Through the command the Targets row's + calls, on the project that is NOT focused, with the
+      // Through the command the Targets row's + calls, on the project that is not focused, with the
       // target passed in so no picker has to be answered. The target is one this host builds (the
       // task list skips the rest) whose platform files the fixture already has, so Day.toml is the
       // only file the CLI changes, and it is put back afterwards.
@@ -3290,7 +3289,7 @@ const checks: Check[] = [
       const first = await rootOf(folders[0]);
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
 
-      // Open Day.toml from the row of the project that is NOT focused.
+      // Open Day.toml from the row of the project that is not focused.
       await vscode.commands.executeCommand("day.openManifest", { kind: "project", root: second });
       const opened = vscode.window.activeTextEditor?.document.uri;
       assert.ok(opened, "Open Day.toml should leave an editor active");

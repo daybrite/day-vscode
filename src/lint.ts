@@ -1,13 +1,13 @@
 // `day lint` as editor diagnostics, with the repairs the CLI proposed offered as quick fixes.
 //
 // The CLI is the only thing that knows the rules. It reports each finding with a file, a line, a
-// severity and — for the few rules whose repair is safe and unambiguous — the exact replacement
+// severity and (for the few rules whose repair is safe and unambiguous) the exact replacement
 // text. This module does no analysis of its own: it maps that envelope onto VS Code's
 // DiagnosticCollection and CodeActionProvider, and applies fixes as workspace edits so they land
 // in the undo stack instead of behind the editor's back.
 //
-// Findings are keyed by PROJECT. A workspace can hold a dozen Day apps, and linting one must not
-// clear another's squiggles — every project owns the URIs its own last run produced, and only
+// Findings are keyed by project. A workspace can hold a dozen Day apps, and linting one must not
+// clear another's squiggles: every project owns the URIs its own last run produced, and only
 // those are replaced when it runs again.
 
 import * as cp from "child_process";
@@ -23,7 +23,7 @@ export interface LintFix {
   contents: string;
 }
 
-/** One finding from `day lint --json`. Read leniently — the envelope is grow-only. */
+/** One finding from `day lint --json`. Read leniently: the envelope is grow-only. */
 export interface LintFinding {
   code: string;
   severity?: "error" | "warning";
@@ -50,7 +50,7 @@ interface Envelope {
 interface Run {
   /** Every URI this project put diagnostics on. */
   uris: string[];
-  /** Fixes by URI, then by `code@line` — how a code action finds the repair for a diagnostic. */
+  /** Fixes by URI, then by `code@line`: how a code action finds the repair for a diagnostic. */
   fixes: Map<string, Map<string, LintFix>>;
 }
 
@@ -64,8 +64,8 @@ const keyOf = (code: string, line: number): string => `${code}@${line}`;
  * Turn one project's findings into the diagnostics an editor draws and the fixes a code action
  * offers, both keyed by URI.
  *
- * Separate from publishing so the mapping — 1-based to 0-based, severity, which findings are
- * squiggled at all — can be exercised without a CLI to run or a collection to write to.
+ * Separate from publishing so the mapping (1-based to 0-based, severity, which findings are
+ * squiggled at all) can be exercised without a CLI to run or a collection to write to.
  */
 export function mapFindings(
   root: string,
@@ -77,8 +77,8 @@ export function mapFindings(
   const diagnostics = new Map<string, vscode.Diagnostic[]>();
   const fixes = new Map<string, Map<string, LintFix>>();
   for (const f of findings) {
-    // A waived code is reported so a TOOL can see that an `--allow` is still in force, but it is
-    // not a problem the author needs squiggled — that is what waiving it meant.
+    // A waived code is reported so a tool can see that an `--allow` is still in force, but it is
+    // not a problem the author needs squiggled; that is what waiving it meant.
     if (f.waived || !f.file) {
       continue;
     }
@@ -138,7 +138,7 @@ export class Lint {
     return doc.counts ?? {};
   }
 
-  /** Forget one project's findings — on a refresh, or when its folder leaves the workspace. */
+  /** Forget one project's findings: on a refresh, or when its folder leaves the workspace. */
   clear(root: string): void {
     for (const uri of this.runs.get(root)?.uris ?? []) {
       this.diagnostics.delete(vscode.Uri.parse(uri));
@@ -201,7 +201,7 @@ export class Lint {
           env: { ...process.env, ...toolchainEnv() },
         },
         (err, stdout, stderr) => {
-          // `day lint` exits non-zero only under --strict, which this never passes — so an error
+          // `day lint` exits non-zero only under --strict, which this never passes, so an error
           // here is a CLI that could not run, and the envelope is worth trying to read anyway in
           // case the exit code came from somewhere else.
           try {
@@ -275,9 +275,9 @@ export class LintActions implements vscode.CodeActionProvider {
       );
       action.diagnostics = [diagnostic];
       action.edit = editFor(document, fix);
-      // VS Code runs the command AFTER applying the edit. Every fix is a whole-file rewrite
+      // VS Code runs the command after applying the edit. Every fix is a whole-file rewrite
       // computed from the text as it was, so a second one still holding the old contents would
-      // undo this one — re-linting drops those stale fixes before anyone can click them.
+      // undo this one; re-linting drops those stale fixes before anyone can click them.
       action.command = {
         command: "day.relintAfterFix",
         title: "Re-check",
@@ -286,7 +286,7 @@ export class LintActions implements vscode.CodeActionProvider {
       actions.push(action);
     }
 
-    // One "fix all" only when there is more than one thing to fix — with a single finding it
+    // One "fix all" only when there is more than one thing to fix; with a single finding it
     // would just be the same action worded twice.
     const all = this.lint.fixesIn(document.uri);
     if (all.length > 1) {

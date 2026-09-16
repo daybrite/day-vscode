@@ -1,7 +1,7 @@
 // Build the workspace's Day projects against the crate checkouts the workspace already holds.
 //
-// A window that has both an app and a checkout of something the app depends on — `day` itself, or
-// an external piece or part repository — almost always means the two are being worked on together.
+// A window that has both an app and a checkout of something the app depends on (`day` itself, or
+// an external piece or part repository) almost always means the two are being worked on together.
 // Cargo does not infer that: without a `[patch]` table the app fetches the published git revision
 // and the edit under test never reaches it, silently, with everything looking right. `day patch
 // --local <checkout>` writes that table, and this module decides when to offer it.
@@ -9,7 +9,7 @@
 // What counts as "the app depends on this checkout" is the CLI's question, and the answer here is
 // derived the same way it derives it (crates/day-cli/src/patch.rs): a checkout stands for one git
 // URL, and a project depends on it when its resolved graph or its manifests name that URL. The
-// alternative — handing every checkout to `day patch` and seeing what sticks — writes a patch
+// alternative, handing every checkout to `day patch` and seeing what sticks, writes a patch
 // table as a side effect of asking, which is not something to do behind a prompt that has not been
 // answered yet.
 
@@ -25,7 +25,7 @@ import { DayProject } from "./project";
  *  here exactly as `DAY_GIT` in crates/day-cli/src/patch.rs spells it. */
 const DAY_GIT = "https://github.com/daybrite/day.git";
 
-/** Remembers, per workspace, which offer was waved off — so "Not now" means not now, rather than
+/** Remembers, per workspace, which offer was waved off, so "Not now" means not now, rather than
  *  once per window for the life of the checkout. Keyed by the offer's content, so adding another
  *  checkout later asks again. */
 const DISMISSED = "day.localCheckouts.dismissed";
@@ -36,7 +36,7 @@ export interface LocalCheckout {
   dir: string;
   /** Its folder name, for messages. */
   name: string;
-  /** The git URL it stands for, canonicalized — how a dependent project names it. */
+  /** The git URL it stands for, canonicalized: how a dependent project names it. */
   url: string;
 }
 
@@ -62,7 +62,7 @@ function read(file: string): string {
 }
 
 /** One top-level string key from one of `tables`, without a TOML parser: the extension parses no
- *  manifests for meaning (project.ts explains why), and this is not meaning — it is the one field
+ *  manifests for meaning (project.ts explains why), and this is not meaning; it is the one field
  *  that says which URL a checkout answers to. Table-aware so a `repository` under some unrelated
  *  section cannot be mistaken for the package's own. */
 function tomlString(text: string, tables: string[], key: string): string | undefined {
@@ -90,7 +90,7 @@ function tomlString(text: string, tables: string[], key: string): string | undef
 
 /** The git URL a checkout stands for, or undefined when it cannot say. Mirrors `checkout_url`:
  *  the day repository is known by the canonical URL, and every other checkout declares its own
- *  through `repository` in `[package]` or `[workspace.package]` — which is exactly the field
+ *  through `repository` in `[package]` or `[workspace.package]`, which is exactly the field
  *  `day patch` refuses to run without. */
 function checkoutUrl(dir: string): string | undefined {
   if (fs.existsSync(path.join(dir, "crates", "day", "Cargo.toml"))) {
@@ -118,15 +118,15 @@ export function workspaceCheckouts(projects: DayProject[]): LocalCheckout[] {
   return found;
 }
 
-/** Every git URL this project resolves a dependency from. The lock is the honest answer — it is
- *  the graph cargo will actually build — and the manifests are the floor under it, for a project
+/** Every git URL this project resolves a dependency from. The lock is the answer (it is the
+ *  graph cargo will actually build), and the manifests are the floor under it, for a project
  *  that has never been built and has no lock yet. */
 async function gitSources(root: string): Promise<Set<string>> {
   const urls = new Set<string>();
   for (const m of read(path.join(root, "Cargo.lock")).matchAll(/^\s*source\s*=\s*"git\+([^"]+)"/gm)) {
     urls.add(canon(m[1]));
   }
-  // Members too, not just the root manifest: an app whose games live in `games/*` names its
+  // Members as well as the root manifest: an app whose games live in `games/*` names its
   // dependencies there, and the root is only a workspace table.
   const manifests = await vscode.workspace.findFiles(
     new vscode.RelativePattern(root, "**/Cargo.toml"),
@@ -143,7 +143,7 @@ async function gitSources(root: string): Promise<Set<string>> {
 
 /** Is this project already built against this checkout? `day patch` writes the table into the
  *  project's gitignored `.cargo/config.toml` with absolute paths, so the checkout's own path
- *  appearing there is the whole test — and it distinguishes THIS checkout from another clone of
+ *  appearing there is the whole test, and it distinguishes this checkout from another clone of
  *  the same repository, which a URL alone would not. */
 function alreadyPatched(root: string, checkout: LocalCheckout): boolean {
   return read(path.join(root, ".cargo", "config.toml")).includes(checkout.dir);
@@ -152,12 +152,12 @@ function alreadyPatched(root: string, checkout: LocalCheckout): boolean {
 /** The `day` checkout this workspace holds, when it holds one the CLI could be run from.
  *
  * `crates/day-cli/Cargo.toml`, not the `crates/day` that identifies the framework for patching:
- * this asks whether the checkout can BUILD the CLI, which is the thing `day.cliSource` needs and
+ * this asks whether the checkout can build the CLI, which is the thing `day.cliSource` needs and
  * the thing resolveCli refuses without. */
 function cliSourceCandidate(checkouts: LocalCheckout[]): LocalCheckout | undefined {
   const already = (vscode.workspace.getConfiguration("day").get<string>("cliSource") ?? "").trim();
   if (already) {
-    // Set already, and possibly on purpose to a checkout that is not in this window. Offering to
+    // Set already, possibly to a checkout that is not in this window by choice. Offering to
     // change it would be overriding an answer rather than asking a question.
     return undefined;
   }
@@ -238,11 +238,11 @@ function offerKey(plans: PatchPlan[]): string {
 }
 
 /**
- * Offer — or, under `day.localCheckouts: always`, simply do — what this workspace makes possible.
+ * Offer (or, under `day.localCheckouts: always`, do) what this workspace makes possible.
  *
  * Called on activation, when a folder is added to the workspace, and from the command. It is
- * cheap when there is nothing to do (a few file reads), and silent: the point of the prompt is
- * that a window holding two repositories is not proof that someone wants one built against the
+ * cheap when there is nothing to do (a few file reads), and silent. It prompts because
+ * a window holding two repositories is not proof that someone wants one built against the
  * other, and rewriting a project's cargo resolution unasked would be a surprising thing to find.
  *
  * `manual` is the command's path: it reports the nothing-to-do cases out loud, which a startup
@@ -288,7 +288,7 @@ export async function offerLocalCheckouts(
   }
 }
 
-/** "Build these projects against these checkouts?" — the cargo-resolution half. */
+/** "Build these projects against these checkouts?": the cargo-resolution half. */
 async function offerPatches(
   plans: PatchPlan[],
   mode: string,
@@ -332,10 +332,10 @@ async function offerPatches(
 }
 
 /**
- * "Run the CLI from that checkout too?" — the other half of what `scripts/dev.sh` sets up.
+ * "Run the CLI from that checkout too?": the other half of what `scripts/dev.sh` sets up.
  *
- * Patching decides which day crates the APP builds against; this decides which `day` binary the
- * EDITOR runs. They are worth asking separately because the answers differ: the patch table is a
+ * Patching decides which day crates the app builds against; this decides which `day` binary the
+ * editor runs. They are worth asking separately because the answers differ: the patch table is a
  * gitignored file, while this is a workspace setting, and it costs about a second per invocation
  * for cargo's freshness check (`day.cliSource` says so in full).
  *

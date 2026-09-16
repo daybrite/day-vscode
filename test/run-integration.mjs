@@ -20,8 +20,8 @@ const dayBin = process.env.DAY_BIN || "day";
 const work = shortTmp("day-vsc-int");
 const parent = fixtureParent(work);
 
-// TWO projects, in a multi-root workspace: the extension is a multi-project cockpit, and a suite
-// that only ever saw one could not tell per-project state from window-wide state — which is the
+// Two projects, in a multi-root workspace: the extension is a multi-project cockpit, and a suite
+// that only ever saw one could not tell per-project state from window-wide state, which is the
 // distinction the whole selection store turns on. `day new app` is cheap (nothing is compiled
 // here), so the second fixture costs seconds.
 const primary = scaffold({ dayBin, parent });

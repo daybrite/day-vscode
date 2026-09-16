@@ -3,15 +3,15 @@
 // Resolution order:
 //   0. `day.cliSource` pointing at a day checkout → `cargo run` against it, so an edit to the CLI
 //      is compiled into the very next build or launch. This is the CLI-development mode, and it
-//      wins over everything below because that is the whole point of setting it;
+//      wins over everything below, since that is what setting it asks for;
 //   1. an explicit `day.cliPath` set to something other than "day" → use it verbatim;
-//   2. otherwise, if a Day checkout is in reach — the workspace is the Day repo (a Cargo workspace
-//      with a `day-cli` member), or a `day/` repo sits beside this extension — use ITS CLI:
+//   2. otherwise, if a Day checkout is in reach (the workspace is the Day repo, a Cargo workspace
+//      with a `day-cli` member, or a `day/` repo sits beside this extension), use its CLI:
 //      `target/debug/day` when that has been built, else `cargo run -q -p day-cli --` to build it;
 //   3. otherwise `day` (expected on PATH).
 //
 // The built binary is preferred over `cargo run` because it needs nothing on the extension host's
-// PATH. An extension host inherits the environment of whatever started VS Code — a window opened
+// PATH. An extension host inherits the environment of whatever started VS Code; a window opened
 // by an already-running instance carries that instance's PATH, which is why `cargo run` could fail
 // with ENOENT on a machine where cargo is plainly installed, and the extension would then report a
 // missing `day` CLI and offer to install one it did not need.
@@ -25,7 +25,7 @@ import { managedCliBinary } from "./install";
 
 // Where this extension is loaded from, captured once at activation. When it runs from source
 // beside a `day/` checkout (an `--extensionDevelopmentPath` dev host in the daybrite monorepo),
-// `resolveCli` can build the CLI straight from that peer repo — see `findPeerDayRepo`.
+// `resolveCli` can build the CLI straight from that peer repo; see `findPeerDayRepo`.
 let extensionRoot: string | undefined;
 
 /** Record the extension's own directory (call once from `activate`). */
@@ -80,8 +80,8 @@ export function findDayRepoRoot(start?: string): string | undefined {
 }
 
 /** If this extension sits beside a local `day/` repo checkout (…/day-vscode next to …/day),
- *  return that repo's root. Matches only a real checkout — a Cargo workspace carrying the
- *  `day-cli` member — so an installed extension under `~/.vscode/extensions` never trips it. */
+ *  return that repo's root. Matches only a real checkout (a Cargo workspace carrying the
+ *  `day-cli` member), so an installed extension under `~/.vscode/extensions` never trips it. */
 export function findPeerDayRepo(): string | undefined {
   if (!extensionRoot) {
     return undefined;
@@ -120,7 +120,7 @@ function checkoutCli(
   if (built) {
     // No cwd: the caller runs it in the project directory, exactly as an installed `day` would be.
     // A day-cli source edit is picked up by rebuilding it (the dev scripts do that on every run),
-    // not by this call — the trade for not paying a cargo lock on every metadata refresh.
+    // not by this call: the trade for not paying a cargo lock on every metadata refresh.
     return { command: built, baseArgs: [], display: built };
   }
   // cwd is the repo root, so cargo reads that workspace's `.cargo/config`, not the target
@@ -148,8 +148,8 @@ function isDayCheckout(dir: string): boolean {
 
 /** Whether `cargo` can be spawned at all, resolved the way the shell would and cached per session.
  *
- *  An extension host inherits the environment of whatever started VS Code — a window opened by an
- *  already-running instance carries THAT instance's PATH, which frequently lacks `~/.cargo/bin`.
+ *  An extension host inherits the environment of whatever started VS Code; a window opened by an
+ *  already-running instance carries that instance's PATH, which frequently lacks `~/.cargo/bin`.
  *  Checking up front lets `day.cliSource` fall back to the checkout's built binary instead of
  *  failing every CLI call with ENOENT. */
 let cargoOnPath: boolean | undefined;
@@ -188,7 +188,7 @@ export function resolveCli(projectDir?: string): DayCli {
       );
     } else if (!hasCargo()) {
       // Falling back rather than failing: the built binary in that same tree is what the dev
-      // scripts leave behind, so the window still works — just without picking up CLI edits.
+      // scripts leave behind, so the window still works, just without picking up CLI edits.
       const built = findBuiltDayBinary(repo);
       warnOnce(
         built
@@ -209,7 +209,7 @@ export function resolveCli(projectDir?: string): DayCli {
         "day-cli",
         "--",
       ];
-      // cwd is the checkout, so cargo reads THAT workspace's config rather than the app's.
+      // cwd is the checkout, so cargo reads that workspace's config rather than the app's.
       return {
         command: "cargo",
         baseArgs,
@@ -234,7 +234,7 @@ export function resolveCli(projectDir?: string): DayCli {
 
   // Dev-host convenience: the extension runs from a `day-vscode/` checkout beside a `day/` repo,
   // but the open project lives outside that repo (e.g. a sibling `Day-Games/`). Take the CLI from
-  // the peer repo — built binary first, else cargo against its manifest — so its projects load
+  // the peer repo (built binary first, else cargo against its manifest), so its projects load
   // with no installed `day` on PATH.
   const peer = findPeerDayRepo();
   if (peer) {
@@ -247,7 +247,7 @@ export function resolveCli(projectDir?: string): DayCli {
   }
 
   // A CLI this extension built from source (Day: Install the day CLI…). After the checkouts,
-  // which are a deliberate local override, but ahead of PATH: it is pinned to `day.cliVersion`,
+  // which are a local override, but ahead of PATH: it is pinned to `day.cliVersion`,
   // and it is what lets the extension work on a machine with no `day` installed at all.
   const managed = globalStorage && managedCliBinary(globalStorage);
   if (managed) {
@@ -337,15 +337,15 @@ export function buildArgs(
  * Args for `day lint --json`.
  *
  * `--project` is not optional decoration here: with `day.cliSource` set the command runs as
- * `cargo run --manifest-path <checkout>` with the CHECKOUT as its cwd, so cwd-based `Day.toml`
- * discovery would find day's own repo — or nothing — instead of the app.
+ * `cargo run --manifest-path <checkout>` with the checkout as its cwd, so cwd-based `Day.toml`
+ * discovery would find day's own repo, or nothing, instead of the app.
  */
 export function lintArgs(projectRoot: string): string[] {
   return [...projectArgs(projectRoot), "lint", "--json"];
 }
 
-/** Args for `day clean` — `--project` explicit, because dev-mode (`cargo run` in the day
- *  checkout) runs with the CHECKOUT as cwd, where ancestor Day.toml discovery finds nothing. */
+/** Args for `day clean`, with `--project` explicit, because dev-mode (`cargo run` in the day
+ *  checkout) runs with the checkout as cwd, where ancestor Day.toml discovery finds nothing. */
 export function cleanArgs(projectRoot: string): string[] {
   return [...projectArgs(projectRoot), "clean"];
 }
@@ -360,7 +360,7 @@ export function addToolkitArgs(projectRoot: string, targets: string[]): string[]
  * checkouts open beside it (see localdeps.ts).
  *
  * Every checkout in one invocation, and `--project` for the same reason the others carry it. The
- * table is rewritten whole each time, so a second call naming one checkout drops the first — which
+ * table is rewritten whole each time, so a second call naming one checkout drops the first, which
  * is why the caller collects them rather than looping.
  */
 export function patchArgs(projectRoot: string, checkouts: string[]): string[] {
@@ -377,8 +377,8 @@ export function patchArgs(projectRoot: string, checkouts: string[]): string[] {
  *
  * `--project` for the same reason `clean` and `lint` carry it, and it is not decoration: this one
  * runs on the way to Xcode or Android Studio, so without it the whole command fails in dev-mode
- * with "no Day.toml found in this directory or any ancestor" — the cwd being the day checkout,
- * which has no Day.toml of its own — and the IDE never opens.
+ * with "no Day.toml found in this directory or any ancestor" (the cwd being the day checkout,
+ * which has no Day.toml of its own), and the IDE never opens.
  */
 export function prepareArgs(projectRoot: string, target: string): string[] {
   return [...projectArgs(projectRoot), "prepare", "-p", target];
@@ -389,7 +389,7 @@ export function prepareArgs(projectRoot: string, target: string): string[] {
  *
  * Terminating the task is not enough for a target whose app does not run as a child of `day`. On
  * Android the app is started with `am start` and lives in the device's own process table; killing
- * the launcher — which is what VS Code does to a task, without letting it clean up — leaves the
+ * the launcher (which is what VS Code does to a task, without letting it clean up) leaves the
  * app on screen and its session in the registry. `day stop` does the platform-appropriate thing
  * (`am force-stop`, `simctl terminate`, `aa force-stop`, pkill) and drops the session.
  */
@@ -400,8 +400,8 @@ export function stopArgs(projectRoot: string, target: string): string[] {
 /**
  * The provider id `package.json` contributes under `mcpServerDefinitionProviders`, and the id
  * `registerMcpServerDefinitionProvider` registers with. VS Code matches the two by string, and a
- * mismatch is silent — the provider is simply never asked, and agent mode shows no Day tools with
- * nothing logged anywhere — so both sides read it from here.
+ * mismatch is silent (the provider is never asked, and agent mode shows no Day tools with
+ * nothing logged anywhere), so both sides read it from here.
  */
 export const MCP_PROVIDER_ID = "day";
 
@@ -412,7 +412,7 @@ export function mcpServerArgs(projectRoot: string): string[] {
 
 /** How to spawn one Day MCP server. */
 export interface McpServerSpec {
-  /** What names this server in VS Code's MCP list — and how an agent picks between projects. */
+  /** What names this server in VS Code's MCP list, and how an agent picks between projects. */
   label: string;
   command: string;
   args: string[];
@@ -428,7 +428,7 @@ export interface McpProject {
   title?: string;
 }
 
-/** Last path segment, on either separator — `path.basename` returns the whole string when handed
+/** Last path segment, on either separator; `path.basename` returns the whole string when handed
  *  a Windows path on a POSIX host, which is exactly the case a test exercises. */
 function baseName(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? p;
@@ -438,7 +438,7 @@ function baseName(p: string): string {
  * Server labels, one per project, disambiguated when two apps share a display name.
  *
  * Two identically-named entries in the MCP list would reintroduce the very ambiguity these labels
- * exist to remove, and it is not hypothetical — a window can hold two checkouts of the same app.
+ * exist to remove, and it is not hypothetical: a window can hold two checkouts of the same app.
  */
 function mcpLabels(projects: McpProject[]): string[] {
   const display = projects.map((p) => p.title?.trim() || p.name);
@@ -454,11 +454,11 @@ function mcpLabels(projects: McpProject[]): string[] {
 }
 
 /**
- * One MCP server per Day project in the window — empty when `day.mcp.enabled` is off, or when the
+ * One MCP server per Day project in the window; empty when `day.mcp.enabled` is off, or when the
  * window holds no Day project.
  *
  * Every server is bound to a single project at spawn, because `day mcp-server` takes `--project`
- * and its tools take no project argument. Serving only the FOCUSED project therefore silently
+ * and its tools take no project argument. Serving only the focused project therefore silently
  * misdirects any agent asked about a second app in the same window: `day_launch` builds the
  * focused app instead, and `day_running` reports no sessions for an app the user can see running,
  * because the session registry lives at `<root>/build/day/sessions.json` and is read under the
@@ -489,12 +489,12 @@ export function mcpServerSpecs(projects: McpProject[]): McpServerSpec[] {
 }
 
 /**
- * How the server should re-invoke the CLI for each tool call, when that is not simply the binary
+ * How the server should re-invoke the CLI for each tool call, when that is not the binary
  * it is already running as.
  *
  * `day mcp-server` shells back into the CLI for every tool, and by default that means its own
  * executable. In a `day.cliSource` window the CLI is `cargo run` against the open `day/` checkout,
- * and the server's executable is the `target/debug/day` cargo produced when the server STARTED —
+ * and the server's executable is the `target/debug/day` cargo produced when the server started,
  * so without this, a day-cli edit would reach the editor's Build and Run commands but not the
  * agent's tools, and the same window would be running two different CLIs. Working on `day/` and an
  * app together in one session is exactly what `scripts/dev.sh` sets up, so the two must agree.

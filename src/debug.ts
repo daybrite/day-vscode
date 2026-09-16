@@ -1,18 +1,18 @@
 // Native "Run and Debug" integration.
 //
 // Contributes the `day` debug type so F5 / Run → Start Debugging / the Run and Debug panel launch a
-// Day app exactly like the cockpit's Run button — same selection (target, mode, locale, script,
-// keep-alive). What happens next depends on what was asked for:
+// Day app exactly like the cockpit's Run button, with the same selection (target, mode, locale,
+// script, keep-alive). What happens next depends on what was asked for:
 //
-//   * "Start Debugging" on a DESKTOP target, with a Rust debugger installed, delegates: the app is
-//     built, and `resolveDebugConfiguration` hands back a config of THAT debugger's type, pointed
+//   * "Start Debugging" on a desktop target, with a Rust debugger installed, delegates: the app is
+//     built, and `resolveDebugConfiguration` hands back a config of that debugger's type, pointed
 //     at the binary. VS Code starts it instead of us, so breakpoints, stepping, and variable
-//     inspection are the real thing — we never implement a debugger, we route to one.
+//     inspection are that debugger's: we never implement a debugger, we route to one.
 //   * everything else (a device or browser target, "Run Without Debugging", no debugger installed)
 //     runs through the launch-only inline adapter below: it spawns `day launch`, streams the
 //     console into the Debug Console, and ends the session when the app exits.
 //
-// Owning no debug adapter is a deliberate constraint (PLAN.md): every framework extension that
+// Owning no debug adapter is a constraint set in PLAN.md: every framework extension that
 // shipped its own rotted, and the ones that delegated survived.
 
 import * as childProcess from "child_process";
@@ -34,21 +34,21 @@ export interface DayLaunchConfig extends vscode.DebugConfiguration {
   script?: string;
   keepAlive?: boolean;
   project?: string;
-  /** Set by VS Code for "Run Without Debugging" (Ctrl+F5) — never delegate to a debugger then. */
+  /** Set by VS Code for "Run Without Debugging" (Ctrl+F5); never delegate to a debugger then. */
   noDebug?: boolean;
 }
 
 /** `day build --format json`'s per-target `launch` object: how to start the built binary the way
- *  `day launch` would. The CLI is the only producer (ops.rs `desktop_launch_plan`) — the whole
- *  point is that the debugger inherits the same environment a normal run gets, so an app under a
- *  breakpoint finds its images, vectors, fonts, and identity exactly as it otherwise would. */
+ *  `day launch` would. The CLI is the only producer (ops.rs `desktop_launch_plan`), so that the
+ *  debugger inherits the same environment a normal run gets and an app under a breakpoint finds
+ *  its images, vectors, fonts, and identity exactly as it otherwise would. */
 export interface DesktopLaunchPlan {
   program: string;
   args: string[];
   cwd: string;
   env: Record<string, string>;
   /** A wrapper argv (`xvfb-run`) this host needs to give the app a display, if any. A debugger
-   *  launches `program` itself and cannot run inside it — present means "warn, then try". */
+   *  launches `program` itself and cannot run inside it; present means "warn, then try". */
   wrapper: string[] | null;
 }
 
@@ -59,7 +59,7 @@ export interface Delegate {
   key: DelegateKey;
   extensionId: string;
   label: string;
-  /** The `type` the delegated config takes — the debug type VS Code will actually start. */
+  /** The `type` the delegated config takes: the debug type VS Code will actually start. */
   debugType(): string;
   /** Shape a plan into that adapter's launch attributes. They agree on program/args/cwd and
    *  disagree on the environment, which is the only reason this is a function per delegate. */
@@ -95,7 +95,7 @@ const DELEGATES: Delegate[] = [
       program: plan.program,
       args: plan.args,
       cwd: plan.cwd,
-      // cpptools takes name/value pairs rather than a map — the one real shape difference.
+      // cpptools takes name/value pairs rather than a map, the one shape difference.
       environment: Object.entries(env).map(([name, value]) => ({ name, value })),
       ...(process.platform === "win32"
         ? {}
@@ -104,7 +104,7 @@ const DELEGATES: Delegate[] = [
   },
 ];
 
-/** One delegate by key, regardless of whether it is installed — the integration suite asserts each
+/** One delegate by key, regardless of whether it is installed: the integration suite asserts each
  *  adapter's attribute shape, which is where a schema mismatch would otherwise surface as a failed
  *  debug session on someone else's machine. */
 export function delegateByKey(key: DelegateKey): Delegate | undefined {
@@ -138,7 +138,7 @@ export interface DebugDeps {
   /** Restart semantics: drop any instance of this project's target already running, so F5
    *  relaunches rather than stacking a second one. */
   stopIfRunning: (root: string, target: string) => Promise<void>;
-  /** The extension's "Day" output channel — where a delegated build's progress and failures go. */
+  /** The extension's "Day" output channel, where a delegated build's progress and failures go. */
   output: vscode.OutputChannel;
 }
 
@@ -146,7 +146,7 @@ export interface DebugDeps {
  * Build `target` and return the launch plan the CLI computed for it.
  *
  * The build runs here as a child process rather than as a `preLaunchTask`, because the plan is
- * only available in `day build --format json`'s stdout — going through a task would mean building
+ * only available in `day build --format json`'s stdout; going through a task would mean building
  * twice, once for the terminal and once for the JSON. rust-analyzer's Debug lens resolves its
  * executable the same way (`cargo build --message-format=json`), for the same reason.
  *
@@ -217,8 +217,8 @@ export function planFrom(
       if (entry?.launch?.program) {
         return entry.launch;
       }
-      // A result event that names the target but carries no plan is the honest "this runtime has
-      // no local process" case (a device or a browser) — not a parse problem.
+      // A result event that names the target but carries no plan is the "this runtime has no
+      // local process" case (a device or a browser), not a parse problem.
       log(`no launch plan for ${target} — running without a debugger`);
       return undefined;
     } catch {
@@ -231,7 +231,7 @@ export function planFrom(
 
 /**
  * Supplies `day` launch configs (for the dynamic Run dropdown and `launch.json` authoring) and
- * fills in a bare F5 from the cockpit selection — so running with no `launch.json` does exactly
+ * fills in a bare F5 from the cockpit selection, so running with no `launch.json` does exactly
  * what the cockpit Run button does.
  */
 export class DayConfigProvider implements vscode.DebugConfigurationProvider {
@@ -264,8 +264,8 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
   }
 
   /**
-   * Resolve a launch. The decision is driven by whether a usable `target` is present — NOT by
-   * whether `type` is set — because the "Run and Debug" button synthesizes a `{type:"day",
+   * Resolve a launch. The decision is driven by whether a usable `target` is present, not by
+   * whether `type` is set, because the "Run and Debug" button synthesizes a `{type:"day",
    * request:"launch"}` config with no target, exactly like a bare F5's empty object. Any config
    * lacking a concrete target mirrors the cockpit Run button: launch the ticked targets (prompting
    * for one if none are ticked). A config that names a target is honored directly.
@@ -292,13 +292,13 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
       return this.delegate(folder, c as DayLaunchConfig);
     }
 
-    // No target — the "Run and Debug" button / bare F5: launch the ticked targets, or prompt when
-    // none are ticked so the button always leads somewhere.
+    // No target (the "Run and Debug" button or a bare F5): launch the ticked targets, or prompt
+    // when none are ticked so the button always leads somewhere.
     let targets = this.deps.runnableTargets();
     if (targets.length === 0) {
       const picked = await this.promptTargets();
       if (!picked || picked.length === 0) {
-        return undefined; // cancelled — abort quietly
+        return undefined; // cancelled: abort quietly
       }
       targets = picked;
     }
@@ -321,12 +321,12 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
   }
 
   /**
-   * Turn a resolved `day` launch into a REAL debug session where that is possible: a desktop
+   * Turn a resolved `day` launch into a real debug session where that is possible: a desktop
    * target, an actual "Start Debugging", and an installed Rust debugger.
    *
    * **VS Code does not honor a `type` changed during resolution.** Returning a config whose type is
-   * `lldb-dap` from a `day` provider resolves nothing and starts nothing — `startDebugging` simply
-   * answers false. So the delegated session is started HERE, as its own top-level session, and this
+   * `lldb-dap` from a `day` provider resolves nothing and starts nothing: `startDebugging`
+   * answers false. So the delegated session is started here, as its own top-level session, and this
    * one is aborted by returning `undefined` (which cancels quietly; `null` would open launch.json).
    * The multi-target branch above uses the same shape for the same reason.
    *
@@ -339,7 +339,7 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
     cfg: DayLaunchConfig,
   ): Promise<vscode.DebugConfiguration | undefined> {
     if (cfg.noDebug) {
-      return cfg; // "Run Without Debugging" — the launch-only adapter IS the run
+      return cfg; // "Run Without Debugging": the launch-only adapter is the run
     }
     if (findTarget(cfg.target)?.kind !== "desktop") {
       // Devices and browsers run under runtimes of their own; attaching to those is a separate
@@ -359,7 +359,7 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
       this.deps.output,
     );
     if (!plan) {
-      return cfg; // build failed, or the CLI reported no plan — run rather than start nothing
+      return cfg; // build failed, or the CLI reported no plan: run rather than start nothing
     }
     if (plan.wrapper) {
       void vscode.window.showWarningMessage(
@@ -375,7 +375,7 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
     }
     // The locale and extra environment the cockpit would have passed as `--locale` / `--env`. A
     // plain `day build` knows neither, so the CLI's plan cannot carry them and they are layered
-    // here — otherwise a debugged run would quietly differ from the same run through Run.
+    // here; otherwise a debugged run would quietly differ from the same run through Run.
     const env: Record<string, string> = {
       ...plan.env,
       ...(cfg.locale ? { DAY_LOCALE: cfg.locale } : {}),
@@ -390,7 +390,7 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
       name: cfg.name,
       ...delegate.attributes(plan, env),
     };
-    // Not awaited: this call runs INSIDE a resolve, and waiting on a nested session start from
+    // Not awaited: this call runs inside a resolve, and waiting on a nested session start from
     // there is a good way to deadlock. Failure is reported rather than swallowed.
     void vscode.debug.startDebugging(folder, delegated).then((started) => {
       if (!started) {
@@ -460,7 +460,7 @@ export class DayDebugAdapterFactory implements vscode.DebugAdapterDescriptorFact
 }
 
 /**
- * A minimal Debug Adapter Protocol implementation that runs — but does not debug — a Day app. It
+ * A minimal Debug Adapter Protocol implementation that runs, but does not debug, a Day app. It
  * answers just enough of the protocol for VS Code to show a live session (initialize/launch/threads/
  * disconnect), spawns `day launch`, and pipes stdout/stderr into the Debug Console. The session ends
  * when the CLI exits; Stop sends SIGTERM, whose CLI-side handler terminates the app and its watchers.
@@ -479,7 +479,7 @@ class DayLaunchAdapter implements vscode.DebugAdapter {
     }
     switch (msg.command) {
       case "initialize":
-        // No debugger — advertise only that we can be terminated cleanly.
+        // No debugger: advertise only that we can be terminated cleanly.
         this.respond(msg, { supportsTerminateRequest: true, supportsConfigurationDoneRequest: true });
         this.send({ type: "event", event: "initialized" });
         break;

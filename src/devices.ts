@@ -1,13 +1,13 @@
 // What a mobile target can be launched onto, from `day devices list -p <target> --json`.
 //
-// The CLI owns every native tool this touches — simctl, devicectl, adb, hdc — and reports them
+// The CLI owns every native tool this touches (simctl, devicectl, adb, hdc) and reports them
 // through one versioned, grow-only envelope, so this module parses rather than probes. In
-// particular each device carries the FLAG that selects it, because iOS needs a different one for a
+// particular each device carries the flag that selects it, because iOS needs a different one for a
 // booted simulator than for a plugged-in phone; deriving that here would put the same knowledge in
 // two places and guarantee they drift.
 //
-// Everything is per TARGET, never "all mobile targets at once". Asking for one costs only that
-// one's tool — 0.13s for adb against 1.3s for the full sweep — but the reason is more than speed:
+// Everything is per target, never "all mobile targets at once". Asking for one costs only that
+// one's tool (0.13s for adb against 1.3s for the full sweep), but the reason is more than speed:
 // opening the iOS picker has no business running `adb`, which starts a server daemon that outlives
 // the command. You get what you asked about and nothing else.
 //
@@ -21,7 +21,7 @@ import * as vscode from "vscode";
 import { renderCommand, resolveCli } from "./cli";
 import { toolchainEnv } from "./tasks";
 
-/** One device the CLI reported. Read leniently — the envelope is grow-only. */
+/** One device the CLI reported. Read leniently; the envelope is grow-only. */
 export interface Device {
   id: string;
   name: string;
@@ -34,7 +34,7 @@ export interface Device {
   /** The `day launch` flag that selects this device. */
   flag?: string;
   /**
-   * For an Android emulator, the AVD it is running — the name `day devices boot` starts it by.
+   * For an Android emulator, the AVD it is running, the name `day devices boot` starts it by.
    *
    * A `bootable` AVD reports it as its own name, so a row seeded from one before it has any serial
    * still knows which emulator it is.
@@ -60,18 +60,18 @@ interface Envelope {
 }
 
 /**
- * What a device row is doing right now, as far as THIS session is concerned.
+ * What a device row is doing right now, as far as this session is concerned.
  *
  * A listing describes the machine; this describes our own action on it, which no listing can see:
  * a simulator that has been asked to boot is not yet in `devices` and is still in `bootable`, so
  * a row rendered from the listing alone reads "not running" for the whole minute it spends coming
- * up — and reads the same afterwards if it never made it.
+ * up, and reads the same afterwards if it never made it.
  *
  * `checking` is the shortest of them: Play (or a Start/Stop entry) first asks the CLI whether the
  * device is up, which is adb or simctl and takes seconds, and until it answers the row would look
  * as if the click had been lost.
  *
- * `failed` outlives the action deliberately. A boot that fails is reported in a dialog the user
+ * `failed` outlives the action. A boot that fails is reported in a dialog the user
  * may well dismiss before reading, and a row that then looks exactly like one nobody has touched
  * gives them nothing to come back to.
  */
@@ -119,12 +119,12 @@ export function invalidate(target?: string): void {
   }
 }
 
-/** Whether THIS target is being enumerated right now — a row spins only for its own query. */
+/** Whether this target is being enumerated right now; a row spins only for its own query. */
 export function loading(target: string): boolean {
   return inFlight.has(target);
 }
 
-/** One target's listing if it is known and fresh, without running anything — for the tree, which
+/** One target's listing if it is known and fresh, without running anything: for the tree, which
  *  renders synchronously and cannot wait on adb. */
 export function cached(target: string): TargetDevices | undefined {
   const hit = cache.get(target);
@@ -177,7 +177,7 @@ function run(
       (err, stdout, stderr) => {
         if (err) {
           // Reported, never thrown: a missing CLI, or one too old to have `day devices`, must
-          // leave the sidebar usable — just without device rows.
+          // leave the sidebar usable, just without device rows.
           output?.appendLine(
             `✗ ${renderCommand(cli, args.slice(cli.baseArgs.length))}: ${stderr.trim() || err.message}`,
           );
@@ -212,7 +212,7 @@ function run(
  *
  * `wait` blocks until the device has finished booting rather than until the boot has been asked
  * for. What a row's Start wants: the answer decides what the row says next, and an Android
- * emulator is not in `adb devices` for a while after the command returns — so without it the row
+ * emulator is not in `adb devices` for a while after the command returns, so without it the row
  * that was just started reads `not found`.
  */
 export interface BootResult {
@@ -223,8 +223,8 @@ export interface BootResult {
    *
    * The one authoritative answer to "which device did I just start?", and the reason this is
    * returned rather than discarded: matching an AVD name against a fresh listing afterwards is a
-   * race with two ways to lose — `adb devices` may not list it yet, and `adb emu avd name` may not
-   * answer for a machine still settling — and losing it leaves the row pointing at a name no
+   * race with two ways to lose (`adb devices` may not list it yet, and `adb emu avd name` may not
+   * answer for a machine still settling), and losing it leaves the row pointing at a name no
    * listing will ever contain. Absent for iOS, where the UDID never moves.
    */
   serial?: string;
@@ -247,15 +247,15 @@ export function boot(
       args,
       {
         cwd: cli.cwd ?? projectRoot,
-        // Waiting means waiting for the DEVICE, and an Android emulator's cold boot is minutes,
-        // not seconds — the CLI gives up at ten and says why. Cutting it short here would kill
+        // Waiting means waiting for the device, and an Android emulator's cold boot is minutes,
+        // not seconds; the CLI gives up at ten and says why. Cutting it short here would kill
         // the report without stopping the emulator, which stays detached either way.
         timeout: wait ? 15 * 60_000 : 120_000,
         env: { ...process.env, ...toolchainEnv() },
       },
       (err, stdout, stderr) => {
         invalidate(target);
-        // Status lines go to stderr, so stdout is only ever the serial — or nothing at all.
+        // Status lines go to stderr, so stdout is only ever the serial, or nothing at all.
         const serial = stdout.trim();
         resolve({
           failed: err ? stderr.trim() || err.message : undefined,
@@ -269,8 +269,8 @@ export function boot(
 /**
  * A configured device's standing as something this extension can start and stop.
  *
- * `noun` is the word the menu uses, and it comes from the TARGET rather than from the device:
- * "simulator" on iOS, "emulator" on Android. The distinction is the user's own — a row offering to
+ * `noun` is the word the menu uses, and it comes from the target rather than from the device:
+ * "simulator" on iOS, "emulator" on Android. The distinction is the user's own: a row offering to
  * "Start Emulator" for an iPhone would be naming the wrong thing.
  */
 export interface VirtualDevice {
@@ -280,8 +280,8 @@ export interface VirtualDevice {
    * The id to hand `day devices boot` / `day devices shutdown`.
    *
    * Absent for one case, always a stopped Android row: an emulator whose AVD is not known, so
-   * there is nothing to start it BY. The caller has to ask which AVD the row is before it can act
-   * — see [`unidentified`].
+   * there is nothing to start it by. The caller has to ask which AVD the row is before it can act;
+   * see [`unidentified`].
    */
   id?: string;
   noun: "simulator" | "emulator";
@@ -293,23 +293,23 @@ export interface VirtualDevice {
  * Whether one configured device is a simulator or emulator this extension can start and stop, and
  * under which id.
  *
- * `undefined` covers three different situations on purpose, all of which mean the same thing for a
- * menu — offer nothing:
+ * `undefined` covers three different situations, all of which mean the same thing for a menu,
+ * which is to offer nothing:
  *
  *   * nothing has been enumerated for this target yet, or its toolchain is missing, so the answer
  *     is not known. Guessing "stopped" would put Start on a row that is running.
  *   * the device is a physical phone. There is no software to start, and unplugging it is the way
  *     to stop it.
- *   * it is neither running nor startable — a simulator that was deleted, or an emulator whose AVD
+ *   * it is neither running nor startable: a simulator that was deleted, or an emulator whose AVD
  *     is gone. The row already says `not found`.
  *   * it belongs to `harmony-arkui`. The OpenHarmony emulator is started by `day ohos emulator
  *     launch` and has no stop, so both entries would name something the CLI cannot do. The moment
  *     `day devices shutdown` covers it, this list gains one kind.
  *
- * Android is why `avd` exists. Its running emulators are keyed by an adb SERIAL, which is a
+ * Android is why `avd` exists. Its running emulators are keyed by an adb serial, which is a
  * console port rather than an identity: once one stops, its serial names nothing at all, and only
  * the AVD ties the row back to something `day devices boot` can start. A row with no AVD and a
- * serial nothing answers to comes back with NO `id` rather than as `undefined` — see
+ * serial nothing answers to comes back with no `id` rather than as `undefined`; see
  * [`unidentified`], which is what that state is for.
  */
 /**
@@ -317,8 +317,8 @@ export interface VirtualDevice {
  *
  * Matched by the AVD as well as by the id, because a row's id is not a stable name for an Android
  * emulator: it is an adb serial, and the same emulator comes back on whatever console port was
- * free. A row that missed its chance to be re-keyed — the boot outlasted the wait, the emulator
- * console did not answer in time — is still THIS device, and reading it as `not found` while it
+ * free. A row that missed its chance to be re-keyed (the boot outlasted the wait, the emulator
+ * console did not answer in time) is still this device, and reading it as `not found` while it
  * sits there running is the reading that has to go.
  */
 export function liveDevice(
@@ -360,17 +360,17 @@ export function virtualDevice(
 }
 
 /**
- * Whether a row is an Android EMULATOR whose AVD is unknown — startable, but only after someone
+ * Whether a row is an Android emulator whose AVD is unknown: startable, but only after someone
  * says which one it is.
  *
  * A row stored before the AVD was recorded holds an adb serial and nothing else, and a serial is a
  * console port: once the emulator stops, `emulator-5554` matches no running device and no AVD, so
  * every other reading of that row is "gone". It is not gone, though; it is unnamed, and the two
- * deserve different offers — "gone" has nothing to do but Remove, while this can be adopted.
+ * deserve different offers: "gone" has nothing to do but Remove, while this can be adopted.
  *
  * `emulator-` is the CLI's own mark for an emulator (`adb devices` names them that way and
  * `devices list` classifies on exactly that prefix), so a physical Android phone that is merely
- * unplugged does not qualify — nor does an iOS UDID, where a simulator that is in neither list has
+ * unplugged does not qualify, nor does an iOS UDID, where a simulator that is in neither list has
  * really been deleted and asking "which one is this?" would be inventing an identity for it.
  */
 function unidentified(kind: string | undefined, choice: { id: string; avd?: string }): boolean {
@@ -381,14 +381,14 @@ function unidentified(kind: string | undefined, choice: { id: string; avd?: stri
  * What a device row's Play asks before it launches onto a simulator or emulator that is not up.
  *
  * A sentence rather than a question, with the choice carried by the buttons ("Launch It" /
- * "Cancel"): the device is NAMED, because a row shows a label and a project can hold several, and
+ * "Cancel"): the device is named, because a row shows a label and a project can hold several, and
  * agreeing to start the wrong iPad is the mistake this prompt exists to prevent.
  */
 export function startPrompt(label: string, device: VirtualDevice): string {
   return `The "${label}" ${device.platform} ${device.noun} is not currently running.`;
 }
 
-/** Whether a target has devices to choose between at all — desktop and web do not. */
+/** Whether a target has devices to choose between at all; desktop and web do not. */
 export function isMobile(kind: string | undefined): boolean {
   return kind === "iosSim" || kind === "android" || kind === "harmonyOs";
 }

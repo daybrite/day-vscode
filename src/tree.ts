@@ -3,8 +3,8 @@
 // for the focused project's build mode / locale / dayscript / verbose / log level.
 //
 // Every project is present at once rather than one at a time, because a window can hold dozens of
-// apps and the point is to see and drive them together. Targets belong to a project — the row
-// carries its root — so ticking `ios-uikit` under one app says nothing about the next.
+// apps and the view exists to see and drive them together. Targets belong to a project (the row
+// carries its root), so ticking `ios-uikit` under one app says nothing about the next.
 
 import * as crypto from "crypto";
 import * as fs from "fs";
@@ -39,11 +39,11 @@ export type ConfigRow = "mode" | "locale" | "script" | "verbose" | "loglevel";
 
 /**
  * Every node below the roots names the project it belongs to. That is what lets a row act on the
- * app it is drawn under rather than on whichever project happens to be focused — with a dozen
+ * app it is drawn under rather than on whichever project happens to be focused: with a dozen
  * apps open, a Configuration row that edited someone else's would be indistinguishable from a bug.
  */
 export type Node =
-  /** The `day` CLI this window is driving — one row, above the projects it acts on. */
+  /** The `day` CLI this window is driving: one row, above the projects it acts on. */
   | { kind: "cli" }
   | { kind: "project"; root: string }
   | { kind: "group"; root: string; id: "config" | "targets"; label: string }
@@ -55,16 +55,16 @@ export type Node =
 export interface TreeDeps {
   state: State;
   runner: Runner;
-  /** The focused project — what the Configuration rows and the plain Run button act on. */
+  /** The focused project: what the Configuration rows and the plain Run button act on. */
   project: () => DayProject | undefined;
   /** Every discovered project, in the order the sidebar should list them. */
   projects: () => DayProject[];
-  /** Enumerate ONE target's devices and refresh the tree when the answer lands. Per target, so
+  /** Enumerate one target's devices and refresh the tree when the answer lands. Per target, so
    *  drawing the iOS row never runs adb; the row's own project, so the CLI resolves from the app
    *  the row sits under rather than from whichever one happens to be focused. */
   refreshDevices: (root: string, target: string) => Promise<void>;
   /** What is known about the CLI: the version it reports, and the newest release. Both may be
-   *  absent — no CLI on this machine, or no answer from the network — and the row says which. */
+   *  absent (no CLI on this machine, or no answer from the network), and the row says which. */
   versions: () => CliVersions;
   /** Where the round project icons are written: the extension's own storage, never the project. */
   iconDir: string;
@@ -73,9 +73,9 @@ export interface TreeDeps {
 /**
  * The `day` CLI row: which one is being driven, and whether a newer release exists.
  *
- * A free function because this is the one row with no project behind it — it renders from two
- * strings — and because it is the whole of what the walkthrough could not say. The walkthrough can
- * only be TOLD there is an update (a `when` clause on a context key); its text is fixed in
+ * A free function because this is the one row with no project behind it (it renders from two
+ * strings) and because it is the whole of what the walkthrough could not say. The walkthrough can
+ * only be told there is an update (a `when` clause on a context key); its text is fixed in
  * package.json, so the versions themselves have to be shown somewhere that renders at runtime.
  * This is that place.
  */
@@ -121,7 +121,7 @@ export function cliItem(v: CliVersions): vscode.TreeItem {
  * A target row's context value: its state, plus the IDE of any native project it carries.
  *
  * The suffix (`.studio`, `.xcode`) is what puts "Open in Android Studio" / "Open in Xcode" on the
- * row's menu, and it rides on ALL THREE base states — a running or unbuildable row keeps the entry,
+ * row's menu, and it rides on all three base states: a running or unbuildable row keeps the entry,
  * because opening a project in its IDE has nothing to do with whether this host can build it, and
  * an unbuildable target is exactly when someone reaches for Studio. Every other target menu matches
  * its base with the suffix optional, so adding one here does not take Run or Stop off the row.
@@ -144,16 +144,16 @@ export function targetContextValue(
 /**
  * The targets a project's list shows, and how many it left out.
  *
- * Unavailable means this host cannot build it — `windows-xaml` on a Mac. Those rows sink to the
+ * Unavailable means this host cannot build it: `windows-xaml` on a Mac. Those rows sink to the
  * bottom rather than sorting away entirely, so the ones you can act on are the ones under the
  * cursor; hiding them is the separate `day.hideUnavailableTargets` choice.
  *
- * The partition is STABLE: within each half the project's own declaration order from `Day.toml`
+ * The partition is stable: within each half the project's own declaration order from `Day.toml`
  * survives, because that order is the author's and re-sorting it alphabetically would shuffle a
- * list someone deliberately arranged.
+ * list someone arranged.
  *
  * A target the catalog does not know is treated as available. It may be a target this CLI is too
- * old to list, and burying — or hiding — a row on the strength of not recognizing it is how a
+ * old to list, and burying or hiding a row on the strength of not recognizing it is how a
  * newer target silently disappears from the view.
  */
 export function orderTargets(
@@ -175,10 +175,11 @@ export function orderTargets(
  * What a device row reads, looks like, and offers.
  *
  * Free and pure so the states can be checked without a tree, and because there are now three
- * sources feeding one row: whether the APP is running on it, what this session is doing TO it
- * (booting, stopping, or a boot that failed), and what the last listing said about the machine.
- * The first two win over the third — a listing taken while a simulator boots reports it as still
- * shut down, which is exactly the reading that made "add a device" look like it had done nothing.
+ * sources feeding one row: whether the app is running on it, what this session is doing to the
+ * device itself (booting, stopping, or a boot that failed), and what the last listing said about
+ * the machine. The first two win over the third: a listing taken while a simulator boots reports
+ * it as still shut down, which is exactly the reading that made "add a device" look like it had
+ * done nothing.
  */
 export function deviceRowState(input: {
   /** The app has been launched onto this device (building or live). */
@@ -225,7 +226,7 @@ export function deviceRowState(input: {
     bits.push("checking…");
   } else if (listing?.available) {
     // `virtual.id` and not `virtual`: an emulator row that cannot say which AVD it is has no id
-    // to start, and the device its serial names really is not there. `not found` is the honest
+    // to start, and the device its serial names really is not there. `not found` is the accurate
     // word for that, and the row still offers to adopt an AVD.
     bits.push(live ? "connected" : virtual?.id ? "not running" : "not found");
   }
@@ -257,7 +258,7 @@ function tagFor(virtual: ReturnType<typeof virtualDevice>): string | undefined {
     return undefined;
   }
   const noun = virtual.noun === "simulator" ? "Simulator" : "Emulator";
-  // `adopt` is the third state, and it earns its own tag because its menu entry has to READ
+  // `adopt` is the third state, and it earns its own tag because its menu entry has to read
   // differently: "Start Emulator…", with the ellipsis that says it will ask which one.
   const verb = virtual.running ? "stop" : virtual.id ? "start" : "adopt";
   return `${verb}${noun}`;
@@ -380,7 +381,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
   }
 
   getChildren(element?: Node): Node[] {
-    // Projects ARE the roots: a "Projects" wrapper stopped earning its level once each project
+    // Projects are the roots: a "Projects" wrapper stopped earning its level once each project
     // grew a subtree of its own, and dropping it keeps the deepest row four deep instead of five.
     if (!element) {
       // The CLI first: every row below it is something that CLI will be asked to do, and when it
@@ -408,14 +409,14 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
         return [];
       }
       const configured = this.deps.state.devicesFor(element.root, element.name);
-      // Device rows are about to be drawn, so THIS target's listing is worth having: the rows read
+      // Device rows are about to be drawn, so this target's listing is worth having: the rows read
       // `connected` / `not running` off it, and their Start/Stop menu is offered from it. Started
       // here rather than in `getTreeItem` because that is synchronous and cannot wait on adb.
       //
       // Gated on there being nothing fresh and nothing in flight, which is what keeps it from
       // looping: the query refreshes the tree when it lands, that redraw asks again, and an
       // ungated ask would start another query and another refresh forever. It is also what keeps
-      // the promise in the module header — one target's tools, only when its rows ask, never on
+      // the promise in the module header: one target's tools, only when its rows ask, never on
       // activation and never `adb` for an iOS row.
       if (configured.length > 0 && !cached(element.name) && !loading(element.name)) {
         void this.deps.refreshDevices(element.root, element.name);
@@ -440,7 +441,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
    * walks upwards.
    *
    * Adding a device is what needs it. A target row that had no devices carried no twisty at all,
-   * and gaining one does not open it — VS Code remembers what the user last left collapsed — so a
+   * and gaining one does not open it (VS Code remembers what the user last left collapsed), so a
    * device added from the "+" landed under a closed row and looked like nothing had happened.
    */
   getParent(node: Node): Node | undefined {
@@ -479,8 +480,8 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
   /**
    * A project's `Configuration` or `Targets` heading.
    *
-   * Both carry a summary on the row itself — the mode and locale a run will use, how many targets
-   * are ticked — so a collapsed project still says what pressing Run would do. Only Targets opens
+   * Both carry a summary on the row itself (the mode and locale a run will use, how many targets
+   * are ticked), so a collapsed project still says what pressing Run would do. Only Targets opens
    * by default: the configuration is usually set once and then read off the summary.
    */
   private groupItem(node: { root: string; id: "config" | "targets"; label: string }): vscode.TreeItem {
@@ -569,7 +570,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
 
   private configItem(root: string, which: ConfigRow): vscode.TreeItem {
     // A checkbox rather than a pick: it is one bit, and the rows below all open a quick pick
-    // because they choose among values. Checked state comes from the SETTING (`day.verbose`),
+    // because they choose among values. Checked state comes from the setting (`day.verbose`),
     // not the per-workspace selection Memento, so the Settings UI and this row are one control.
     if (which === "verbose") {
       const on = verbose(root);
@@ -584,7 +585,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       item.checkboxState = on
         ? vscode.TreeItemCheckboxState.Checked
         : vscode.TreeItemCheckboxState.Unchecked;
-      // Clicking the LABEL toggles too — the checkbox is a small target, and every other row in
+      // Clicking the label toggles too: the checkbox is a small target, and every other row in
       // this section acts on a plain click.
       item.command = {
         command: "day.toggleVerbose",
@@ -618,7 +619,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
         command = "day.selectScript";
         break;
       case "loglevel":
-        // From the SETTING (`day.logLevel`), like the Verbose row — the Settings UI and this
+        // From the setting (`day.logLevel`), like the Verbose row, so the Settings UI and this
         // row are one control.
         label = "Log level";
         value = logLevel(root);
@@ -640,9 +641,9 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
   /**
    * One configured device under a mobile target.
    *
-   * Rendered from what was STORED when the device was added, not from a live listing: the row has
+   * Rendered from what was stored when the device was added, not from a live listing: the row has
    * to draw the same whether or not the phone is plugged in right now, and `getTreeItem` is
-   * synchronous — blocking the sidebar on adb would make every expand feel broken. The cached
+   * synchronous; blocking the sidebar on adb would make every expand feel broken. The cached
    * listing only decorates it, saying whether the device is connected at the moment.
    */
   private deviceItem(root: string, target: string, id: string): vscode.TreeItem {
@@ -658,9 +659,9 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       building: running && !this.deps.runner.isDeviceLive(root, target, id),
       pending: pending(root, target, id),
       loading: loading(target),
-      // Read from the cache only. Deliberately no query is started here: `getTreeItem` is
-      // synchronous, and a configured device that is simply unplugged is a normal state rather
-      // than a reason to shell out to simctl/adb/hdc every time the tree redraws.
+      // Read from the cache only; no query is started here, because `getTreeItem` is
+      // synchronous, and a configured device that is unplugged is a normal state rather than a
+      // reason to shell out to simctl/adb/hdc every time the tree redraws.
       listing: cached(target),
       device,
     });
@@ -670,7 +671,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       state.color ? new vscode.ThemeColor(state.color) : undefined,
     );
     // Tags accumulate the way a target row's `.studio`/`.mobile` do, and the base states keep
-    // their meaning: `dayDevice` vs `dayDeviceRunning` is about the APP, the tag is about the
+    // their meaning: `dayDevice` vs `dayDeviceRunning` is about the app, the tag is about the
     // device it would run on. A busy row is a third base: it matches neither inline-button
     // clause, which is the only way VS Code lets a row put its button away for a moment.
     item.contextValue = state.busy
@@ -681,7 +682,7 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
     if (state.tag) {
       item.contextValue += `.${state.tag}`;
     }
-    // Its own checkbox: which devices a launch goes to. Unticked rows stay listed — a device you
+    // Its own checkbox: which devices a launch goes to. Unticked rows stay listed: a device you
     // are not launching onto right now is still one you configured.
     const ticked = this.deps.state
       .tickedDevicesFor(root, target)
@@ -771,15 +772,15 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       item.contextValue += ".mobile";
     }
 
-    // Only buildable targets get a selection checkbox — a target this host cannot build has
-    // nothing to tick. Deliberately NO `item.command`: the checkbox is the only thing that
+    // Only buildable targets get a selection checkbox; a target this host cannot build has
+    // nothing to tick. There is no `item.command`: the checkbox is the only thing that
     // toggles, so clicking the row selects it the way every other checkbox tree in VS Code
     // behaves. Binding the whole row to the toggle meant a row could not be selected, expanded,
     // or right-clicked without also flipping whether it builds.
     if (buildable) {
-      // With devices configured the target's tick is the aggregate of theirs: checked while ANY is
+      // With devices configured the target's tick is the aggregate of theirs: checked while any is
       // ticked, because that is exactly when this target still launches. Reading it from the
-      // target's own selection instead would leave the row ticked with every device unticked —
+      // target's own selection instead would leave the row ticked with every device unticked,
       // a row claiming it will run when nothing under it would.
       const on = devices.length > 0 ? tickedDevices.length > 0 : selected;
       item.checkboxState = on

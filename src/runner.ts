@@ -2,7 +2,7 @@
 // be stopped and restarted. Each launch is its own Task (one integrated terminal per target), so
 // output is filtered per-target automatically; multi-target = one task per selected target.
 //
-// Everything is keyed by PROJECT AND TARGET. A window can hold dozens of Day apps, and most of them
+// Everything is keyed by project and target. A window can hold dozens of Day apps, and most of them
 // build `macos-appkit`: keyed by target alone, launching one app's macos-appkit read as "that is
 // already running", stopped the other app's, and left one Stop button for two processes.
 
@@ -26,9 +26,9 @@ export interface RunRef {
 
 /** NUL joins the parts: it cannot occur in a path, a target name or a device id, so the key is
  *  unambiguous where `${root}:${target}` would collide on a project whose path ends in a target's
- *  name. The device is part of it because one target can be live on several devices at once —
+ *  name. The device is part of it because one target can be live on several devices at once;
  *  keyed by target alone, the second launch would evict the first from the map and its Stop would
- *  then terminate nothing. An empty last part is "no device chosen", the CLI's own default. */
+ *  then terminate nothing. An empty last part is "no device chosen", the CLI's default. */
 function key(root: string, target: string, device?: string): string {
   return `${root}\u0000${target}\u0000${device ?? ""}`;
 }
@@ -55,11 +55,11 @@ interface Debugging {
  * earlier than `launchedAt`.
  *
  * The CLI writes that entry right after `ops::launch` returns, which is after the build and after
- * the app process exists — so its appearance is the moment a run stops being a build. An entry
+ * the app process exists, so its appearance is the moment a run stops being a build. An entry
  * whose `startedAt` predates the launch is a leftover from an earlier run of the same target (a
  * crash leaves one behind; `day stop` removes it, but a launch that raced the stop may still see
  * it), and does not count. The file is read defensively: it is best-effort JSON written by another
- * process, and anything that is not a list of `{target, startedAt}` rows simply means "not yet".
+ * process, and anything that is not a list of `{target, startedAt}` rows means "not yet".
  */
 export function sessionIsLive(sessions: unknown, target: string, launchedAt: number): boolean {
   if (!Array.isArray(sessions)) {
@@ -163,20 +163,20 @@ export class Runner implements vscode.Disposable {
     return root ? { root, target } : undefined;
   }
 
-  /** Whether a target is live on ANY device — what the target row and its Stop button ask. */
+  /** Whether a target is live on any device: what the target row and its Stop button ask. */
   isRunning(root: string, target: string): boolean {
     return this.runningRefs().some((r) => r.root === root && r.target === target);
   }
 
-  /** Whether one configured device is live — what a device row's Play/Stop asks. */
+  /** Whether one configured device is live: what a device row's Play/Stop asks. */
   isDeviceRunning(root: string, target: string, device: string): boolean {
     const k = key(root, target, device);
     return this.running.has(k) || this.debug.has(k);
   }
 
   /**
-   * Whether a target's launch has got past its build on ANY device: the CLI has recorded the
-   * session, so the app is up. A target that is running but not live is still compiling — the
+   * Whether a target's launch has got past its build on any device: the CLI has recorded the
+   * session, so the app is up. A target that is running but not live is still compiling, so the
    * row spins rather than showing the green dot a finished launch earns.
    */
   isLive(root: string, target: string): boolean {
@@ -219,7 +219,7 @@ export class Runner implements vscode.Disposable {
 
   /**
    * One check: every launch still waiting on its build is looked up in its project's sessions
-   * file. The poll retires itself once nothing is waiting — a build that fails ends the task
+   * file. The poll retires itself once nothing is waiting: a build that fails ends the task
    * process, which drops the run, so a broken build never keeps this ticking.
    */
   private async pollSessions(): Promise<void> {
@@ -304,7 +304,7 @@ export class Runner implements vscode.Disposable {
    * The runs one target's Play button starts: one per configured device, or a single run on the
    * CLI's own "every connected device" when none is configured.
    *
-   * `[undefined]` rather than `[]` for the unconfigured case on purpose — an empty list would make
+   * `[undefined]` rather than `[]` for the unconfigured case, because an empty list would make
    * Play silently do nothing for every desktop target, which have no devices by definition.
    */
   private runsFor(root: string, target: string): (DeviceChoice | undefined)[] {
@@ -325,9 +325,9 @@ export class Runner implements vscode.Disposable {
       throw new Error("No targets selected. Tick one or more targets in the Day view.");
     }
     for (const target of targets) {
-      // Re-running a live target restarts it rather than stacking a second instance — whether it
+      // Re-running a live target restarts it rather than stacking a second instance, whether it
       // was launched from the cockpit (a task) or the native Run UI (a debug session). Stopping by
-      // TARGET covers every device it was running on, including ones since removed from the list.
+      // target covers every device it was running on, including ones since removed from the list.
       if (this.isRunning(root, target)) {
         await this.stop(root, target);
       }
@@ -363,8 +363,8 @@ export class Runner implements vscode.Disposable {
     target: string,
     device: DeviceChoice | undefined,
   ): Promise<void> {
-    // Stamped before the task starts, so the CLI's own timestamp — taken after the build, when it
-    // records the session — can only be later than this one.
+    // Stamped before the task starts, so the CLI's timestamp (taken after the build, when it
+    // records the session) can only be later than this one.
     const startedAt = Date.now();
     const exec = await vscode.tasks.executeTask(
       buildDayTask(this.definition("launch", root, target, device)),
@@ -378,7 +378,7 @@ export class Runner implements vscode.Disposable {
     this.watchSessions();
   }
 
-  /** Run one target on ONE of its configured devices — a device row's own Play button. */
+  /** Run one target on one of its configured devices: a device row's Play button. */
   async runDevice(root: string, target: string, device: DeviceChoice): Promise<void> {
     if (this.isDeviceRunning(root, target, device.id)) {
       await this.stopDevice(root, target, device.id);
@@ -412,8 +412,8 @@ export class Runner implements vscode.Disposable {
   /**
    * Stop one device's run of a target.
    *
-   * No `day stop` here, unlike [`stop`]: the CLI stops a target's session for the PROJECT, not for
-   * one device, so calling it would take down the target's other devices as well — the opposite of
+   * No `day stop` here, unlike [`stop`]: the CLI stops a target's session for the project, not for
+   * one device, so calling it would take down the target's other devices as well, the opposite of
    * what a single row's Stop means.
    */
   async stopDevice(root: string, target: string, device: string): Promise<void> {
@@ -428,8 +428,8 @@ export class Runner implements vscode.Disposable {
       }
     }
     await this.stopDebugFor(root, target);
-    // Then ask the CLI to stop the APP. Ending the task only kills what `day` launched as its own
-    // child, which is the whole story on a desktop and none of it on a device: an Android app is
+    // Then ask the CLI to stop the app. Ending the task only kills what `day` launched as its
+    // child, which is everything on a desktop and nothing on a device: an Android app is
     // started with `am start` and outlives its launcher, so Stop left it on screen. `day stop`
     // also drops the session, without which `day running` keeps reporting a launch that is gone.
     await this.stopViaCli(root, target);

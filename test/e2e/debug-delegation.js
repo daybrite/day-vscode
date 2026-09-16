@@ -1,12 +1,13 @@
-// Runs INSIDE a real extension host: drives a real "Start Debugging" and asserts the delegation
+// Runs inside a real extension host: drives a real "Start Debugging" and asserts the delegation
 // actually reached a debugger and stopped the program.
 //
-// This test exists because the seam it covers broke silently. `resolveDebugConfiguration` returning
-// a config whose `type` names a DIFFERENT debugger looks like it should work, resolves cleanly, and
-// starts nothing at all - VS Code resolves against the original type. Nothing below the extension's
-// own unit checks noticed, because every one of them stopped at "we returned the right object".
+// This test exists because the delegation it covers broke silently. `resolveDebugConfiguration`
+// returning a config whose `type` names a different debugger looks like it should work, resolves
+// cleanly, and starts nothing at all - VS Code resolves against the original type. Nothing below
+// the extension's own unit checks noticed, because every one of them stopped at "we returned the
+// right object".
 //
-// So the assertions here are deliberately about observable end state, not about our own return
+// So the assertions here are about observable end state, not about our own return
 // values: a session of the delegate's type exists, a breakpoint reported `verified`, and the
 // adapter sent a `stopped` event with reason "breakpoint".
 const assert = require("assert");
@@ -14,7 +15,7 @@ const vscode = require("vscode");
 
 const PROJECT = process.env.DAY_DEBUG_E2E_PROJECT;
 const TARGET = process.env.DAY_DEBUG_E2E_TARGET;
-/** A `<file>:<line>` the app reaches unaided while starting up. Split on the LAST colon, so an
+/** A `<file>:<line>` the app reaches unaided while starting up. Split on the last colon, so an
  *  absolute Windows path (`C:\src\...`) survives. */
 const BP = process.env.DAY_DEBUG_E2E_BREAKPOINT || "";
 const BP_FILE = BP.slice(0, BP.lastIndexOf(":"));

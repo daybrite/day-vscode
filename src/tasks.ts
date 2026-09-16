@@ -34,7 +34,7 @@ export interface DayTaskDefinition extends vscode.TaskDefinition {
  * The `day` configuration as it applies to one project.
  *
  * `extraEnv`, `logLevel` and `verbose` are declared `resource`-scoped, so each app can carry its
- * own in `<project>/.vscode/settings.json` — one app logging at trace while the next stays quiet.
+ * own in `<project>/.vscode/settings.json`: one app logging at trace while the next stays quiet.
  * Passing the root is what makes VS Code apply that folder's value; without it every project would
  * read the window's.
  */
@@ -45,9 +45,9 @@ function dayConfig(root?: string): vscode.WorkspaceConfiguration {
 /**
  * The URI to read a project's folder-scoped settings against.
  *
- * Not simply `Uri.file(root)`: `day metadata` reports a canonical root (`/private/tmp/…` on
+ * Not `Uri.file(root)`: `day metadata` reports a canonical root (`/private/tmp/…` on
  * macOS) while the workspace folder keeps the path as opened (`/tmp/…`), and a URI VS Code cannot
- * place inside a folder silently falls back to the WINDOW's settings — so every project would
+ * place inside a folder silently falls back to the window's settings, so every project would
  * quietly share one log level. Matching through resolved paths puts each project back on its own.
  */
 function configResource(root?: string): vscode.Uri | undefined {
@@ -133,8 +133,8 @@ function writeScope(
   root?: string,
 ): vscode.ConfigurationTarget {
   // Through `configResource`, not `Uri.file(root)`: the read side already resolves the two
-  // spellings of a symlinked path, and a write that did not would land in USER settings while the
-  // row went on reading the folder's — a toggle that silently became window-wide.
+  // spellings of a symlinked path, and a write that did not would land in user settings while the
+  // row went on reading the folder's: a toggle that silently became window-wide.
   const resource = configResource(root);
   if (resource && vscode.workspace.getWorkspaceFolder(resource)) {
     return vscode.ConfigurationTarget.WorkspaceFolder;
@@ -167,7 +167,7 @@ export async function setLogLevel(level: LogLevel, root?: string): Promise<void>
 
 /**
  * Environment for the launched app (each entry becomes `--env KEY=VALUE`): the configured log
- * level, then `day.extraEnv` — last wins, so a hand-written `DAY_LOG` there overrides
+ * level, then `day.extraEnv`; last wins, so a hand-written `DAY_LOG` there overrides
  * `day.logLevel`.
  */
 export function launchEnv(root?: string): Record<string, string> {
@@ -204,10 +204,10 @@ function expandHome(p: string): string {
 }
 
 /**
- * Process environment for the task itself (NOT the launched app — that's `extraEnv`/`--env`).
- * The `harmony-arkui` target needs `OHOS_NDK_HOME` at BUILD time (day-arkui-sys compiles its C++ shim
- * with the NDK clang), and a GUI-launched VS Code usually doesn't carry it. Resolve it from the
- * `day.harmonyNDKHome` setting or the common install locations, and put the SDK's sibling
+ * Process environment for the task itself (not the launched app, which is `extraEnv`/`--env`).
+ * The `harmony-arkui` target needs `OHOS_NDK_HOME` at build time (day-arkui-sys compiles its C++
+ * shim with the NDK clang), and a GUI-launched VS Code usually doesn't carry it. Resolve it from
+ * the `day.harmonyNDKHome` setting or the common install locations, and put the SDK's sibling
  * `toolchains/` (hdc) on the task PATH. Returns {} for non-OHOS targets, deferring to the parent
  * environment.
  */
@@ -243,8 +243,8 @@ function ohosNdk(): string | undefined {
 /**
  * Toolchain locations from settings, as the environment variables the tools actually read.
  *
- * Applied to EVERY `day` command the extension runs — builds, launches, `day doctor`, device
- * listing — because a GUI-launched VS Code inherits the login environment, which frequently has
+ * Applied to every `day` command the extension runs (builds, launches, `day doctor`, device
+ * listing) because a GUI-launched VS Code inherits the login environment, which frequently has
  * none of these. Doctor especially: it exists to report what is installed, and reporting against a
  * different SDK than the one builds will use would be worse than not reporting at all.
  *
@@ -262,7 +262,7 @@ export function toolchainEnv(): Record<string, string> {
 
   const sdk = read("androidSDKHome");
   if (sdk) {
-    // BOTH spellings: `ANDROID_HOME` is what day-toolchain reads first, `ANDROID_SDK_ROOT` is
+    // Both spellings: `ANDROID_HOME` is what day-toolchain reads first, `ANDROID_SDK_ROOT` is
     // what Google's own tooling prefers, and a machine where the two disagree is a machine where
     // the build and the emulator use different SDKs.
     env.ANDROID_HOME = sdk;
@@ -286,13 +286,13 @@ export function toolchainEnv(): Record<string, string> {
 /**
  * `DEVELOPER_DIR` from whatever the setting points at.
  *
- * Read by `xcrun`, `xcodebuild` and `simctl` themselves — Day never looks at it — so this is how a
+ * Read by `xcrun`, `xcodebuild` and `simctl` themselves (Day never looks at it), so this is how a
  * machine with several Xcodes points every Apple target at one of them. The `.app` is what a person
  * picks in Finder, but the variable wants the Developer dir inside it; taking either spelling beats
  * failing with "cannot find utility" over a trailing path segment. A trailing separator, which
  * shell completion adds, names the same bundle.
  *
- * Joined with `path.posix` rather than `path`: an Xcode path is a macOS path wherever the EDITOR
+ * Joined with `path.posix` rather than `path`: an Xcode path is a macOS path wherever the editor
  * happens to be running, and the host-sensitive join turned it into
  * `\Applications\Xcode.app\Contents\Developer` on the Windows CI leg.
  */
@@ -342,21 +342,21 @@ export function buildDayTask(
     ...(cli.cwd ? { cwd: cli.cwd } : {}),
     ...(Object.keys(env).length ? { env } : {}),
   });
-  // Always qualified by project, even with one app open. A task's name is its identity — it names
-  // the terminal panel and the entry in the Tasks list — and two apps both building `macos-appkit`
+  // Always qualified by project, even with one app open. A task's name is its identity (it names
+  // the terminal panel and the entry in the Tasks list), and two apps both building `macos-appkit`
   // would otherwise share one panel and one identity. Qualifying only when a second project
   // appears would instead rename a task the moment a folder is added, which is worse: the name
   // would be stable only as long as the workspace was.
   const verb = def.command === "launch" ? "run" : "build";
-  // The device is part of the name because the name is the task's IDENTITY, and the presentation
-  // below asks for a DEDICATED panel per identity. Launching one target onto three phones without
+  // The device is part of the name because the name is the task's identity, and the presentation
+  // below asks for a dedicated panel per identity. Launching one target onto three phones without
   // this gives all three the same name: they share one terminal, and each `clear: true` wipes the
   // one before it, so two of the three runs are invisible.
   const on = def.device?.label ? ` · ${def.device.label}` : "";
   const name = projectRoot
     ? `${verb} ${def.target}${on} (${path.basename(projectRoot)})`
     : `${verb} ${def.target}${on}`;
-  // $day-rustc is contributed by THIS extension (a $rustc it can rely on: the stock name only
+  // $day-rustc is contributed by this extension (a $rustc it can rely on: the stock name only
   // exists when rust-analyzer is installed, and an unknown matcher name is silently ignored).
   // Launches compile first, so they get the matcher too.
   const matchers = ["$day-rustc"];

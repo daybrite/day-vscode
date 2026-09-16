@@ -1,7 +1,7 @@
 // Scaffolding a Day app, piece or part, asking the questions the CLI says to ask.
 //
 // The question set lives in `day new --describe`: every field, its options, and the flag it fills.
-// Nothing here knows what a target is called or which toolkits a native piece can have — the copy
+// Nothing here knows what a target is called or which toolkits a native piece can have; the copy
 // that used to live in this extension named `windows-winui`, which is not a Day target, and it
 // went unnoticed because nothing compares the two lists.
 //
@@ -20,7 +20,7 @@ export interface SpecOption {
   value: string;
   label?: string;
   detail?: string;
-  /** Whether this host can build it — targets only. Shown, never enforced: an app may ship to a
+  /** Whether this host can build it; targets only. Shown, never enforced: an app may ship to a
    *  platform it is not developed on. */
   buildable_here?: boolean;
   experimental?: boolean;
@@ -49,7 +49,7 @@ export interface SpecKind {
   id: string;
   label: string;
   detail?: string;
-  /** The argv the caller should run, before the name and flags — `["new", "app"]`. */
+  /** The argv the caller should run, before the name and flags: `["new", "app"]`. */
   command: string[];
   fields: SpecField[];
 }
@@ -67,7 +67,7 @@ type Outcome = "ok" | "back" | "cancel";
 
 /**
  * Ask the CLI what it needs to know. Returns `undefined` for a CLI too old to answer, which must
- * leave the command usable rather than throwing — the caller reports and stops.
+ * leave the command usable rather than throwing; the caller reports and stops.
  */
 export function describeSpec(
   output: vscode.OutputChannel | undefined,
@@ -269,8 +269,8 @@ function optionItems(field: SpecField, answers: Answers): vscode.QuickPickItem[]
 /**
  * Walk the questions for one kind, with Back.
  *
- * The order is recomputed each turn because it can CHANGE as answers arrive — choosing a native
- * piece adds the toolkit question — so a fixed step list would either skip it or leave a dead
+ * The order is recomputed each turn because it can change as answers arrive (choosing a native
+ * piece adds the toolkit question), so a fixed step list would either skip it or leave a dead
  * step in the counter.
  */
 export async function askAll(

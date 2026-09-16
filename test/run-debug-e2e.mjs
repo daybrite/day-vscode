@@ -6,7 +6,7 @@
 // target, and a Rust debugger extension installed. Defaults suit the daybrite monorepo layout - a
 // sibling Day-Showcase, breaking where the UI mounts.
 //
-// The extensions directory is a temp COPY holding only the debugger extension, so the developer's
+// The extensions directory is a temp copy holding only the debugger extension, so the developer's
 // own extensions dir is never written to (no auto-update, no state) while the delegate still has
 // something to find.
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
@@ -49,7 +49,7 @@ for (const dir of found) {
 console.log(`project: ${project}\ntarget: ${target}\nbreakpoint: ${breakpoint}`);
 console.log(found.length ? `debugger: ${found.join(", ")}` : "debugger: none installed (the suite will skip)");
 
-// A multi-root workspace holding the project AND this repo's sibling `day/` checkout, matching what
+// A multi-root workspace holding the project and this repo's sibling `day/` checkout, matching what
 // scripts/dev.sh opens - which is also what keeps folder-level `day.cliPath` pins out of scope.
 const workspace = join(work, "debug-e2e.code-workspace");
 const dayRepo = join(siblings, "day");

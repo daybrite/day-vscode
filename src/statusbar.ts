@@ -1,5 +1,5 @@
 // The Day status-bar cockpit (the Flutter "status bar as cockpit" pattern): everything you need
-// to see at a glance — WHAT will run (targets), HOW (mode, locale, script), and what IS running —
+// to see at a glance, what will run (targets), how (mode, locale, script), and what is running,
 // with one-click affordances and a rich hover that can drive every per-target action directly.
 //
 //   ▶ | ⬡ appkit · gtk +1 | gear debug | globe fr
@@ -64,12 +64,12 @@ export class StatusBar implements vscode.Disposable {
       return;
     }
     const sel = this.state.selection;
-    // Two different counts, deliberately: the stop button governs EVERY project's launches (it
+    // Two different counts: the stop button governs every project's launches (it
     // calls Stop All), while the target chip below describes the focused project alone.
     const runningAll = this.runner.runningRefs();
     const running = this.runner.runningIn(project.root);
-    // Launched but still compiling. The chip's spinner means this and only this now — a running
-    // app is the stop button's business — so the two surfaces tell the same story as the tree.
+    // Launched but still compiling. The chip's spinner means this and only this now (a running
+    // app is the stop button's business), so the two surfaces tell the same story as the tree.
     const building = running.filter((t) => !this.runner.isLive(project.root, t));
 
     // ---- run / stop toggle -------------------------------------------------
@@ -115,7 +115,7 @@ export class StatusBar implements vscode.Disposable {
     this.mode.command = "day.selectMode";
     this.mode.show();
 
-    // ---- run context (locale + script) — only when it changes behavior ------
+    // ---- run context (locale + script), only when it changes behavior ------
     const keepAlive = vscode.workspace
       .getConfiguration("day")
       .get<boolean>("script.keepAppRunning", true);

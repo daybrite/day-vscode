@@ -1,13 +1,13 @@
 // Getting the `day` CLI, so that having one is not a prerequisite for using this extension.
 //
-// Two kinds of route live here. The FIRST is a source build the extension owns: `cargo install
+// Two kinds of route live here. The first is a source build the extension owns: `cargo install
 // --git` at the revision `day.cliVersion` names, into the extension's own global storage. That is
-// what makes an installed CLI optional — nothing has to be on PATH, `resolveCli` finds it, and
+// what makes an installed CLI optional: nothing has to be on PATH, `resolveCli` finds it, and
 // `day.cliVersion` decides which day-cli an app is built with. It also solves version skew the
 // other way round: when this extension needs a CLI change that has not been released, `main` is a
 // setting rather than a support thread.
 //
-// The REST are the day release's own installers (rendered per release by scripts/release/templates
+// The rest are the day release's own installers (rendered per release by scripts/release/templates
 // in the day repository), which put a prebuilt binary on PATH. They stay because a source build
 // needs a Rust toolchain and takes minutes, and someone who just wants to read a Day project
 // should not have to compile a compiler front-end first.
@@ -16,8 +16,8 @@
 // the user can watch and interrupt. Running an install unattended, on activation, because a file
 // called Day.toml happened to be in the folder, is not a decision an extension should make for
 // someone. Running it on a button press, with the command visible first, is. The source route is
-// the least invasive of them — it writes only inside this extension's storage, and deleting that
-// folder undoes it — but it is still offered rather than assumed.
+// the least invasive of them (it writes only inside this extension's storage, and deleting that
+// folder undoes it), but it is still offered rather than assumed.
 
 import * as cp from "child_process";
 import * as fs from "fs";
@@ -68,7 +68,7 @@ const MAIN: SourceVersion = {
 /**
  * Read `day.cliVersion` into an install target.
  *
- * Empty — the default — is the newest RELEASE, taken from crates.io rather than from the git tags:
+ * Empty (the default) is the newest release, taken from crates.io rather than from the git tags:
  * that is the same answer the CLI's own update check gives, so the version the Day view calls
  * "latest" and the version an install produces are one thing rather than two that can disagree.
  * `main` is the development branch, for when this extension needs a CLI change that has not been
@@ -121,10 +121,10 @@ export function sourceInstallCommand(
 export interface InstallRoute {
   /** Short label for a quick pick. */
   label: string;
-  /** What it does and what it needs. ONE SHORT LINE: a quick pick truncates the rest. */
+  /** What it does and what it needs. One short line: a quick pick truncates the rest. */
   detail: string;
-  /** The dimmed column beside the label — a name, not the command, which is long enough to be
-   *  cut mid-flag and reads as noise when it is. The terminal shows the real thing. */
+  /** The dimmed column beside the label: a name, not the command, which is long enough to be
+   *  cut mid-flag and reads as noise when it is. The terminal shows the command itself. */
   description: string;
   /** The command, exactly as it would be typed. */
   command: string;
@@ -143,15 +143,15 @@ const PS_INSTALLER =
 /**
  * The PATH routes for a platform, best first.
  *
- * The release installer comes first because it downloads a prebuilt binary: no Rust toolchain, no
- * compile. `cargo install` is last — it needs a toolchain, and someone who has not got the CLI
- * often has not got Rust either.
+ * The release installer comes first because it downloads a prebuilt binary, which needs neither
+ * a Rust toolchain nor a compile. `cargo install` is last: it needs a toolchain, and someone who
+ * has not got the CLI often has not got Rust either.
  */
 export function installRoutes(
   platform: NodeJS.Platform = process.platform,
 ): InstallRoute[] {
   // Only the prebuilt installer. `cargo install day-cli` used to sit here too, but its one
-  // distinction from the managed release row above it was landing on PATH — and this route does
+  // distinction from the managed release row above it was landing on PATH, and this route does
   // that without a Rust toolchain and without a multi-minute compile, so it was strictly worse at
   // the only job that made it a separate choice.
   return platform === "win32"
@@ -265,7 +265,7 @@ export async function latestVersion(): Promise<string | undefined> {
  * not automatic: the command is shown, it runs in a terminal the user can watch and interrupt, and
  * it writes nowhere but this extension's storage.
  *
- * It does need a Rust toolchain — but so does every Day app, which is a Rust crate, so anyone who
+ * It does need a Rust toolchain, but so does every Day app, which is a Rust crate, so anyone who
  * can build what this extension exists to run already has one.
  */
 export async function installFromSource(
@@ -334,8 +334,8 @@ export const UPDATE_CONTEXT = "day.cliUpdateAvailable";
  * Read both versions, publish whether an update is available, and hand the pair back.
  *
  * The context key is the only channel a walkthrough has: its step text is a fixed string in
- * `package.json`, so it can be SHOWN conditionally but cannot say which version you have. The
- * numbers therefore travel to places that can render them — the install picker's title, and the
+ * `package.json`, so it can be shown conditionally but cannot say which version you have. The
+ * numbers therefore travel to places that can render them: the install picker's title, and the
  * log.
  */
 export async function checkVersions(
@@ -378,7 +378,7 @@ export interface InstallChoice {
 /**
  * The picker's rows, in the order they are offered.
  *
- * Order is the point, so it is a function rather than an array literal inside the `showQuickPick`
+ * The order matters, so it is a function rather than an array literal inside the `showQuickPick`
  * call: the released CLI first because it is what almost everyone wants and the extension owns
  * that copy, the PATH routes next, and the source build last because it needs a Rust toolchain
  * and takes minutes. `managed` is false when there is nowhere to put an extension-owned copy,
@@ -473,7 +473,7 @@ export async function promptToInstall(
   terminal.show(true);
   terminal.sendText(picked.route.command, true);
 
-  // The CLI lands on PATH, and a terminal VS Code already started does not see a PATH change —
+  // The CLI lands on PATH, and a terminal VS Code already started does not see a PATH change,
   // so tell the user what to do next rather than leaving them to guess why the view is still
   // empty. `day.refresh` re-runs the scan for the common case where the shell picks it up.
   void vscode.window

@@ -2,7 +2,7 @@
 //
 // A real `day new app` project rather than a checked-in fixture: the extension's whole job is to
 // read what the CLI reports, so a hand-written Day.toml would test the extension against a shape
-// no user has. It also means the fixture tracks the CLI — a new target or a renamed field shows up
+// no user has. It also means the fixture tracks the CLI: a new target or a renamed field shows up
 // here the same day it ships.
 
 import { spawnSync } from "node:child_process";
@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 /**
  * Every target the cockpit should list. The host's own combo is what gets built and run; the
- * others are there because a cockpit showing one target is a poor screenshot and a poor test —
+ * others are there because a cockpit showing one target is a poor screenshot and a poor test:
  * the tree greys out what this host cannot build, and that logic deserves to be on screen.
  */
 export const FIXTURE_TARGETS = [
@@ -24,7 +24,7 @@ export const FIXTURE_TARGETS = [
 ];
 
 /**
- * Where the scaffold goes. CI points this INSIDE the workspace so `Swatinem/rust-cache` can find
+ * Where the scaffold goes. CI points this inside the workspace so `Swatinem/rust-cache` can find
  * the fixture's `target/` and skip recompiling the Day framework on every run; locally a temp
  * directory keeps the checkout clean. Only the VS Code user-data-dir has to stay short.
  */
@@ -47,7 +47,7 @@ export function hostCombo() {
 export function scaffold({ dayBin, parent, name = "day-fixture", targets = FIXTURE_TARGETS }) {
   const dir = join(parent, name);
   // Reuse a project that is already there. `day new app` is deterministic, so re-running it buys
-  // nothing — and it would delete `build/day/cargo/`, which is exactly what CI's cache restores
+  // nothing, and it would delete `build/day/cargo/`, which is exactly what CI's cache restores
   // into this directory and what keeps a run from recompiling the whole framework. DAY_E2E_FRESH=1
   // forces the scaffold when the CLI's output itself is what changed.
   const reusable = existsSync(join(dir, "Day.toml")) && process.env.DAY_E2E_FRESH !== "1";
@@ -79,21 +79,21 @@ export function scaffold({ dayBin, parent, name = "day-fixture", targets = FIXTU
 
   // Resolve the dependency graph before VS Code ever asks for it.
   //
-  // `day metadata --json` — the extension's first call against every project it finds — shells out
+  // `day metadata --json` (the extension's first call against every project it finds) shells out
   // to `cargo metadata`, which for a freshly scaffolded app must fetch the `day` git dependency and
   // whatever of the crates.io index it still lacks. That is seconds when warm and minutes when
   // cold, and the extension gives it 30 (src/project.ts). Losing that race means the sidebar finds
-  // NO projects, and the suite then fails six assertions that are really one: run 33022390184's
+  // no projects, and the suite then fails six assertions that are really one: run 33022390184's
   // windows-xaml leg, where both fixtures timed out in the same millisecond.
   //
   // Doing it here rather than lengthening the extension's timeout: 30 seconds is the right budget
-  // for a UI that must not hang, and a warm cache is the honest starting state for a test about
+  // for a UI that must not hang, and a warm cache is the starting state for a test about
   // the extension rather than about cargo's network.
   const warm = spawnSync("cargo", ["metadata", "--format-version", "1", "--all-features"], {
     cwd: dir,
     encoding: "utf8",
-    // stdout DISCARDED, stderr kept. The document `cargo metadata` prints for a Day app is several
-    // megabytes — past spawnSync's 1 MB default, which fails the call with ENOBUFS and warms
+    // stdout discarded, stderr kept. The document `cargo metadata` prints for a Day app is several
+    // megabytes, past spawnSync's 1 MB default, which fails the call with ENOBUFS and warms
     // nothing. Only the side effect is wanted here: the graph resolved and the fetches done.
     stdio: ["ignore", "ignore", "pipe"],
     timeout: 600_000,
@@ -102,7 +102,7 @@ export function scaffold({ dayBin, parent, name = "day-fixture", targets = FIXTU
   // Not fatal: a resolution failure here shows up as the real thing the suite is checking, with
   // the extension's own message, rather than as a scaffold that refused to finish.
   if (warm.status !== 0) {
-    // `status: null` means it never ran (spawn error) or was signalled — report which, because
+    // `status: null` means it never ran (spawn error) or was signalled; report which, because
     // "exit null" alone tells the next reader nothing about where to look.
     const why = warm.error
       ? warm.error.message

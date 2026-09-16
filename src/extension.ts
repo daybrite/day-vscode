@@ -58,8 +58,8 @@ import { DayTree, Node } from "./tree";
 /**
  * What `activate` hands back to VS Code, and therefore to anyone holding this extension.
  *
- * Deliberately tiny: the focused project decides what the Configuration rows, the Run button and
- * the status bar act on, and it is otherwise only visible as sidebar decoration — which the
+ * Kept tiny: the focused project decides what the Configuration rows, the Run button and the
+ * status bar act on, and it is otherwise only visible as sidebar decoration, which the
  * integration suite cannot read. Exposing the one value keeps that behavior testable without
  * reaching into module internals.
  */
@@ -116,7 +116,7 @@ export async function activate(
     return projects.find((p) => p.root === root) ?? projects[0];
   };
 
-  /** Every discovered project, in sidebar order — what the fan-out tree and Run All walk. */
+  /** Every discovered project, in sidebar order, which the fan-out tree and Run All walk. */
   const allProjects = (): DayProject[] => projects;
 
   /**
@@ -127,12 +127,12 @@ export async function activate(
    */
   const projectForUri = (uri: vscode.Uri): DayProject | undefined => {
     if (uri.scheme !== "file") {
-      return undefined; // output panes, debug consoles, untitled buffers — not anyone's source
+      return undefined; // output panes, debug consoles, untitled buffers: not anyone's source
     }
     // Both spellings of the file, because the two sides resolve symlinks differently: `day
     // metadata` reports a canonical root (`/private/tmp/…` on macOS) while an editor URI keeps the
     // path the user opened (`/tmp/…`). Comparing one against the other matched nothing, so a
-    // workspace anywhere under a symlink — macOS's /tmp, a symlinked ~/src, a network mount —
+    // workspace anywhere under a symlink (macOS's /tmp, a symlinked ~/src, a network mount)
     // never followed the editor at all.
     const spellings = new Set([uri.fsPath]);
     try {
@@ -172,14 +172,14 @@ export async function activate(
       return;
     }
     const project = projectForUri(editor.document.uri);
-    // A file outside every project — most often something in the `day` checkout itself — leaves
+    // A file outside every project (most often something in the `day` checkout itself) leaves
     // the focus where it was rather than clearing it.
     if (project && project.root !== state.focusedRoot) {
       await state.focus(project.root);
     }
   };
 
-  // When a Day.toml was found but its metadata couldn't be loaded, say so plainly — otherwise the
+  // When a Day.toml was found but its metadata couldn't be loaded, say so plainly; otherwise the
   // sidebar's "No Day project found" hides a CLI problem (e.g. no `day` on PATH). Details always
   // go to the Day output channel; a notification fires once per distinct failure set.
   const reportLoadFailures = (): void => {
@@ -246,8 +246,8 @@ export async function activate(
     );
     reportLoadFailures();
     // Publishes `day.cliUpdateAvailable` for the walkthrough's update step, and logs both
-    // versions. Deliberately not awaited: it reaches the network, and a project scan must not
-    // wait on crates.io.
+    // versions. Not awaited: it reaches the network, and a project scan must not wait on
+    // crates.io.
     void checkVersions(projects[0]?.root, output).then((v) => {
       cliVersions = v;
       tree.refresh();
@@ -255,12 +255,12 @@ export async function activate(
   };
 
   await refreshProjects();
-  // A workspace holding an app AND a checkout of something it depends on is the local-development
-  // shape, and cargo does not notice on its own (localdeps.ts). Deliberately not awaited: it reads
-  // a few files and may put up a prompt, and activation must not wait on an answer.
+  // A workspace holding an app and a checkout of something it depends on is the local-development
+  // shape, and cargo does not notice on its own (localdeps.ts). Not awaited: it reads a few files
+  // and may put up a prompt, and activation must not wait on an answer.
   void offerLocalCheckouts(projects, output, context.workspaceState);
 
-  // A folder added later is the same situation arriving in a different order — dragging the day
+  // A folder added later is the same situation arriving in a different order; dragging the day
   // checkout into a window that already has the app is how this usually happens.
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() =>
@@ -277,7 +277,7 @@ export async function activate(
   await followEditor(vscode.window.activeTextEditor);
 
   // Once, on the first activation this install ever has. VS Code already offers the walkthrough
-  // on its Welcome page, which is the route for someone with no Day project — this covers the
+  // on its Welcome page, which is the route for someone with no Day project; this covers the
   // other order, where the first thing that happens is opening a project someone else made.
   // Remembered in globalState, so it does not reappear per window or per workspace.
   //
@@ -297,14 +297,14 @@ export async function activate(
     );
   }
 
-  // Enumerating devices shells out to simctl/adb/hdc, so it happens on demand — a device row
-  // asks the first time it draws — and the tree redraws when the answer arrives.
+  // Enumerating devices shells out to simctl/adb/hdc, so it happens on demand (a device row
+  // asks the first time it draws), and the tree redraws when the answer arrives.
   /**
    * Write back what a listing teaches about rows that were stored before it.
    *
-   * An Android emulator row keyed by an adb SERIAL cannot be started once it stops: the serial is
+   * An Android emulator row keyed by an adb serial cannot be started once it stops: the serial is
    * a console port that names nothing, and only the AVD ties the row to something bootable. Rows
-   * added before the AVD was recorded carry no AVD at all — so it is learned here, from the one
+   * added before the AVD was recorded carry no AVD at all, so it is learned here, from the one
    * moment it can be: while that serial is live and the CLI can say which AVD answers to it.
    *
    * Writes only on a real change, which is what keeps this from looping: the write refreshes the
@@ -401,7 +401,7 @@ export async function activate(
             await state.toggleTargetFor(node.root, node.target);
           }
         } else if (node.kind === "config" && node.which === "verbose") {
-          // The row's own project, like every other config row — ticking Day-Showcase's Verbose
+          // The row's own project, like every other config row: ticking Day-Showcase's Verbose
           // while Day-Rise is focused was flipping Day-Rise's.
           await toggleVerbose(node.root);
         }
@@ -449,7 +449,7 @@ export async function activate(
     });
   };
 
-  /** The focused project's runnable ticks — what the plain Run and Build buttons act on. */
+  /** The focused project's runnable ticks, which the plain Run and Build buttons act on. */
   const selectedRunnable = (): string[] => {
     const project = currentProject();
     return project ? runnableFor(project) : [];
@@ -468,7 +468,7 @@ export async function activate(
   /**
    * The project a configuration row acts on: the one it is drawn under.
    *
-   * Invoked from the palette there is no row, so it means the focused project — but a click on
+   * Invoked from the palette there is no row, so it means the focused project, but a click on
    * Day-Showcase's Build mode must edit Day-Showcase even while Day-Rise is focused, which is the
    * whole reason these rows moved inside their projects.
    */
@@ -510,7 +510,7 @@ export async function activate(
   });
 
   // Manual: reports the nothing-to-do cases out loud, and ignores both an earlier "Not now" and
-  // the `never` setting — asking for it by name is the answer to the question it would ask.
+  // the `never` setting: asking for it by name is the answer to the question it would ask.
   register("day.useLocalCheckouts", () =>
     guard(() => offerLocalCheckouts(projects, output, context.workspaceState, true)),
   );
@@ -531,7 +531,7 @@ export async function activate(
     }),
   );
 
-  // The fan-out counterpart of Run: every project's ticked targets, not just the focused one's.
+  // The fan-out counterpart of Run: every project's ticked targets rather than the focused one's.
   // Separate from `day.run` rather than a mode of it, so the button that launches one app cannot
   // become the button that launches twenty by way of a setting nobody remembers changing.
   register("day.runAll", () =>
@@ -675,7 +675,7 @@ export async function activate(
     }
     // Re-asked when the cache has aged out. The menu entry the user just clicked was drawn from a
     // listing that may since have expired, and reading the absence of one as "cannot tell" would
-    // make the entry do nothing at all — the row would offer Stop and then ignore it.
+    // make the entry do nothing at all: the row would offer Stop and then ignore it.
     const listing =
       devices.cached(node.target) ?? (await listDevices(node.root, node.target));
     const device = devices.virtualDevice(listing, choice);
@@ -718,36 +718,36 @@ export async function activate(
 
   /**
    * Start the simulator or emulator a device row names, and hand back the row's device as it now
-   * stands — or `undefined` when it did not start.
+   * stands, or `undefined` when it did not start.
    *
    * The return value is why this is a function rather than the body of a command: an Android
-   * emulator comes back under whatever adb SERIAL it landed on, which need not be the one the row
-   * was stored with, and a caller about to LAUNCH onto it needs the device that exists now rather
+   * emulator comes back under whatever adb serial it landed on, which need not be the one the row
+   * was stored with, and a caller about to launch onto it needs the device that exists now rather
    * than the one it asked about.
    */
   /**
    * Wait out a boot that has already been asked for, and settle the row it belongs to.
    *
    * The waiting is the CLI's: `devices boot --wait` blocks on `simctl bootstatus` for iOS and on
-   * `sys.boot_completed` for Android, watches the emulator PROCESS so one that exits fails in
+   * `sys.boot_completed` for Android, watches the emulator process so one that exits fails in
    * seconds rather than sitting out its timeout, and quotes the emulator log when it gives up.
-   * Polling the listing here instead would be a worse version of all three — adbd answers minutes
+   * Polling the listing here instead would be a worse version of all three: adbd answers minutes
    * before the launcher exists, so a row driven off that would say `connected` and then fail to
    * install.
    *
    * Either way the row survives: on success it is re-keyed onto whatever adb serial an emulator
-   * landed on, and on failure it is marked and left in place, because a device someone deliberately
-   * added is still one they meant to have.
+   * landed on, and on failure it is marked and left in place, because a device someone added is
+   * still one they meant to have.
    */
   /**
    * Keep looking for a device that was started but has not turned up, for a bounded while.
    *
-   * This is the answer to a slow emulator, and it is deliberately NOT a timer over the whole tree.
-   * Enumerating Android costs an `adb` server that outlives the command — the CLI says so, and it
+   * This is the answer to a slow emulator, and it is not a timer over the whole tree.
+   * Enumerating Android costs an `adb` server that outlives the command (the CLI says so, and it
    * is why a listing is something a caller asks for rather than something that happens on the
-   * side — so polling everything on a clock would keep an adb daemon alive on every machine with a
-   * Day project open, including the ones whose author is working on iOS. This watches ONE device,
-   * only after being told it should exist, and stops the moment it does.
+   * side), so polling everything on a clock would keep an adb daemon alive on every machine with
+   * a Day project open, including the ones whose author is working on iOS. This watches one
+   * device, only after being told it should exist, and stops the moment it does.
    *
    * `listDevices` heals as it goes, so a row keyed by an AVD name is re-keyed onto the serial by
    * the same tick that finds it.
@@ -767,7 +767,7 @@ export async function activate(
     try {
       // Three minutes, and it backs off: five-second steps for the first minute, when an emulator
       // that was nearly ready is most likely to arrive, then fifteen. Long enough for a slow boot,
-      // and about twenty `adb` calls rather than thirty-six for a device that is never coming —
+      // and about twenty `adb` calls rather than thirty-six for a device that is never coming,
       // every one of which is a listing the user would otherwise have had to ask for by hand.
       for (let waited = 0; waited < 180_000; ) {
         const step = waited < 60_000 ? 5_000 : 15_000;
@@ -819,9 +819,9 @@ export async function activate(
       return undefined;
     }
     devices.setPending(root, target, row.id, undefined);
-    // Which device this IS, in falling order of how sure the answer is: the serial the CLI printed
+    // Which device this is, in falling order of how sure the answer is: the serial the CLI printed
     // for the emulator it just started, then the id we asked it to boot, then the AVD. The first
-    // is the only one that cannot race — the other two are matched against a listing taken from a
+    // is the only one that cannot race; the other two are matched against a listing taken from a
     // machine that may still be settling.
     const started = (await listDevices(root, target))?.devices.find(
       (d) =>
@@ -856,7 +856,7 @@ export async function activate(
     if (!boot) {
       return undefined; // an unidentified row reached here without being adopted first
     }
-    // The AVD to look for afterwards. An ADOPTED row has none stored yet — the name just chosen is
+    // The AVD to look for afterwards. An adopted row has none stored yet; the name just chosen is
     // the only thing that will tie it to the emulator that comes up, because Android boots by AVD
     // name and reports back by adb serial.
     const avd = adopted ?? what.avd;
@@ -870,14 +870,14 @@ export async function activate(
 
   register("day.addDevice", (node?: Node) =>
     guard(async () => {
-      // Reached from the "+" on a mobile target row, so the node is the TARGET, not a device.
+      // Reached from the "+" on a mobile target row, so the node is the target, not a device.
       const ref = refOf(node);
       if (!ref) {
         return;
       }
       const { root, target } = ref;
-      devices.invalidate(target); // opening the picker is the moment to re-look at THIS target
-      // Handed the PROMISE, not its result: the picker opens on the next frame and spins while the
+      devices.invalidate(target); // opening the picker is the moment to re-look at this target
+      // Handed the promise, not its result: the picker opens on the next frame and spins while the
       // CLI answers, instead of leaving the click with no feedback.
       const listing = devices.list(root, output, target);
       tree.refresh();
@@ -892,20 +892,20 @@ export async function activate(
         try {
           await view.reveal({ kind: "device", root, target, id }, { expand: true });
         } catch {
-          // `reveal` throws when the row is not there — removed already, or a refresh mid-flight.
+          // `reveal` throws when the row is not there (removed already, or a refresh mid-flight).
           // Not being able to scroll to a row is no reason to fail adding it.
         }
       };
 
       if (pick.kind === "boot") {
-        // The row goes in BEFORE the boot, reading `Booting…`, and stays there whatever happens
+        // The row goes in before the boot, reading `Booting…`, and stays there whatever happens
         // next. Waiting for the device first is what this used to do, and it lost the row every
-        // time: the CLI returned as soon as the boot had been ASKED for, the re-list found nothing
+        // time: the CLI returned as soon as the boot had been asked for, the re-list found nothing
         // under either the AVD name or a serial that did not exist yet, and the picker ended in a
-        // status-bar line nobody was looking at — for a device that was, by then, on its way up.
+        // status-bar line nobody was looking at, for a device that was, by then, on its way up.
         //
-        // A `bootable` entry names its own launch flag, which is what makes seeding honest: the
-        // row records how the device will be selected rather than guessing it from the target.
+        // A `bootable` entry names its own launch flag, so the row records how the device will be
+        // selected rather than guessing it from the target.
         await state.addDevice(root, target, pick.device);
         await show(pick.device.id);
         const settled = await bootAndSettle(root, target, pick.device, pick.device.id);
@@ -927,7 +927,7 @@ export async function activate(
         return;
       }
       // Stopped first: the row is about to go, and a run left behind would have no row to stop it
-      // from — `day.stopProject` or Stop All would be the only way back.
+      // from; `day.stopProject` or Stop All would be the only way back.
       await runner.stopDevice(node.root, node.target, node.id);
       await state.removeDevice(node.root, node.target, node.id);
       // Or a device re-added under the same id would inherit the mark from the row that went.
@@ -946,10 +946,10 @@ export async function activate(
         return; // removed between the click and the handler, or already on its way
       }
       // Play onto a simulator or emulator that is not up used to fail in the terminal, several
-      // seconds and one build later, with the CLI's own "not connected" — the row said
-      // `not running` the whole time. Ask instead, and start it when the answer is yes.
+      // seconds and one build later, with the CLI's "not connected"; the row said `not running`
+      // the whole time. Ask instead, and start it when the answer is yes.
       //
-      // Only where the answer is KNOWN: `virtualOf` withholds a physical phone and a target
+      // Only where the answer is known: `virtualOf` withholds a physical phone and a target
       // nothing has been enumerated for, and both of those go straight to the launch the way they
       // always did. Guessing would put a dialog in front of a run that was about to work.
       const what = await checking(node);
@@ -1011,8 +1011,9 @@ export async function activate(
   /**
    * "Start Emulator…" on a row that cannot say which emulator it is: ask, remember, then start it.
    *
-   * Its own command because the ELLIPSIS is the honest part — this entry asks a question and the
-   * plain "Start Emulator" does not, and a VS Code menu title is fixed in the manifest.
+   * A command of its own because the ellipsis is the part that matters: this entry asks a
+   * question and the plain "Start Emulator" does not, and a VS Code menu title is fixed in the
+   * manifest.
    */
   const askWhichAvd = async (
     node: { root: string; target: string },
@@ -1236,8 +1237,8 @@ export async function activate(
       ? projects.find((p) => p.root === node.root)
       : undefined;
 
-  // Run and Stop for ONE project from its own row. Without these, launching an app that is not the
-  // focused one means focusing it first — two gestures for what the row is already pointing at.
+  // Run and Stop for one project from its own row. Without these, launching an app that is not the
+  // focused one means focusing it first, two gestures for what the row is already pointing at.
   register("day.runProject", (node?: Node) =>
     guard(async () => {
       const project = projectOf(node);
@@ -1267,7 +1268,7 @@ export async function activate(
     }),
   );
 
-  // Per PROJECT, not per target: every rule reads the project's sources, catalogs and manifest,
+  // Per project, not per target: every rule reads the project's sources, catalogs and manifest,
   // and none of them is target-specific today. Running it once per ticked target would run the
   // same checks a dozen times and report each finding a dozen times.
   const lintProject = async (root: string): Promise<void> => {
@@ -1309,10 +1310,10 @@ export async function activate(
     }),
   );
 
-  // Destructive, so it confirms first (a modal, not a toast — the whole point is that a
-  // misclick removes nothing). The CLI owns the artifact list (`day clean` stops recorded
-  // sessions and removes build/, target/, and the platform scaffolds' generated outputs);
-  // the extension only stops ITS tracked runs first so terminals and tree state agree.
+  // Destructive, so it confirms first (a modal, not a toast, so that a misclick removes
+  // nothing). The CLI owns the artifact list (`day clean` stops recorded sessions and removes
+  // build/, target/, and the platform scaffolds' generated outputs); the extension only stops
+  // its tracked runs first so terminals and tree state agree.
   const cleanProject = async (root: string): Promise<void> => {
     const pick = await vscode.window.showWarningMessage(
       `Remove all build artifacts in ${path.basename(root)}?`,
@@ -1357,7 +1358,7 @@ export async function activate(
               }
               // The CLI's closing status line ("Cleaned 5 director(ies), 3.6 GiB
               // reclaimed") is the summary; strip the alignment padding and any color.
-              // eslint-disable-next-line no-control-regex -- stripping ANSI color IS matching the ESC byte
+              // eslint-disable-next-line no-control-regex -- stripping ANSI color is matching the ESC byte
               const ansi = /\u001b\[[0-9;]*m/g;
               const lines = stdout.replace(ansi, "").trim().split("\n");
               resolve(lines[lines.length - 1]?.trim());
@@ -1427,7 +1428,7 @@ export async function activate(
                 env: { ...process.env, ...toolchainEnv() },
               },
               (err, stdout, stderr) => {
-                // eslint-disable-next-line no-control-regex -- stripping ANSI color IS matching the ESC byte
+                // eslint-disable-next-line no-control-regex -- stripping ANSI color is matching the ESC byte
                 const ansi = /\u001b\[[0-9;]*m/g;
                 // The CLI narrates on stderr: the "Added …" line, then the next steps it suggests.
                 for (const text of [stdout, stderr]) {
@@ -1535,7 +1536,7 @@ export async function activate(
     }),
   );
 
-  // Runs after a quick fix's edit has been applied. The CLI reads files from DISK, so the buffer
+  // Runs after a quick fix's edit has been applied. The CLI reads files from disk, so the buffer
   // has to be saved before re-checking or the next run would report what the fix just removed.
   register("day.relintAfterFix", (uri?: vscode.Uri) =>
     guard(async () => {
@@ -1554,7 +1555,7 @@ export async function activate(
   );
 
   // Every fix is a whole-file rewrite computed from the text as it was, so they cannot be applied
-  // together — the second would undo the first. One at a time, re-checking in between, which is
+  // together; the second would undo the first. One at a time, re-checking in between, which is
   // what `day lint --fix` does on the command line.
   register("day.fixAllInFile", (uri?: vscode.Uri) =>
     guard(async () => {
@@ -1642,13 +1643,13 @@ export async function activate(
   );
 
   // The walkthrough itself is declarative (package.json `contributes.walkthroughs`), so VS Code
-  // shows it on the Welcome page WITHOUT activating this extension — which is what a person with
-  // no Day project yet will actually see. This command is the way back to it afterwards.
+  // shows it on the Welcome page without activating this extension, which is what a person with
+  // no Day project yet will see. This command is the way back to it afterwards.
   /**
    * Open what was just scaffolded, the way the user wants it opened.
    *
    * Asking every time gets old by the third piece, so the answer is a setting with an `ask`
-   * default — the same shape rust-analyzer settled on.
+   * default, the same shape rust-analyzer settled on.
    */
   const openCreated = async (created: vscode.Uri, name: string): Promise<void> => {
     const configured = vscode.workspace
@@ -1743,8 +1744,8 @@ export async function activate(
             childProcess.execFile(
               cli.command,
               args,
-              // The folder the user PICKED, always. `day new` creates ./<name> under its cwd, and
-              // `cli.cwd` is the day checkout under `day.cliSource` — so honouring that put the
+              // The folder the user picked, always. `day new` creates ./<name> under its cwd, and
+              // `cli.cwd` is the day checkout under `day.cliSource`, so honoring that put the
               // new project inside the day repo and ignored the dialog entirely.
               { cwd: parent, env: { ...process.env, ...toolchainEnv() } },
               (err, _out, stderr) => {
@@ -1764,7 +1765,7 @@ export async function activate(
   );
 
   // Expose Day to agents over MCP (VS Code 1.101+): the server is the day CLI itself, so any
-  // MCP client gets the same tools. Guarded — older VS Code simply skips it.
+  // MCP client gets the same tools. Guarded so that older VS Code skips it.
   const lmAny = (vscode as any).lm;
   if (typeof lmAny?.registerMcpServerDefinitionProvider === "function") {
     context.subscriptions.push(
@@ -1795,7 +1796,7 @@ export async function activate(
   }
 
   // Native Run and Debug (View → Run, F5): the `day` debug type resolves the cockpit's selection,
-  // then either delegates a desktop target to an installed Rust debugger (real breakpoints — see
+  // then either delegates a desktop target to an installed Rust debugger (real breakpoints, see
   // debug.ts `delegate`) or launches through the same `day launch` path as the Run button, with a
   // launch-only inline adapter streaming the app's console into the Debug Console.
   const debugProvider = new DayConfigProvider({
@@ -1910,11 +1911,12 @@ async function prepareHost(
 /**
  * Hand a scaffolded native project to its IDE.
  *
- * macOS goes through `open -a`, which finds an app by name wherever it was installed — no PATH
- * entry, no fixed location — and exits non-zero when it is absent, so a missing Xcode or Android
- * Studio is reported rather than silently doing nothing. Everywhere else Android Studio is a
- * launcher script that has to be on PATH, and it is spawned detached: it outlives this window, and
- * a child held open by the extension host would keep the host alive at shutdown.
+ * macOS goes through `open -a`, which finds an app by name wherever it was installed, needing
+ * neither a PATH entry nor a fixed location, and exits non-zero when it is absent, so a missing
+ * Xcode or Android Studio is reported rather than silently doing nothing. Everywhere else
+ * Android Studio is a launcher script that has to be on PATH, and it is spawned detached: it
+ * outlives this window, and a child held open by the extension host would keep the host alive
+ * at shutdown.
  */
 async function openInIde(
   native: NativeProject,

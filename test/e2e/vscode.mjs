@@ -1,13 +1,13 @@
 // Shared harness for the end-to-end run: get a VS Code, install the packaged extension into it,
 // launch it under Playwright, and capture what is on screen.
 //
-// Two deliberate choices:
+// Two choices:
 //
 //   * The binary path comes from @vscode/test-electron, never from a hardcoded path. On macOS the
-//     app bundle's `Contents/MacOS/Electron` symlink is gone as of 1.131 — the executable is named
-//     by `CFBundleExecutable` (`Code`) — and test-electron resolves that for us. Hardcoding the
+//     app bundle's `Contents/MacOS/Electron` symlink is gone as of 1.131 (the executable is named
+//     by `CFBundleExecutable` (`Code`)), and test-electron resolves that for us. Hardcoding the
 //     old path fails as an instant, silent process exit.
-//   * Settings are written into the user-data-dir BEFORE launch rather than driven through
+//   * Settings are written into the user-data-dir before launch rather than driven through
 //     commands afterwards. A screenshot has to be reproducible, and the recommendation toast, the
 //     chat panel, and the release-notes editor all appear before any command could dismiss them.
 //
@@ -27,7 +27,7 @@ import { _electron as electron } from "playwright";
 
 /**
  * Pin the VS Code build. An unpinned `stable` re-downloads on every release, invalidates the
- * cache key, and changes the pixels under the screenshots; CI overrides it only on purpose.
+ * cache key, and changes the pixels under the screenshots; CI overrides it only when asked to.
  */
 export const VSCODE_VERSION = process.env.DAY_E2E_VSCODE_VERSION || "1.132.0";
 
@@ -36,7 +36,7 @@ export const VSCODE_VERSION = process.env.DAY_E2E_VSCODE_VERSION || "1.132.0";
  *
  * The site shows whichever matches the reader's own light/dark preference, so a dark-mode reader
  * never gets a page of white rectangles. Both are VS Code's built-in defaults, present in every
- * build with no extension to install — `workbenchClass` is the class VS Code puts on
+ * build with no extension to install. `workbenchClass` is the class VS Code puts on
  * `.monaco-workbench` once the theme has actually been applied, which is what the harness waits
  * for instead of sleeping.
  */
@@ -65,7 +65,7 @@ const QUIET_SETTINGS = {
   "explorer.confirmDragAndDrop": false,
   "terminal.integrated.gpuAcceleration": "off",
   // `showOpenDialog` is an OS dialog, and Playwright drives the Electron window, not the window
-  // manager — so the New Project flow would stop dead at "choose a parent folder" on all three
+  // manager, so the New Project flow would stop dead at "choose a parent folder" on all three
   // hosts. VS Code's own simple dialog is a quick input instead, which the harness can type into.
   "files.simpleDialog.enable": true,
   // Keep the session: the default asks, and both other answers open a folder, which ends the
@@ -80,8 +80,8 @@ export async function resolveVSCode() {
 }
 
 /**
- * A working directory with a SHORT absolute path. VS Code opens `<user-data-dir>/<ver>-main.sock`,
- * and a Unix domain socket path over 103 characters fails with `listen EINVAL` — which surfaces as
+ * A working directory with a short absolute path. VS Code opens `<user-data-dir>/<ver>-main.sock`,
+ * and a Unix domain socket path over 103 characters fails with `listen EINVAL`, which surfaces as
  * VS Code exiting the instant it starts, with nothing in the log that names a path. macOS's
  * `os.tmpdir()` is deep enough to hit this on its own once a couple of subdirectories are added.
  */
@@ -94,7 +94,7 @@ export function shortTmp(prefix) {
  * Install a .vsix into `extensionsDir` using that build's own CLI.
  *
  * On Windows the resolved CLI is `bin\code.cmd`, and Node refuses to spawn a `.cmd` without a
- * shell — so the shell goes on, and every argument gets quoted, because with a shell the
+ * shell, so the shell goes on, and every argument gets quoted, because with a shell the
  * arguments are re-parsed and a path with a space would split.
  */
 export function installVsix(exe, vsix, extensionsDir, userDataDir) {
@@ -114,8 +114,7 @@ export function installVsix(exe, vsix, extensionsDir, userDataDir) {
       "--force",
     ].map(quote),
     // A deadline, because `code --install-extension` talks to a marketplace and a keychain and
-    // has no timeout of its own. SIGKILL, not SIGTERM: the point is that nothing here can wedge
-    // the job.
+    // has no timeout of its own. SIGKILL, not SIGTERM, so that nothing here can wedge the job.
     { encoding: "utf8", stdio: "pipe", shell: windows, timeout: 180_000, killSignal: "SIGKILL" },
   );
   const out = `${res.stdout ?? ""}${res.stderr ?? ""}`;
@@ -180,8 +179,8 @@ export async function launchVSCode({
    * looks like a rendering bug in whatever the screenshot was meant to show.
    *
    * A host that never picks the change up is reported and refused, not thrown: an extra picture
-   * is not worth a 30-minute leg, and everything downstream — the assembler, the gallery — already
-   * treats a surface with one variant as a surface with one variant. The run loses a colour, not
+   * is not worth a 30-minute leg, and everything downstream (the assembler, the gallery) already
+   * treats a surface with one variant as a surface with one variant. The run loses a color, not
    * its evidence.
    */
   const setTheme = async (theme) => {
@@ -206,10 +205,10 @@ export async function launchVSCode({
 }
 
 /**
- * Capture the whole desktop, not just VS Code's own window.
+ * Capture the whole desktop, beyond VS Code's window.
  *
- * Playwright screenshots the Electron page, which stops at the window border — and the point of
- * several of these captures is the Day app's NATIVE window sitting beside the editor that
+ * Playwright screenshots the Electron page, which stops at the window border, and several of
+ * these captures exist to show the Day app's native window sitting beside the editor that
  * launched it. Each OS needs its own tool:
  *
  *   macOS    `screencapture`, preinstalled.
@@ -222,10 +221,10 @@ export async function launchVSCode({
  *
  * On a CI runner the desktop holds nothing but these two windows. On a developer machine it holds
  * whatever else is open, so a local `npm run test:e2e` writes a picture of your screen into
- * build/screenshots/ — fine for checking the harness, not something to publish unread.
+ * build/screenshots/: fine for checking the harness, not something to publish unread.
  */
 export function captureDesktop(path) {
-  // 30 seconds is far more than any of these need, and the timeout is the entire point: macOS
+  // 30 seconds is far more than any of these need, and the timeout is what matters: macOS
   // `screencapture` blocks forever on a runner that has no Screen Recording grant to give,
   // waiting on a TCC prompt no one will ever answer. A screenshot is evidence; evidence must not
   // be able to wedge the job that produces it.
@@ -240,7 +239,7 @@ export function captureDesktop(path) {
   if (process.platform === "darwin") {
     // Clear any system prompt before the shutter. A fresh runner answers the launched app's first
     // loopback listener with macOS 15's "Allow … to find devices on local networks?", a floating
-    // TCC panel that lands in the middle of the ONLY capture framing the app — and it named the
+    // TCC panel that lands in the middle of the only capture framing the app, and it named the
     // runner's hostname, so the published picture read as a permission dialog rather than as a Day
     // app. Day asks for nothing of the sort: every listener it opens binds 127.0.0.1, and there is
     // no multicast or Bonjour anywhere in the tree.
@@ -248,8 +247,9 @@ export function captureDesktop(path) {
     // A kill rather than a click: the panel belongs to UserNotificationCenter, not to anything
     // this harness drives, and clicking it would need an Accessibility grant a runner has no way
     // to give. The agent is stateless and relaunches on demand, so killing it dismisses the panel
-    // and answers nothing — which is the right outcome on a machine that is discarded minutes
-    // later. Best effort: no prompt, no panel, nothing killed, same picture.
+    // and answers nothing, which is the right outcome on a machine that is discarded minutes
+    // later. Best effort: when there is no prompt there is nothing to kill, and the picture is the
+    // same.
     run("killall", ["-q", "UserNotificationCenter"]);
     run("sleep", ["1"]); // the panel is torn down a frame or two after its owner goes
     // -x no shutter sound, -m main display only (a second monitor is not part of the story).

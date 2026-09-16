@@ -1,4 +1,4 @@
-// The build/run selection — which targets, mode, locale and dayscript — held PER PROJECT, plus
+// The build/run selection (which targets, mode, locale and dayscript), held per project, plus
 // which project is focused, persisted per-workspace in the extension's Memento. A change event lets
 // the tree and status bar refresh when any of it is edited.
 //
@@ -26,10 +26,10 @@ export interface DeviceChoice {
   /**
    * The AVD an Android emulator is running, when the CLI could name one.
    *
-   * `id` is an adb serial there, and a serial is a CONSOLE PORT rather than an identity: stop the
+   * `id` is an adb serial there, and a serial is a console port rather than an identity: stop the
    * emulator and it names nothing, start it again beside another one and it comes back as a
    * different serial. The AVD is what survives that, so it is what lets a stopped row still say
-   * which emulator it is and offer to start it. Absent everywhere else — a simulator's UDID and a
+   * which emulator it is and offer to start it. Absent everywhere else: a simulator's UDID and a
    * phone's serial are already stable.
    */
   avd?: string;
@@ -45,8 +45,8 @@ export interface Selection {
   /**
    * The devices configured for each target, in the order they were added.
    *
-   * A target with no entry launches onto every connected device, which is the CLI's own default —
-   * so a project nobody has configured behaves exactly as it did before. One with several launches
+   * A target with no entry launches onto every connected device, which is the CLI's default, so
+   * a project nobody has configured behaves exactly as it did before. One with several launches
    * onto each of them, one task apiece.
    */
   deviceList?: Record<string, DeviceChoice[]>;
@@ -55,10 +55,10 @@ export interface Selection {
    *
    * Separate from `deviceList` rather than a flag on each entry: a `DeviceChoice` is handed
    * straight to the task definition, and VS Code keys a task on that definition's declared
-   * properties — a `checked` field riding along would put the tick into the task's IDENTITY, so
+   * properties; a `checked` field riding along would put the tick into the task's identity, so
    * unticking a running device would look like a different task.
    *
-   * A target with configured devices and NO entry here has them all ticked: adding a device is
+   * A target with configured devices and no entry here has them all ticked: adding a device is
    * saying you want to run on it, so it arrives ticked and this map only records departures from
    * that.
    */
@@ -68,7 +68,7 @@ export interface Selection {
 /** One project's stored slice. Every field optional: absent means "fall back to the setting". */
 type StoredSelection = Partial<Selection> & {
   /**
-   * Superseded by `deviceList`. It held ONE pinned device per target; a workspace written before
+   * Superseded by `deviceList`. It held one pinned device per target; a workspace written before
    * multi-device support still carries it, and [`State.selectionFor`] promotes it to a
    * single-entry list so nobody's pinned simulator silently reverts to "all connected".
    */
@@ -135,7 +135,7 @@ export class State {
   }
 
   /** Point the cockpit at a project: the Configuration rows, the plain Run button and the status
-   *  bar all follow it. Its stored selection is untouched — focusing is not editing. */
+   *  bar all follow it. Its stored selection is untouched: focusing is not editing. */
   async focus(root: string): Promise<void> {
     const prev = this.stored();
     if (prev.focused === root) {
@@ -153,7 +153,7 @@ export class State {
     await this.updateFor(root, patch);
   }
 
-  /** Apply `patch` to one project WITHOUT focusing it — the fan-out edits in the projects tree. */
+  /** Apply `patch` to one project without focusing it: the fan-out edits in the projects tree. */
   async updateFor(root: string, patch: Partial<Selection>): Promise<void> {
     const prev = this.stored();
     await this.write({
@@ -182,9 +182,9 @@ export class State {
     if (current.some((d) => d.id === device.id)) {
       return Promise.resolve();
     }
-    // Arrives TICKED. `tickedDevicesFor` reads an absent entry as "all of them", which covers the
+    // Arrives ticked. `tickedDevicesFor` reads an absent entry as "all of them", which covers the
     // first device; once anything has been unticked the entry exists, and a new device would
-    // otherwise land unticked — added on purpose, yet silently not launched onto.
+    // otherwise land unticked: just added, yet silently not launched onto.
     const ticks = this.selectionFor(root).deviceTicks?.[target];
     if (ticks) {
       return this.writeDevicesAndTicks(root, target, [...current, device], [
@@ -211,7 +211,7 @@ export class State {
   ): Promise<void> {
     const current = this.devicesFor(root, target);
     if (!current.some((d) => d.id === id) || current.some((d) => d.id === next.id && d.id !== id)) {
-      // Nothing to rename, or the new id is ANOTHER row's — writing either would leave two rows
+      // Nothing to rename, or the new id is another row's; writing either would leave two rows
       // for one device, each launching onto it. Keeping the same id is allowed and is how a row
       // gains the AVD behind its serial without moving.
       return Promise.resolve();
@@ -237,8 +237,8 @@ export class State {
   /**
    * The configured devices of a target that are ticked, in configured order.
    *
-   * Absent state means all of them, so a project that predates ticking — or one where nobody has
-   * unticked anything — launches on everything it lists, which is what it did before.
+   * Absent state means all of them, so a project that predates ticking (or one where nobody has
+   * unticked anything) launches on everything it lists, which is what it did before.
    */
   tickedDevicesFor(root: string, target: string): DeviceChoice[] {
     const all = this.devicesFor(root, target);
@@ -262,7 +262,7 @@ export class State {
     return this.writeTicks(root, target, current);
   }
 
-  /** Tick or untick every configured device of a target — what the target's own checkbox does. */
+  /** Tick or untick every configured device of a target: what the target's checkbox does. */
   setAllDevicesTicked(root: string, target: string, ticked: boolean): Promise<void> {
     const all = this.devicesFor(root, target).map((d) => d.id);
     return this.writeTicks(root, target, new Set(ticked ? all : []));
@@ -271,7 +271,7 @@ export class State {
   private writeTicks(root: string, target: string, ids: Set<string>): Promise<void> {
     const deviceTicks = { ...this.selectionFor(root).deviceTicks };
     // Normalised to configured order. Reads filter the configured list, so order here is not
-    // observable either way — this only keeps the persisted value from churning as ticks are
+    // observable either way; this only keeps the persisted value from churning as ticks are
     // toggled back and forth.
     deviceTicks[target] = this.devicesFor(root, target)
       .map((d) => d.id)
@@ -301,8 +301,8 @@ export class State {
     }
 
     // The ticks follow the list: a device removed and later re-added must arrive ticked like any
-    // other new one, rather than carrying a stale untick nobody can see. Written in the SAME
-    // update as the list — two `updateFor` calls both read the stored object first, so the second
+    // other new one, rather than carrying a stale untick nobody can see. Written in the same
+    // update as the list: two `updateFor` calls both read the stored object first, so the second
     // would be built from a snapshot taken before the first landed and would drop its change.
     const deviceTicks = { ...selection.deviceTicks };
     if (ticks) {

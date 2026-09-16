@@ -3,12 +3,12 @@
 //     node test/e2e/drive.mjs [--out DIR] [--no-run]
 //
 // The run ends with a set of PNGs under `--out` (default build/screenshots/<combo>/), named for
-// what they show, and a manifest.json describing them. It opens with the getting-started story —
-// the walkthrough, then the New Project wizard driven end to end until a scaffolded app appears
-// in the Day view beside the fixture — and then photographs the cockpit, a build, and the app. They are evidence for CI and the source of
-// the extension's README and Marketplace images, which is why the harness fixes the themes, the
-// window size, and the fixture: the same command on the same VS Code build should produce the
-// same picture.
+// what they show, and a manifest.json describing them. It opens with the getting-started story
+// (the walkthrough, then the New Project wizard driven end to end until a scaffolded app appears
+// in the Day view beside the fixture) and then photographs the cockpit, a build, and the app.
+// They are evidence for CI and the source of the extension's README and Marketplace images, which
+// is why the harness fixes the themes, the window size, and the fixture: the same command on the
+// same VS Code build should produce the same picture.
 //
 // Every editor surface is photographed twice, `<combo>-NN-name-dark.png` and `-light.png`, so the
 // website can show whichever matches the reader's own colour scheme. See `shot`.
@@ -53,7 +53,7 @@ let setTheme;
 // A hung UI run is otherwise invisible: GitHub shows a step "in progress" for six hours and the
 // logs only arrive once the job is killed, by which point nobody can tell which call stopped
 // answering. Every phase announces itself with an elapsed time, and a timer force-exits the run
-// with the current phase named — a failing run that says where it stopped beats a silent one.
+// with the current phase named; a failing run that says where it stopped beats a silent one.
 const started = Date.now();
 let phase = "startup";
 const since = () => `${((Date.now() - started) / 1000).toFixed(0)}s`;
@@ -72,7 +72,7 @@ const watchdog = setTimeout(() => {
 watchdog.unref();
 
 /**
- * Save a screenshot of the VS Code window under a stable, descriptive name — once per theme.
+ * Save a screenshot of the VS Code window under a stable, descriptive name, once per theme.
  *
  * The site swaps captures with the reader's own light/dark preference, so each surface is
  * photographed in both without being set up twice: the theme changes underneath a screen that is
@@ -101,7 +101,7 @@ async function shot(win, name, caption) {
  *
  * One theme only, unlike `shot`. The frame holds a native Day app whose appearance follows the
  * OS, not VS Code's setting, so restyling the editor alone would photograph a light editor beside
- * a dark app — a pairing no reader's machine would ever produce.
+ * a dark app, a pairing no reader's machine would ever produce.
  */
 function desktopShot(name, caption) {
   const file = join(OUT, `${COMBO}-${name}.png`);
@@ -157,10 +157,10 @@ async function command(win, title) {
 /**
  * Open `<project>`'s `file` in the editor, through Quick Open.
  *
- * Quick Open indexes a file by its path RELATIVE TO ITS WORKSPACE FOLDER, so the folder's own name
- * is not part of the query — searching "hello-day/src/lib.rs" finds nothing at all. With two
- * projects in the window both offer a `lib.rs`, so the query is the file name and the right row is
- * found by reading the descriptions back, the same way `command` checks the palette.
+ * Quick Open indexes a file by its path relative to its workspace folder, so the folder's name is
+ * not part of the query: searching "hello-day/src/lib.rs" finds nothing at all. With two projects
+ * in the window both offer a `lib.rs`, so the query is the file name and the right row is found
+ * by reading the descriptions back, the same way `command` checks the palette.
  *
  * Retried because a folder added to the workspace a moment ago is not in the file index yet, and
  * the first attempt legitimately finds nothing.
@@ -200,8 +200,8 @@ async function openFile(win, project, file) {
 /**
  * Wait for a quick input showing `title`, so a step cannot photograph the previous screen.
  *
- * The wizard's steps all render into the SAME `.quick-input-widget`, and they arrive one frame
- * apart — without reading the title back, a capture races the transition and lands on whichever
+ * The wizard's steps all render into the same `.quick-input-widget`, and they arrive one frame
+ * apart; without reading the title back, a capture races the transition and lands on whichever
  * question was up a moment ago, which is invisible in a green run and wrong in the docs.
  */
 async function quickInput(win, title, timeout = 15_000) {
@@ -224,7 +224,7 @@ function row(win, label) {
  * Tick a target and prove the tick took.
  *
  * The row's checkbox is its own element (`[role="checkbox"]` inside the tree item), not something
- * a Space keypress on the row toggles — pressing Space merely selects, and Run then finds no
+ * a Space keypress on the row toggles: pressing Space merely selects, and Run then finds no
  * selection and quietly does nothing. Reading `aria-checked` back turns that silence into a
  * failure at the step that caused it.
  */
@@ -232,10 +232,10 @@ async function tickTarget(win, combo) {
   // Whatever was clicked before this may still be showing its hover over the tree.
   await dismissHover(win);
   const box = row(win, combo).locator('[role="checkbox"]').first();
-  // Retried, with a SHORT first attempt. What blocks the click is an overlay, and Playwright's own
+  // Retried, with a short first attempt. What blocks the click is an overlay, and Playwright's own
   // retrying does not help against one: it re-attempts into the same obstruction until the full
   // timeout expires. The windows-xaml leg spent thirty seconds being told
-  // `<p>D:\…\day-fixture</p> from <div class="context-view …"> intercepts pointer events` — the
+  // `<p>D:\…\day-fixture</p> from <div class="context-view …"> intercepts pointer events`, the
   // hover for the project row clicked a moment earlier. Moving the pointer away closes it, so a
   // failed attempt is worth a second look rather than a longer wait.
   for (let attempt = 1; ; attempt++) {
@@ -258,8 +258,8 @@ async function tickTarget(win, combo) {
 /**
  * Park the pointer somewhere harmless and wait for any hover it leaves behind to close.
  *
- * Clicking a tree row leaves the cursor ON it, and VS Code then opens that row's hover — for a
- * project row, its full path — as a `.context-view` overlay drawn OVER the rows beneath. The next
+ * Clicking a tree row leaves the cursor on it, and VS Code then opens that row's hover (for a
+ * project row, its full path) as a `.context-view` overlay drawn over the rows beneath. The next
  * click lands on the tooltip instead of the checkbox, which Playwright reports as an interception
  * and retries until it times out thirty seconds later.
  */
@@ -275,7 +275,7 @@ async function dismissHover(win) {
 /**
  * Make `name` the focused project by clicking its row, and prove it took.
  *
- * Focus follows the active editor, so opening a file from one project moves it — which is right
+ * Focus follows the active editor, so opening a file from one project moves it, which is right
  * for a person and wrong for a script that is about to build a different one.
  */
 async function focusProject(win, name) {
@@ -288,7 +288,7 @@ async function focusProject(win, name) {
   }
 }
 
-/** Read the Day view's rows as plain text — the assertable form of the screenshot. */
+/** Read the Day view's rows as plain text, the assertable form of the screenshot. */
 async function treeText(win) {
   const items = await win.locator(`.pane-body [role="treeitem"]`).allInnerTexts();
   return items.map((t) => t.replace(/\s+/g, " ").trim());
@@ -301,7 +301,7 @@ async function treeText(win) {
  * `textContent` through `evaluateAll`, not `innerText`: innerText is a rendered-layout property
  * and comes back empty for a panel that is not visible, which is most of the time while the Day
  * view has focus. Reading text at all depends on xterm's DOM renderer, which is why the harness
- * turns terminal GPU acceleration off — a canvas terminal has no text in the DOM to read.
+ * turns terminal GPU acceleration off: a canvas terminal has no text in the DOM to read.
  */
 async function terminalText(win) {
   const rows = win.locator(".xterm-rows");
@@ -336,8 +336,8 @@ try {
   enter("capturing the welcome page");
   // ── Getting started ────────────────────────────────────────────────────────────────────────
   // What someone sees before they have anything: the walkthrough, then the New Project flow that
-  // its first button starts. Photographed on every host because the answer differs — the target
-  // list offers what THAT machine can build.
+  // its first button starts. Photographed on every host because the answer differs: the target
+  // list offers what that machine can build.
   await command(win, "Day: Get Started with Day");
   await win
     .locator(".gettingStartedContainer, .welcomePageContainer")
@@ -356,9 +356,9 @@ try {
   enter("driving the New Project wizard");
   const newProjectName = "hello-day";
   // A leftover from a previous run makes `day new` refuse with `"hello-day" already exists`, and
-  // the wizard then hangs waiting for a project that will never appear. The fixture parent is
-  // deliberately stable — CI keys a cache to it and a local run reuses the build — so the
-  // scaffold target has to be cleared, exactly as `scaffold()` clears the fixture's own.
+  // the wizard then hangs waiting for a project that will never appear. The fixture parent stays
+  // stable (CI keys a cache to it and a local run reuses the build), so the scaffold target has
+  // to be cleared, exactly as `scaffold()` clears the fixture's own.
   rmSync(join(fixtureParent(work), newProjectName), { recursive: true, force: true });
   await command(win, "Day: New Project"); // typed without the ellipsis; the match is a prefix
 
@@ -373,7 +373,7 @@ try {
   await win.keyboard.press("Enter");
 
   // Blank accepts the CLI's own default (`dev.example.<name>`), which is what the placeholder
-  // says — so this step is one keypress and needs no picture of its own.
+  // says, so this step is one keypress and needs no picture of its own.
   await quickInput(win, "Application id");
   await win.keyboard.press("Enter");
 
@@ -389,7 +389,7 @@ try {
   await win.keyboard.press("Enter");
 
   // The parent folder. An OS dialog here would be undrivable; `files.simpleDialog.enable` makes
-  // it a quick input, so the path can simply be typed.
+  // it a quick input, so the path can be typed.
   const parent = fixtureParent(work);
   await quickInput(win, "parent folder", 30_000);
   await win.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
@@ -408,7 +408,7 @@ try {
     { timeout: 180_000 },
   );
   // Open something from the app that was just made. Every capture from here on frames the editor,
-  // and an empty editor area photographs as VS Code's watermark — which says nothing about Day and
+  // and an empty editor area photographs as VS Code's watermark, which says nothing about Day and
   // takes up most of the picture. `View: Close All Editors` above cleared the fixture's own file
   // to keep the wizard's backdrop tidy, so this is also what puts an editor back.
   await openFile(win, newProjectName, "lib.rs");
@@ -420,11 +420,11 @@ try {
     "The scaffolded app open in the editor, listed in the Day view beside the one already there",
   );
 
-  // The scaffolded app JOINS the workspace, and opening its `lib.rs` made it the focused project
-  // — focus follows the active editor. Everything below builds and runs, and it has to be the
-  // FIXTURE: that is the project the job's Rust cache is keyed to, so building the new one instead
-  // would be a cold compile of a different app on every run. Hand focus back explicitly, and prove
-  // it, rather than relying on which editor happened to be active.
+  // The scaffolded app joins the workspace, and opening its `lib.rs` made it the focused project,
+  // because focus follows the active editor. Everything below builds and runs, and it has to be
+  // the fixture: that is the project the job's Rust cache is keyed to, so building the new one
+  // instead would be a cold compile of a different app on every run. Hand focus back explicitly,
+  // and prove it, rather than relying on which editor happened to be active.
   const fixtureName = workspace.split(/[\\/]/).filter(Boolean).pop();
   await focusProject(win, fixtureName);
 
@@ -522,9 +522,9 @@ try {
   if (RUN_APP) {
     // ── Build and run the host's own combo, through the extension ────────────────────────────
     await command(win, "Day: Focus on Build & Run View");
-    // Re-assert focus HERE, not once after scaffolding: it drifts. Focus follows the active
+    // Re-assert focus here, not once after scaffolding: it drifts. Focus follows the active
     // editor, and `View: Close All Editors` above makes the scaffolded app's `lib.rs` active on
-    // its way out — which quietly hands the cockpit to `hello-day`. Run then acts on that project,
+    // its way out, which quietly hands the cockpit to `hello-day`. Run then acts on that project,
     // whose targets nobody ticked, and does nothing at all.
     await focusProject(win, fixtureName);
     await tickTarget(win, COMBO);
@@ -540,16 +540,16 @@ try {
     const stopAction = row(win, COMBO).locator('a[aria-label="Stop"]');
     let built = false;
     let shotBuilding = false;
-    // Two budgets. The long one is how long a BUILD may take; the short one is how long it may
-    // take to START, and it exists because the failure mode that cost half an hour was a run that
-    // never began — `Run Selected Targets` acting on a project with nothing ticked reports that in
+    // Two budgets. The long one is how long a build may take; the short one is how long it may
+    // take to start, and it exists because the failure mode that cost half an hour was a run that
+    // never began: `Run Selected Targets` acting on a project with nothing ticked reports that in
     // a toast and returns. Silence is the symptom, so silence gets its own, much shorter, clock.
     //
-    // Keyed on the SAME signal the loop already exits by, which is why a slow build cannot trip
+    // Keyed on the same signal the loop already exits by, which is why a slow build cannot trip
     // it: the runner registers a target as running the moment `executeTask` returns (runner.ts),
     // long before anything compiles, and the row's Stop action appears with it. Still being here
-    // after the short budget therefore means no task was ever started. Terminal text is NOT a
-    // usable signal for this — a local run built and launched without ever matching
+    // after the short budget therefore means no task was ever started. Terminal text is not a
+    // usable signal for this; a local run built and launched without ever matching
     // /Building|Compiling/ in the DOM.
     const STARTED_MS = 180_000;
     const startedBy = Date.now() + STARTED_MS;
@@ -605,7 +605,7 @@ try {
   );
   // Bounded like everything else: Electron shutdown is the one remaining call that could sit
   // there forever, and the run's results are already on disk by this point. The loser of the race
-  // is cleared rather than left pending — an unref'd timer would not hold the loop, but this one
+  // is cleared rather than left pending: an unref'd timer would not hold the loop, but this one
   // is not unref'd, so a fast close still cost 30 seconds of "finished but not exited".
   let bail;
   await Promise.race([
@@ -619,7 +619,7 @@ try {
 
 console.log(`${shots.length} screenshot(s) → ${OUT} in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 // Explicit, because "the script finished" and "the process exited" have come apart here before:
-// everything this run produces is already on disk, and a stray handle — an Electron child that
-// outlived `close`, a socket Playwright kept — would otherwise leave the process alive with
+// everything this run produces is already on disk, and a stray handle (an Electron child that
+// outlived `close`, a socket Playwright kept) would otherwise leave the process alive with
 // nothing left to do. Anything that still needs to run belongs above this line.
 process.exit(0);

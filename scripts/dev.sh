@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Launch VS Code with the LOCAL source build of the Day extension, on a workspace holding BOTH
+# Launch VS Code with the local source build of the Day extension, on a workspace holding both
 # repositories the extension's dev loop needs.
 #
 #   scripts/dev.sh [path ...]
 #
-# An argument is either a Day app — any conventional Day project, nothing here is specific to one —
+# An argument is either a Day app (any conventional Day project; nothing here is specific to one)
 # or any other folder worth having open beside it, typically a crate the app is being developed
 # against (an external piece or part repository, a fork of a dependency). Both kinds go into the
 # window; a Day.toml is what tells them apart. The projects that have one are patched at `day/`,
@@ -12,13 +12,13 @@
 # same window. The crate's own resolution is left as it is: it is open for editing, not under
 # test, and `day patch` has nothing to say about a project with no Day.toml.
 #
-# With no argument it is the nearest ancestor of the CURRENT DIRECTORY holding a
+# With no argument it is the nearest ancestor of the current directory holding a
 # Day.toml, the same rule `day --project` follows, so
 #
 #   cd ~/apps/MyApp && ~/src/day-vscode/scripts/dev.sh
 #
-# opens that app. With no argument AND no Day project to find — a fresh clone, before there is
-# anything to open — it installs this repository's dependencies and opens a window on the
+# opens that app. With no argument and no Day project to find (a fresh clone, before there is
+# anything to open), it installs this repository's dependencies and opens a window on the
 # extension's welcome page instead of refusing to start. That window has no app in it, so the Day
 # sidebar shows its empty state, and the way on from there is the same `Create a Day Project`
 # button a first-time user sees.
@@ -32,30 +32,30 @@
 # in the sidebar with its own targets, mode, locale and dayscript; the focused one follows the file
 # being edited, and `Day: Run All Projects` launches every ticked target across all of them. The
 # second form adds a crate to the same window and points Day-Showcase at it, so editing the piece
-# and running the app that draws it are one window apart — the sidebar has nothing to say about the
+# and running the app that draws it are one window apart; the sidebar has nothing to say about the
 # crate itself, and it is the app beside it that exercises the edit.
 #
-# The window is an Extension Development Host: the extension running there is built fresh from THIS
+# The window is an Extension Development Host: the extension running there is built fresh from this
 # working tree (superseding any installed day-vscode in that window), so source edits + rerunning
 # this script are the whole dev loop.
 #
-# The window opens a multi-root workspace — the app(s) FIRST, then the `day` checkout — because the
+# The window opens a multi-root workspace, the app(s) first, then the `day` checkout, because the
 # loop needs all three of these at once:
 #
 #   * the app supplies the Day.toml the extension's sidebar, tasks, and debug configs act on;
 #   * `day/` is open for editing beside it, so a fix to a core/toolkit/piece/part crate and the
 #     app that exercises it are one window apart;
 #   * the generated workspace sets `day.cliSource` to that checkout, so every CLI invocation the
-#     editor makes is `cargo run` against it (src/cli.ts) — an edit to day-cli reaches the next
+#     editor makes is `cargo run` against it (src/cli.ts), so an edit to day-cli reaches the next
 #     build without rerunning this script, and no installed `day` is consulted.
 #
 # Both sides therefore ignore whatever `day` is on PATH. That binary is whatever was released or
 # installed last, and a CLI a version behind the crates in `day/` writes a [patch] table an older
-# `day patch` understood and reports targets and Day.toml fields that predate them — so this
+# `day patch` understood and reports targets and Day.toml fields that predate them, so this
 # script builds `day-cli` from the checkout and invokes it by path.
 #
 # `day patch` then points the app's cargo resolution at that same checkout, so every crate in
-# `day/` — core, toolkits, pieces, parts — is a path dependency rather than the published git
+# `day/` (core, toolkits, pieces, parts) is a path dependency rather than the published git
 # one. An edit there lands in the very next build the extension's Build/Run/Restart commands
 # start, with no republish and no version bump.
 
@@ -71,7 +71,7 @@ usage() {
   echo "usage: scripts/dev.sh [path ...]" >&2
   echo "       each path is a Day project (patched at the day checkout, and at any crate" >&2
   echo "       below it depends on) or a crate to open beside it" >&2
-  # Naming the projects that ARE here beats naming one in the default: this list follows whatever
+  # Naming the projects that are here beats naming one in the default: this list follows whatever
   # the developer has checked out, and stays right when it changes.
   local d found=""
   for d in "$SIBLINGS"/*/; do
@@ -106,12 +106,12 @@ if ! command -v code >/dev/null 2>&1; then
 fi
 
 # The Day projects, and the folders that are merely open beside them. Two lists rather than one
-# with a flag: everything downstream wants one or the other — `day patch` runs over the first, the
+# with a flag: everything downstream wants one or the other: `day patch` runs over the first, the
 # window opens both.
 PROJECTS=()
 FOLDERS=()
 # Named twice in one invocation, or named once as `.` and once by path, would put the same folder in
-# the workspace twice — VS Code shows both, and the second is indistinguishable from the first.
+# the workspace twice; VS Code shows both, and the second is indistinguishable from the first.
 add_folder() {
   local resolved p
   resolved="$(cd "$1" && pwd)"
@@ -133,7 +133,7 @@ WELCOME=0
 if [ $# -gt 0 ]; then
   for arg in "$@"; do
     # The only thing still worth refusing is a path that is not there. A folder with no Day.toml is
-    # a legitimate argument now, so the sole remaining mistake this can catch is a typo — which is
+    # a legitimate argument now, so the sole remaining mistake this can catch is a typo, which is
     # worth catching, because the alternative is a window silently missing what was asked for.
     if [ ! -d "$arg" ]; then
       echo "error: $arg is not a directory" >&2
@@ -149,7 +149,7 @@ else
   echo "▸ no Day project given, and none above $PWD — opening the welcome page"
 fi
 
-# A day checkout, not just any folder called `day`: the patch table and the CLI fallback both
+# A day checkout rather than any folder called `day`: the patch table and the CLI fallback both
 # address crates inside it, and pointing either at the wrong tree fails far from here.
 if [ ! -f "$DAY_REPO/crates/day-cli/Cargo.toml" ]; then
   echo "error: no day checkout at $DAY_REPO (expected crates/day-cli/Cargo.toml)" >&2
@@ -170,8 +170,8 @@ fi
 echo "▸ building day-cli from ${DAY_REPO}…"
 # Unconditional, and never `day` from PATH: "if needed" is cargo's judgement to make, so a fresh
 # tree costs one no-op invocation and a stale one is rebuilt before the patch table is written with
-# it. Debug, because this is the build TOOL, not the thing under test. Run from the day repo so
-# cargo reads THAT workspace's config, not the target project's — and it is the same target dir the
+# it. Debug, because this is the build tool, not the thing under test. Run from the day repo so
+# cargo reads that workspace's config, not the target project's, and it is the same target dir the
 # extension's own `cargo run -q -p day-cli` uses, so this warms the editor's first command too.
 (cd "$DAY_REPO" && cargo build -p day-cli)
 
@@ -183,7 +183,7 @@ if [ ! -x "$DAY_BIN" ]; then
 fi
 echo "▸ using $DAY_BIN"
 
-# A fresh clone has no node_modules, and `npm run bundle` fails there with esbuild "not found" —
+# A fresh clone has no node_modules, and `npm run bundle` fails there with esbuild "not found",
 # which reads like a broken repository rather than a missing install step. `npm ci` when the
 # lockfile is there (reproducible, and what CI runs), `npm install` when it is not.
 if [ ! -d "$EXT_DIR/node_modules" ]; then
@@ -200,19 +200,19 @@ echo "▸ building the extension from source ($EXT_DIR)…"
 
 # Every project gets its own patch table: they are separate cargo workspaces, and one left
 # unpatched would quietly build the published day crates from the git cache while its neighbour
-# built the checkout — the same window, two different frameworks under test.
+# built the checkout: the same window, two different frameworks under test.
 for project in ${PROJECTS+"${PROJECTS[@]}"}; do
   # Braced so bash does not read the trailing multi-byte ellipsis as part of the name.
   echo "▸ pointing $(basename "$project") at ${DAY_REPO}…"
   # The day checkout for every project, and each folder named beside it for the projects that
-  # actually depend on it — an external piece or part repository is a patch source in its own
+  # actually depend on it; an external piece or part repository is a patch source in its own
   # right (`day patch --local` is repeatable and documents exactly that), so a piece opened here
   # for editing is built from this checkout rather than fetched from git.
   #
   # Which projects those are is a question `day patch` already answers, so it is asked rather than
   # reimplemented: a source the project has no dependency from is refused outright ("nothing to
   # patch there"), and a refusal writes nothing. So the list grows one folder at a time, keeping
-  # whatever takes. The probes are silent because their failures are expected and uninteresting —
+  # whatever takes. The probes are silent because their failures are expected and uninteresting;
   # a window may well hold a crate that this particular app has never heard of. The run that
   # matters is the last one, with the sources that survived, and it reports for itself.
   SOURCES=(--local "$DAY_REPO")
@@ -221,16 +221,16 @@ for project in ${PROJECTS+"${PROJECTS[@]}"}; do
       SOURCES+=(--local "$folder")
       echo "  + and at $(basename "$folder")"
     elif ! printf '%s' "$PROBE" | grep -q "no dependencies from"; then
-      # Declined for a reason other than "this project doesn't use it" — the wrong branch, a
+      # Declined for a reason other than "this project doesn't use it": the wrong branch, a
       # renamed crate, a checkout that is not what it looks like. The source is left out either
-      # way, but leaving it out QUIETLY is how an edit under test never reaches the app, so this
+      # way, but leaving it out quietly is how an edit under test never reaches the app, so this
       # one is repeated rather than swallowed with the expected ones.
       echo "  ! $(basename "$folder") could not be patched in, and is not in the table:" >&2
       printf '%s\n' "$PROBE" >&2
     fi
   done
   # Rewrites the app's gitignored .cargo/config.toml and verifies no day crate still resolves from
-  # git — a crate missing from the table silently builds from the git cache, and the edit under
+  # git; a crate missing from the table silently builds from the git cache, and the edit under
   # test then never reaches the app.
   "$DAY_BIN" patch "${SOURCES[@]}" --project "$project"
 done
@@ -252,11 +252,11 @@ mkdir -p "$(dirname "$WORKSPACE")"
 # `day.cliSource` rather than `day.cliPath` pointing at the binary built above: the window then runs
 # the CLI as `cargo run --manifest-path <day>/Cargo.toml -q -p day-cli --`, so an edit to day-cli is
 # compiled into the very next build, launch or project scan without rerunning this script. The
-# binary is still built first — it is what `day patch` above runs, and it leaves the cargo cache
+# binary is still built first; it is what `day patch` above runs, and it leaves the cargo cache
 # warm, so the editor's first invocation is a freshness check rather than a cold compile.
 #
 # The cost of that convenience is a dependency on `cargo` being on the PATH the editor inherits,
-# which is NOT this shell's when `code` hands the window to an already-running VS Code — the source
+# which is not this shell's when `code` hands the window to an already-running VS Code, the source
 # of "the day CLI isn't installed" with a perfectly good CLI sitting in the checkout. src/cli.ts
 # checks for cargo up front and falls back to that same built binary rather than failing every
 # call. Workspace-scoped, in a generated machine-local file.
@@ -277,14 +277,14 @@ mkdir -p "$(dirname "$WORKSPACE")"
   # With no app to open, land on the extension's own welcome page.
   #
   # `code` has no flag that runs a command at startup, and it hands a new window to an
-  # already-running VS Code — which does not inherit this shell's environment — so a setting in
+  # already-running VS Code, which does not inherit this shell's environment, so a setting in
   # the generated workspace is the only channel that works every time. The extension reads
   # `day.showWalkthroughOnStartup` when it activates and opens the walkthrough.
   #
   # `workbench.startupEditor` is the backstop for the case where it does not activate: the
   # extension activates on a Day.toml anywhere in the workspace, which the day checkout satisfies
-  # only because it carries the scaffold TEMPLATE's Day.toml. That is incidental, so the Welcome
-  # page — which lists the walkthrough whether or not anything activated — is what catches it.
+  # only because it carries the scaffold template's Day.toml. That is incidental, so the Welcome
+  # page, which lists the walkthrough whether or not anything activated, is what catches it.
   if [ "$WELCOME" = 1 ]; then
     echo '    "day.showWalkthroughOnStartup": true,'
     echo '    "workbench.startupEditor": "welcomePage"'

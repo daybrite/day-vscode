@@ -1,8 +1,8 @@
 // Discover Day projects (folders with a `Day.toml` manifest) and load each one's metadata by
-// shelling out to `day metadata --json`. The CLI owns the manifest format AND the target
-// catalog, so the extension never parses Day.toml itself — the JSON envelope is versioned and
+// shelling out to `day metadata --json`. The CLI owns the manifest format and the target
+// catalog, so the extension never parses Day.toml itself; the JSON envelope is versioned and
 // grow-only (see crates/day-cli/src/metadata.rs), which is what lets the manifest evolve
-// without breaking editors. Day.toml's presence is still used to LOCATE projects (it is the
+// without breaking editors. Day.toml's presence is still used to locate projects (it is the
 // project marker); everything read out of it comes from the CLI.
 
 import * as cp from "child_process";
@@ -23,7 +23,7 @@ export interface DayProject {
   targets: string[];
 }
 
-/** The `day metadata --json` envelope (schema 1) — read leniently: absent keys are tolerated
+/** The `day metadata --json` envelope (schema 1), read leniently: absent keys are tolerated
  *  so newer CLIs can add fields freely. */
 interface MetadataEnvelope {
   schema?: number;
@@ -38,16 +38,16 @@ interface MetadataEnvelope {
   targetCatalog?: Target[];
 }
 
-/** A Day.toml we located but couldn't load — the `day` CLI failed to return metadata for it.
+/** A Day.toml we located but couldn't load: the `day` CLI failed to return metadata for it.
  *  Surfaced to the user (see extension.ts) so this doesn't masquerade as "no project found". */
 export interface ProjectLoadFailure {
   /** Directory that held the Day.toml. */
   root: string;
   /** Human-readable rendering of the CLI invocation we attempted. */
   command: string;
-  /** Why it failed — the CLI's stderr/message, or a not-found hint. */
+  /** Why it failed: the CLI's stderr/message, or a not-found hint. */
   message: string;
-  /** The CLI executable itself wasn't found (ENOENT) — the usual "no `day` on PATH" case. */
+  /** The CLI executable itself wasn't found (ENOENT): the usual "no `day` on PATH" case. */
   notFound: boolean;
 }
 
@@ -69,7 +69,7 @@ export async function findProjects(): Promise<ProjectScan> {
   const roots = uris
     .map((uri) => path.dirname(uri.fsPath))
     // A Day project is also a cargo package, so a Day.toml with no Cargo.toml beside it cannot
-    // be one — it is a scaffold template or a fixture. `day metadata` says exactly that, and
+    // be one; it is a scaffold template or a fixture. `day metadata` says exactly that, and
     // reporting it would put a permanent error notification in front of anyone whose workspace
     // includes the day checkout (crates/day-cli/templates/app carries such a Day.toml).
     .filter((root) => fs.existsSync(path.join(root, "Cargo.toml")));

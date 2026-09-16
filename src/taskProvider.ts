@@ -1,11 +1,11 @@
-// A TaskProvider for the `day` task type. It auto-detects build/launch tasks for EVERY project in
+// A TaskProvider for the `day` task type. It auto-detects build/launch tasks for every project in
 // the window (so they appear under "Run Task…"), and resolves tasks written by hand in tasks.json.
 // This is the standard-conventions hook: `day` tasks integrate with the Tasks system,
 // Ctrl+Shift+B, and key bindings.
 //
-// Every project, not just the focused one: "Run Task…" is how a second app gets built without
-// first being focused, and each task carries its own project's mode, so the list stays honest
-// about what each one will do.
+// Every project rather than only the focused one: "Run Task…" is how a second app gets built
+// without first being focused, and each task carries its own project's mode, so the list says
+// what each one will do.
 
 import * as vscode from "vscode";
 
@@ -26,7 +26,7 @@ export class DayTaskProvider implements vscode.TaskProvider {
   provideTasks(): vscode.Task[] {
     const tasks: vscode.Task[] = [];
     for (const project of this.projects()) {
-      // Each project's OWN mode: a release-mode app next to a debug-mode one must not have the
+      // Each project's mode: a release-mode app next to a debug-mode one must not have the
       // focused project's choice put in its task's command line.
       const selection = this.state.selectionFor(project.root);
       const profile = selection.profile;
@@ -64,9 +64,9 @@ export class DayTaskProvider implements vscode.TaskProvider {
     if (def.type !== "day" || !def.target || (def.command !== "build" && def.command !== "launch")) {
       return undefined;
     }
-    // HARD API RULE: the resolved Task must reuse the EXACT TaskDefinition object it was
-    // given — a copy makes VS Code fail to match the task and silently ignore it. The project
-    // default is applied to the ARGS only, inside buildDayTask.
+    // VS Code API rule: the resolved Task must reuse the exact TaskDefinition object it was
+    // given; a copy makes VS Code fail to match the task and silently ignore it. The project
+    // default is applied to the args only, inside buildDayTask.
     return buildDayTask(def, { projectFallback: this.currentProject()?.root });
   }
 }

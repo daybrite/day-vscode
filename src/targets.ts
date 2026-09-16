@@ -1,4 +1,4 @@
-// The Day target catalog. The AUTHORITATIVE catalog comes from the installed CLI via
+// The Day target catalog. The authoritative catalog comes from the installed CLI via
 // `day metadata --json` (fed in through `setCatalog` when a project loads); the static TARGETS
 // list below is only an offline fallback (mirroring crates/day-cli/src/targets.rs) for when no
 // CLI is reachable yet. Each `<os>-<toolkit>` target declares the host OS that can build it,
@@ -82,8 +82,8 @@ export interface NativeProject {
 /**
  * The native IDE project a target carries, if the scaffold wrote one for it.
  *
- * These are committed source under `platform/`, not build output — `day new` writes them and the
- * app owns them from then on — so opening one is just handing the IDE a path, with no build
+ * These are committed source under `platform/`, not build output (`day new` writes them and the
+ * app owns them from then on), so opening one is just handing the IDE a path, with no build
  * required first. `platform` is a parameter rather than `process.platform` so the macOS-only rule
  * can be tested from any host, the way `installRoutes` is.
  */
@@ -93,7 +93,7 @@ export function nativeProjectFor(
 ): NativeProject | undefined {
   switch (target) {
     case "android-mdc":
-      // Studio opens the Gradle ROOT — the directory holding `settings.gradle.kts` — not the app
+      // Studio opens the Gradle root (the directory holding `settings.gradle.kts`), not the app
       // module beneath it and not a lone `build.gradle.kts`, which it would treat as a stray file.
       return {
         ide: "studio",
