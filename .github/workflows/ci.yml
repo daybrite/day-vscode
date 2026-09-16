@@ -66,9 +66,9 @@ on:
     tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
   pull_request:
   # The e2e legs install the day CLI from day's main branch and a pinned VS Code; neither pushes
-  # here, so a weekly run is what notices when either moves out from under the extension.
+  # here, so a daily run is what notices when either moves out from under the extension.
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "0 20 * * *"
   workflow_dispatch:
     inputs:
       dry-run-publish:
