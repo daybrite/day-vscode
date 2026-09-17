@@ -20,6 +20,7 @@ import * as vscode from "vscode";
 
 import { patchArgs, renderCommand, resolveCli } from "./cli";
 import { DayProject } from "./project";
+import { repository, lockGitSources, manifestGitSources, hasPathPatch } from "./cargoToml";
 
 /** The URL apps name the framework by. It is not written in day's own manifest, so it is spelled
  *  here exactly as `DAY_GIT` in crates/day-cli/src/patch.rs spells it. */
@@ -61,33 +62,6 @@ function read(file: string): string {
   }
 }
 
-/** One top-level string key from one of `tables`, without a TOML parser: the extension parses no
- *  manifests for meaning (project.ts explains why), and this is not meaning; it is the one field
- *  that says which URL a checkout answers to. Table-aware so a `repository` under some unrelated
- *  section cannot be mistaken for the package's own. */
-function tomlString(text: string, tables: string[], key: string): string | undefined {
-  let current = "";
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (line.startsWith("#")) {
-      continue;
-    }
-    const header = /^\[([^\]]+)\]\s*$/.exec(line);
-    if (header) {
-      current = header[1].trim();
-      continue;
-    }
-    if (!tables.includes(current)) {
-      continue;
-    }
-    const hit = new RegExp(`^${key}\\s*=\\s*"([^"]*)"`).exec(line);
-    if (hit) {
-      return hit[1];
-    }
-  }
-  return undefined;
-}
-
 /** The git URL a checkout stands for, or undefined when it cannot say. Mirrors `checkout_url`:
  *  the day repository is known by the canonical URL, and every other checkout declares its own
  *  through `repository` in `[package]` or `[workspace.package]`, which is exactly the field
@@ -96,7 +70,7 @@ function checkoutUrl(dir: string): string | undefined {
   if (fs.existsSync(path.join(dir, "crates", "day", "Cargo.toml"))) {
     return canon(DAY_GIT);
   }
-  const repo = tomlString(read(path.join(dir, "Cargo.toml")), ["package", "workspace.package"], "repository");
+  const repo = repository(read(path.join(dir, "Cargo.toml")));
   return repo ? canon(repo) : undefined;
 }
 
@@ -123,8 +97,8 @@ export function workspaceCheckouts(projects: DayProject[]): LocalCheckout[] {
  *  that has never been built and has no lock yet. */
 async function gitSources(root: string): Promise<Set<string>> {
   const urls = new Set<string>();
-  for (const m of read(path.join(root, "Cargo.lock")).matchAll(/^\s*source\s*=\s*"git\+([^"]+)"/gm)) {
-    urls.add(canon(m[1]));
+  for (const source of lockGitSources(read(path.join(root, "Cargo.lock")))) {
+    urls.add(canon(source));
   }
   // Members as well as the root manifest: an app whose games live in `games/*` names its
   // dependencies there, and the root is only a workspace table.
@@ -134,19 +108,17 @@ async function gitSources(root: string): Promise<Set<string>> {
     64,
   );
   for (const uri of manifests) {
-    for (const m of read(uri.fsPath).matchAll(/\bgit\s*=\s*"([^"]+)"/g)) {
-      urls.add(canon(m[1]));
+    for (const source of manifestGitSources(read(uri.fsPath))) {
+      urls.add(canon(source));
     }
   }
+
   return urls;
 }
 
-/** Is this project already built against this checkout? `day patch` writes the table into the
- *  project's gitignored `.cargo/config.toml` with absolute paths, so the checkout's own path
- *  appearing there is the whole test, and it distinguishes this checkout from another clone of
- *  the same repository, which a URL alone would not. */
+/** Match actual Cargo patch paths, not comments or substrings of another checkout's path. */
 function alreadyPatched(root: string, checkout: LocalCheckout): boolean {
-  return read(path.join(root, ".cargo", "config.toml")).includes(checkout.dir);
+  return hasPathPatch(read(path.join(root, ".cargo", "config.toml")), root, checkout.dir);
 }
 
 /** The `day` checkout this workspace holds, when it holds one the CLI could be run from.
