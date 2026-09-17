@@ -17,6 +17,7 @@
     "check": "astro build && node scripts/linkcheck.mjs"
   },
   "dependencies": {
-    "astro": "^7.0.6"
+    "astro": "^7.0.6",
+    "fflate": "^0.8.3"
   }
 }

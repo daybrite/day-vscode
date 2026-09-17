@@ -1,4 +1,5 @@
-// Turn the e2e job's screenshot artifacts into the site's gallery data.
+// Turn the e2e job's screenshot artifacts into the site's gallery data, its published manifest,
+// and the zip other processes download.
 //
 //     node scripts/assemble-screenshots.mjs [--from DIR]
 //
@@ -9,25 +10,54 @@
 // they exist and says so plainly when they don't.
 //
 // Output:
-//   public/screenshots/<combo>/<file>.png   served images
-//   src/data/screenshots.json               captions, dimensions, and provenance
+//   public/screenshots/<combo>/<file>.png          served images
+//   public/screenshots/gallery.json                the published manifest (see below)
+//   public/screenshots/day-vscode-screenshots.zip  that manifest plus every image
+//   src/data/screenshots.json                      what the gallery page renders from
 //
-// Editor surfaces arrive as a `-dark.png`/`-light.png` pair and become ONE entry carrying both, so
-// the site can show whichever matches the reader's colour scheme. A capture with no theme in its
-// name — the whole-desktop shots, or anything a driver from before this wrote — is one entry whose
-// `light` and `dark` both point at the single file it has, which is what makes the gallery's
-// swapping logic a comparison rather than a special case.
+// The first three are served as they are, so the manifest and the archive have fixed addresses:
+//
+//   https://vscode.daybrite.dev/screenshots/gallery.json
+//   https://vscode.daybrite.dev/screenshots/day-vscode-screenshots.zip
+//
+// gallery.json follows the schema `day screenshot index` writes for app galleries (day/crates/
+// day-cli/src/screenshot.rs, published by every Day-* app at `<host>/gallery/gallery.json`), so a
+// consumer that already reads one reads this. One row per FILE, carrying its platform, theme,
+// pixel dimensions, byte size and SHA-256, with `path` relative to the site root and `url`
+// absolute. It differs from an app gallery in two places: the images live under `screenshots/`
+// rather than `gallery/`, because that is where this site has always served them, and `locales` is
+// empty, because the driver captures one language.
+//
+// `src/data/screenshots.json` stays separate and grouped by platform, which is the shape the
+// gallery page wants; gallery.json is the one for machines.
+//
+// Editor surfaces arrive as a `-dark.png`/`-light.png` pair and become ONE entry in the page data
+// carrying both, so the site can show whichever matches the reader's colour scheme. A capture with
+// no theme in its name — the whole-desktop shots, or anything a driver from before this wrote — is
+// one entry whose `light` and `dark` both point at the single file it has, which is what makes the
+// gallery's swapping logic a comparison rather than a special case. gallery.json does not group:
+// each file is its own row there, themed or not, the way an app gallery lists its variants.
 //
 // Dimensions are read out of the PNG header rather than guessed, so every tile can reserve its
 // exact aspect ratio and the gallery doesn't reflow as images load.
 
+import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, openSync, readSync, closeSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { zipSync } from 'fflate';
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_IMAGES = join(ROOT, 'public', 'screenshots');
 const OUT_DATA = join(ROOT, 'src', 'data', 'screenshots.json');
+
+/** The published manifest, beside the images it indexes so its relative paths resolve. */
+const MANIFEST_FILE = 'gallery.json';
+/** The archive, named for the project rather than its directory: it is also a release asset. */
+const ARCHIVE_FILE = 'day-vscode-screenshots.zip';
+/** Where the site is served, when nothing passes it. Matches `astro.config.mjs` and `lib/site.ts`. */
+const SITE = 'https://vscode.daybrite.dev';
 
 /** Where captures may be found, in order of preference. */
 const SEARCH = [
@@ -87,6 +117,15 @@ const SHOT_NAME = /-(\d+)-([a-z0-9-]+?)(?:-(dark|light))?\.png$/;
 const captionKey = (path) =>
   path.replace(/^.*[\\/]/, '').replace(/-(?:dark|light)\.png$/, '.png');
 
+/**
+ * `select-targets` → `Select Targets`, the label `day screenshot index` derives for a shot with
+ * no `title:` of its own (day/crates/day-cli/src/screenshot.rs, `derived_label`). Title case on
+ * every word, which is that function's rule; matching it is what lets the two indexes be read by
+ * the same code.
+ */
+const label = (slug) =>
+  slug.replace(/[-_]/g, ' ').replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+
 /** Human labels for the three hosts the e2e matrix covers. */
 const COMBOS = {
   'macos-appkit': { os: 'macOS', toolkit: 'AppKit', order: 1 },
@@ -94,9 +133,19 @@ const COMBOS = {
   'linux-gtk': { os: 'Linux', toolkit: 'GTK 4', order: 3 },
 };
 
-export function assembleScreenshots({ quiet = false, from } = {}) {
+// ── Zip ──────────────────────────────────────────────────────────────────────────────────────
+// `fflate`'s `zipSync` is the archiver: one synchronous call, no transitive dependencies, and a
+// per-entry `mtime` so each capture keeps its own date in the archive.
+//
+// Level 9 throughout. The captures are PNGs, deflate streams already, and re-deflating this set
+// takes it from 5.14 MB to 4.97 MB in 140 ms — measured, along with level 6, which produced a
+// byte-identical archive in the same time. The manifest is where compression earns something:
+// JSON, down to a sixth of itself.
+
+export function assembleScreenshots({ quiet = false, from, site = SITE } = {}) {
   const log = (m) => quiet || console.log(`[screenshots] ${m}`);
   const roots = from ? [resolve(from)] : SEARCH;
+  const host = site.replace(/\/$/, '');
 
   const combos = new Map();
   for (const root of roots) {
@@ -109,7 +158,14 @@ export function assembleScreenshots({ quiet = false, from } = {}) {
   mkdirSync(OUT_IMAGES, { recursive: true });
   mkdirSync(dirname(OUT_DATA), { recursive: true });
 
+  const generated = new Date();
   const platforms = [];
+  /** One row per capture file, in platform then step order: gallery.json's `screenshots`. */
+  const captures = [];
+  /** Each row's position as it was appended, which is its combo's step order. */
+  const order = new Map();
+  /** The archive's members, alongside the manifest that is added once it is written. */
+  const archived = [];
   for (const [combo, { dir, capturedMs }] of combos) {
     const meta = COMBOS[combo];
     if (!meta) {
@@ -132,6 +188,8 @@ export function assembleScreenshots({ quiet = false, from } = {}) {
 
     // One entry per surface, gathering that surface's theme variants as they are met.
     const byShot = new Map();
+    /** Every file of this combo, for the manifest, which lists them one by one. */
+    const files = [];
     for (const file of readdirSync(join(OUT_IMAGES, combo)).filter((f) => f.endsWith('.png')).sort()) {
       const m = SHOT_NAME.exec(file);
       const step = m ? Number(m[1]) : 99;
@@ -150,6 +208,7 @@ export function assembleScreenshots({ quiet = false, from } = {}) {
       const rel = `screenshots/${combo}/${file}`;
       if (m?.[3]) entry.themed[m[3]] = rel;
       else entry.plain = rel;
+      files.push({ file, step, slug, theme: m?.[3] ?? null, caption: entry.caption });
     }
 
     const shots = [...byShot.values()]
@@ -177,17 +236,108 @@ export function assembleScreenshots({ quiet = false, from } = {}) {
       captured: new Date(capturedMs).toISOString(),
       shots,
     });
+
+    // The manifest rows and the archive's members, both read straight off the copied files, so
+    // what the sha-256 describes is the byte sequence the site serves.
+    for (const f of files.sort((a, b) => a.step - b.step || a.file.localeCompare(b.file))) {
+      const abs = join(OUT_IMAGES, combo, f.file);
+      const bytes = readFileSync(abs);
+      const path = `screenshots/${combo}/${f.file}`;
+      const row = {
+        file: f.file,
+        path,
+        url: `${host}/${path}`,
+        shot: f.slug,
+        title: label(f.slug),
+        caption: f.caption,
+        platform: combo,
+        os: meta.os,
+        toolkit: meta.toolkit,
+        // An app gallery's variant names a theme/locale pair; here it is the theme alone, and
+        // `default` for the whole-desktop captures, which follow the OS rather than VS Code.
+        variant: f.theme ?? 'default',
+        theme: f.theme,
+        locale: null,
+        ...(pngSize(abs) ?? { width: null, height: null }),
+        bytes: bytes.length,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+      };
+      order.set(row, captures.length);
+      captures.push(row);
+      // Dated from the source rather than the copy: `cpSync` stamps what it writes with the time
+      // of the copy, and the capture's own time is the useful one in an archive.
+      archived.push({
+        name: `${combo}/${f.file}`,
+        data: bytes,
+        date: statSync(join(dir, f.file)).mtime,
+      });
+    }
   }
 
   platforms.sort((a, b) => a.order - b.order);
-  const data = { generated: new Date().toISOString(), platforms };
+  // Grouped by platform in the matrix's own order — the capture directories are met in whatever
+  // order the filesystem lists them — and within a platform in the driver's step order, which is
+  // the order the pictures tell their story in. Sorting on the recorded position rather than the
+  // file name keeps that true for a capture whose name carries no step number.
+  captures.sort(
+    (a, b) =>
+      (COMBOS[a.platform]?.order ?? 99) - (COMBOS[b.platform]?.order ?? 99) ||
+      order.get(a) - order.get(b),
+  );
+  const data = { generated: generated.toISOString(), platforms };
   writeFileSync(OUT_DATA, `${JSON.stringify(data, null, 2)}\n`);
+
+  // The shot vocabulary, one entry per captured surface across all platforms, in the driver's own
+  // step order. `day screenshot index` writes localized maps here; the driver captures English
+  // only, so every map has the one key.
+  const shotIds = [...new Set(captures.map((c) => c.shot))];
+  const manifest = {
+    generator: 'day-vscode assemble-screenshots',
+    generated: generated.toISOString(),
+    site: host,
+    themes: [...new Set(captures.map((c) => c.theme).filter(Boolean))],
+    locales: [],
+    platforms: platforms.map((p) => p.combo),
+    // Where the same set can be had in one request. Its own bytes are not described here, because
+    // this file is inside it; each image's sha-256 above is what a consumer verifies.
+    archive: {
+      file: ARCHIVE_FILE,
+      path: `screenshots/${ARCHIVE_FILE}`,
+      url: `${host}/screenshots/${ARCHIVE_FILE}`,
+    },
+    shots: shotIds.map((id) => {
+      const c = captures.find((x) => x.shot === id);
+      return {
+        id,
+        title: { en: c.title },
+        caption: c.caption ? { en: c.caption } : null,
+        source: null,
+      };
+    }),
+    screenshots: captures,
+  };
+  const manifestJson = `${JSON.stringify(manifest, null, 2)}\n`;
+  writeFileSync(join(OUT_IMAGES, MANIFEST_FILE), manifestJson);
+
+  // Written even with nothing to put in it: the two addresses are published, and a consumer that
+  // polls them is better served by an empty archive and an empty index than by a 404.
+  //
+  // `zipSync` takes `{ 'path/in/archive': [bytes, options] }`; a key with slashes in it is the
+  // nested path, so the `<combo>/<file>.png` names need no directory entries of their own.
+  const members = Object.fromEntries(
+    [{ name: MANIFEST_FILE, data: Buffer.from(manifestJson, 'utf8'), date: generated }, ...archived]
+      .map(({ name, data, date }) => [name, [data, { mtime: date }]]),
+  );
+  const archive = Buffer.from(zipSync(members, { level: 9 }));
+  writeFileSync(join(OUT_IMAGES, ARCHIVE_FILE), archive);
+
   log(
     platforms.length
-      ? `${platforms.length} platform(s), ${platforms.reduce((n, p) => n + p.shots.length, 0)} capture(s)`
+      ? `${platforms.length} platform(s), ${captures.length} capture(s) → ${MANIFEST_FILE} + ` +
+          `${ARCHIVE_FILE} (${(archive.length / 1024 / 1024).toFixed(1)} MB)`
       : 'no captures found — the gallery will say so (expected for a local build)',
   );
-  return data;
+  return { ...data, manifest, archiveBytes: archive.length };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

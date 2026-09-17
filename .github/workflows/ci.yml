@@ -385,6 +385,29 @@ jobs:
           npm ci
           npm run build
 
+      # The site build also writes the bundle every downstream consumer reads: gallery.json (one
+      # row per capture, with its platform, theme, caption, pixel size and sha-256) and a zip of
+      # that manifest plus every image. Both deploy with the site, at fixed addresses:
+      #
+      #   https://vscode.daybrite.dev/screenshots/gallery.json
+      #   https://vscode.daybrite.dev/screenshots/day-vscode-screenshots.zip
+      #
+      # Uploading them here as well serves the two cases the site cannot: a tagged run, where
+      # Pages does not deploy (`website-deploy` admits `main` only) and `release-screenshots`
+      # attaches these files to the release instead, and anything that wants the set from a run
+      # that has not been published.
+      #
+      # Before the link check on purpose. A broken href is worth failing the job over and not
+      # worth losing an hour of e2e captures to.
+      - name: Upload the screenshot bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshot-bundle
+          path: |
+            website/dist/screenshots/day-vscode-screenshots.zip
+            website/dist/screenshots/gallery.json
+          if-no-files-found: error
+
       # Every docs page is emitted as `<slug>/index.html`, so a relative `./sibling` link resolves
       # one level too deep and 404s, invisibly, since the Markdown reads fine and the build is
       # clean. Thirteen of them shipped that way. This resolves every internal href and fragment
@@ -449,6 +472,47 @@ jobs:
           files: day-vscode.vsix
           generate_release_notes: true
           prerelease: ${{ needs.build.outputs.prerelease == 'true' }}
+
+  # ── The screenshot bundle joins the release, once e2e and the site build have produced it ──
+  # Its own job rather than a step in `release`, because the two are ready at different times: the
+  # .vsix exists minutes after `build`, while the captures wait on three e2e legs of 15–30 minutes
+  # each. Merging them would hold the download page hostage to a UI run; separated, the .vsix
+  # publishes at once and the pictures are added when they arrive.
+  #
+  # `gh release upload` rather than another `softprops/action-gh-release`: it touches assets only.
+  # A second release action would re-evaluate the release's own fields — name, notes, the
+  # pre-release flag — against this job's inputs, which is a way to un-mark a pre-release by
+  # omission.
+  #
+  # The plain `if` keeps the implicit success() over `needs`, so a failed site build or a release
+  # that never happened skips this quietly instead of uploading into nothing.
+  release-screenshots:
+    name: release screenshots
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release, website]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: screenshot-bundle
+
+      # Renamed on the way in. `gallery.json` is the right name beside the images it indexes, where
+      # its relative paths resolve; on a release page, among `day-vscode.vsix`, it says nothing
+      # about which project it belongs to.
+      - name: Attach the bundle to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mv gallery.json day-vscode-screenshots.json
+          gh release upload "$GITHUB_REF_NAME" \
+            day-vscode-screenshots.zip \
+            day-vscode-screenshots.json \
+            --clobber
+          echo "▸ attached to $GITHUB_REF_NAME:"
+          ls -l day-vscode-screenshots.zip day-vscode-screenshots.json
 
   # ── Marketplace + Open VSX publication (tags; off until the repo variables flip) ───────────
   # Tokenless Marketplace auth: GitHub OIDC → Entra workload-identity federation → the managed

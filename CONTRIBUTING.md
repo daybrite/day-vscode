@@ -76,6 +76,20 @@ and Open VSX (see `.github/workflows/ci.yml`). The extension's release cycle is 
 job. Its screenshot gallery is assembled from the `screenshots-<combo>` artifacts the e2e job
 uploads, newest first, so a docs-only change still ships the last captures.
 
+The same pass publishes the captures for other processes to read, at addresses that do not move:
+
+| URL | What it is |
+| --- | --- |
+| [`/screenshots/gallery.json`](https://vscode.daybrite.dev/screenshots/gallery.json) | One row per image: platform, theme, caption, pixel size, byte size, SHA-256, and its own URL |
+| [`/screenshots/day-vscode-screenshots.zip`](https://vscode.daybrite.dev/screenshots/day-vscode-screenshots.zip) | That manifest plus every PNG, as `<combo>/<file>.png` |
+| `/screenshots/<combo>/<file>.png` | Each image on its own |
+
+`gallery.json` uses the schema `day screenshot index` writes for a Day app's gallery, so code that
+reads one reads the other. Both files are written by `website/scripts/assemble-screenshots.mjs`
+during the build — `npm run build` in `website/` produces them from whatever captures are on hand —
+and a tagged release carries them as `day-vscode-screenshots.zip` and `day-vscode-screenshots.json`
+beside the `.vsix`.
+
 ```bash
 cd website
 npm install
