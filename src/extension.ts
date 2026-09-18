@@ -793,6 +793,9 @@ export async function activate(
     }
   };
 
+  // Set once the headless-simulator notice has been shown in this window.
+  let headlessNoticed = false;
+
   const bootAndSettle = async (
     root: string,
     target: string,
@@ -803,7 +806,7 @@ export async function activate(
   ): Promise<DeviceChoice | undefined> => {
     devices.setPending(root, target, row.id, "booting");
     tree.refresh();
-    const { failed, serial } = await vscode.window.withProgress(
+    const { failed, serial, headless } = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: `Day: starting ${row.label}` },
       () => devices.boot(root, target, bootId, true),
     );
@@ -819,6 +822,14 @@ export async function activate(
       return undefined;
     }
     devices.setPending(root, target, row.id, undefined);
+    // A simulator on an Xcode that ships no Simulator.app comes up with no window. Said once per
+    // window: the row reads `connected` either way, and repeating it on every boot would be noise.
+    if (headless !== undefined && !headlessNoticed) {
+      headlessNoticed = true;
+      void vscode.window.showInformationMessage(
+        `Day: ${row.label} started. ${headless}`,
+      );
+    }
     // Which device this is, in falling order of how sure the answer is: the serial the CLI printed
     // for the emulator it just started, then the id we asked it to boot, then the AVD. The first
     // is the only one that cannot race; the other two are matched against a listing taken from a

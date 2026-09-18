@@ -228,6 +228,14 @@ export interface BootResult {
    * listing will ever contain. Absent for iOS, where the UDID never moves.
    */
   serial?: string;
+  /**
+   * Why a simulator that started has no window, when it has none.
+   *
+   * Xcode 27 ships no `Simulator.app`, so a simulator boots headless: the row still reads
+   * `connected` and the app still installs and runs, but nothing opens. Carrying the CLI's own
+   * sentence up to the caller is what stops the person watching for a window that is never coming.
+   */
+  headless?: string;
 }
 
 export function boot(
@@ -260,6 +268,7 @@ export function boot(
         resolve({
           failed: err ? stderr.trim() || err.message : undefined,
           serial: serial.length > 0 ? serial : undefined,
+          headless: err ? undefined : /^\s*Headless\s+(.+)$/m.exec(stderr)?.[1]?.trim(),
         });
       },
     );
