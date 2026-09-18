@@ -507,9 +507,14 @@ jobs:
         run: |
           set -euo pipefail
           mv gallery.json day-vscode-screenshots.json
+          # `--repo` because this job checks nothing out: it downloads one artifact and uploads it.
+          # Without a git remote to read, `gh` has no repository to act on and stops with
+          # "failed to run git: fatal: not a git repository". Naming it is cheaper than adding a
+          # checkout whose only purpose would be to let gh infer what we already know.
           gh release upload "$GITHUB_REF_NAME" \
             day-vscode-screenshots.zip \
             day-vscode-screenshots.json \
+            --repo "$GITHUB_REPOSITORY" \
             --clobber
           echo "▸ attached to $GITHUB_REF_NAME:"
           ls -l day-vscode-screenshots.zip day-vscode-screenshots.json
