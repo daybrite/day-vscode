@@ -350,9 +350,9 @@ export function cleanArgs(projectRoot: string): string[] {
   return [...projectArgs(projectRoot), "clean"];
 }
 
-/** Args for `day app add-toolkit <target>…`, with `--project` explicit for the same reason. */
-export function addToolkitArgs(projectRoot: string, targets: string[]): string[] {
-  return [...projectArgs(projectRoot), "app", "add-toolkit", ...targets];
+/** Args for `day project add-target <target>…`, with `--project` explicit for the same reason. */
+export function addTargetArgs(projectRoot: string, targets: string[]): string[] {
+  return [...projectArgs(projectRoot), "project", "add-target", ...targets];
 }
 
 /**

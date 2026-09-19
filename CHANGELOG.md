@@ -8,9 +8,9 @@
 
 - **Add a toolkit from the Day view.** The **+** on a project's **Targets** row lists every
   target the `day` CLI knows, with the ones the project already has checked. Choosing one runs
-  `day app add-toolkit`, which adds the target to `Day.toml` and writes any native project it
+  `day project add-target`, which adds the target to `Day.toml` and writes any native project it
   needs under `platform/`, and the new target appears under **Targets** when it finishes. The
-  same picker is **Add Toolkit…** on the Targets row's and the project row's context menus, and
+  same picker is **Add Target…** on the Targets row's and the project row's context menus, and
   in the command palette for the focused project.
 
 - **A project row shows the app's own icon.** The Day view draws each project with the icon

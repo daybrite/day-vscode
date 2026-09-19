@@ -211,8 +211,8 @@
         "icon": "$(add)"
       },
       {
-        "command": "day.addToolkit",
-        "title": "Add Toolkit…",
+        "command": "day.addTarget",
+        "title": "Add Target…",
         "category": "Day",
         "icon": "$(add)"
       },
@@ -479,12 +479,12 @@
           "group": "2_tools@1"
         },
         {
-          "command": "day.addToolkit",
+          "command": "day.addTarget",
           "when": "view == dayTargets && viewItem == dayGroup-targets",
           "group": "inline@0"
         },
         {
-          "command": "day.addToolkit",
+          "command": "day.addTarget",
           "when": "view == dayTargets && (viewItem == dayGroup-targets || viewItem =~ /^dayProject/)",
           "group": "1_project@0"
         },

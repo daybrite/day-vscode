@@ -311,8 +311,7 @@ export interface VirtualDevice {
  *     to stop it.
  *   * it is neither running nor startable: a simulator that was deleted, or an emulator whose AVD
  *     is gone. The row already says `not found`.
- *   * it belongs to `harmony-arkui`. The OpenHarmony emulator is started by `day ohos emulator
- *     launch` and has no stop, so both entries would name something the CLI cannot do. The moment
+ *   * it belongs to `harmony-arkui`. The OpenHarmony emulator is started by `day devices boot -p harmony-arkui` and has no stop, so both entries would name something the CLI cannot do. The moment
  *     `day devices shutdown` covers it, this list gains one kind.
  *
  * Android is why `avd` exists. Its running emulators are keyed by an adb serial, which is a

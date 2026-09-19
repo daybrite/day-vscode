@@ -2425,7 +2425,7 @@ const checks: Check[] = [
         undefined,
       );
 
-      // HarmonyOS gets neither entry: its emulator is started by `day ohos emulator launch` and
+      // HarmonyOS gets neither entry: its emulator is started by `day devices boot -p harmony-arkui` and
       // has no stop, so both would name something the CLI cannot do.
       assert.strictEqual(
         virtualDevice(
@@ -3126,7 +3126,7 @@ const checks: Check[] = [
     },
   ],
   [
-    "Add Toolkit lists the whole catalog and marks the targets a project already has",
+    "Add Target lists the whole catalog and marks the targets a project already has",
     () => {
       const targets: Target[] = [
         { name: "macos-appkit", toolkit: "appkit", kind: "desktop", host: "macos", label: "macOS" },
@@ -3152,7 +3152,7 @@ const checks: Check[] = [
     },
   ],
   [
-    "Add Toolkit adds a target to the row's own project and re-reads it",
+    "Add Target adds a target to the row's own project and re-reads it",
     async () => {
       // Through the command the Targets row's + calls, on the project that is not focused, with the
       // target passed in so no picker has to be answered. The target is one this host builds (the
@@ -3192,7 +3192,7 @@ const checks: Check[] = [
 
       try {
         await vscode.commands.executeCommand(
-          "day.addToolkit",
+          "day.addTarget",
           { kind: "group", root: second, id: "targets", label: "Targets" },
           [added],
         );
@@ -3248,7 +3248,7 @@ const checks: Check[] = [
         for (const value of ["dayGroup-targets", "dayTarget", "dayTargetRunning.xcode", "dayDevice"]) {
           assert.ok(!matches.test(value), `${id} should not be on a ${value} row`);
         }
-        // Groups sort by name, so `0_` puts both above Add Toolkit, Lint Project and Clean Project.
+        // Groups sort by name, so `0_` puts both above Add Target, Lint Project and Clean Project.
         assert.ok(entry.group?.startsWith("0_"), `${id} should lead the menu, got ${entry.group}`);
       }
     },

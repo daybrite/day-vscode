@@ -42,7 +42,7 @@ All of these are under the **Day** category in the command palette.
 |---|---|
 | New Project… | The [scaffolding wizard](/docs/new-project) — an app, a piece or a part |
 | Get Started with Day | Opens the walkthrough |
-| Add Toolkit… | Adds a target to the focused project with `day app add-toolkit` |
+| Add Target… | Adds a target to the focused project with `day project add-target` |
 | Open Day.toml | Opens the focused project's `Day.toml` in the editor |
 | Reveal in Explorer View | Selects the focused project's folder in the Explorer |
 | Open Day Extension Settings | Opens the Settings editor on the focused project's own Day settings |
@@ -58,7 +58,7 @@ that adds a device to a mobile target, and a device row's own **Play**, **Stop**
 Device** and **Start**/**Stop Simulator** (**Emulator** on Android) are inline buttons and
 context-menu entries on their rows rather than palette commands.
 
-**Add Toolkit…** is also the **+** on each project's **Targets** row, and an entry on that row's
+**Add Target…** is also the **+** on each project's **Targets** row, and an entry on that row's
 and the project row's context menus. From a row it adds to that row's project, whichever project
 is focused. Targets the project already has are listed with a check mark.
 

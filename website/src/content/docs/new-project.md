@@ -56,7 +56,7 @@ like; a target you cannot build locally can still be built by CI.
 Nothing here is permanent. Adding a platform later is one command:
 
 ```bash
-day app add-toolkit android-mdc
+day project add-target android-mdc
 ```
 
 In the Day view, the **+** on a project's **Targets** row runs it for you.

@@ -136,13 +136,13 @@ export async function pickDevice(
   return result;
 }
 
-/** One row of the Add Toolkit picker. `name` is absent on a target the project already has. */
+/** One row of the Add Target picker. `name` is absent on a target the project already has. */
 export type ToolkitChoice = vscode.QuickPickItem & { name?: string };
 
 const HOST_NAMES: Record<string, string> = { macos: "macOS", linux: "Linux", windows: "Windows" };
 
 /**
- * The Add Toolkit picker's rows: the CLI's whole target catalog, in its order.
+ * The Add Target picker's rows: the CLI's whole target catalog, in its order.
  *
  * A target the project already declares stays on the list, checked and with nothing to add, the
  * way the device picker shows a device that is already configured. A quick pick has no disabled
@@ -167,7 +167,7 @@ export function toolkitChoices(declared: string[], targets: Target[] = catalog()
 }
 
 /**
- * Choose a target to add to `project` with `day app add-toolkit`. `undefined` means cancelled, or
+ * Choose a target to add to `project` with `day project add-target`. `undefined` means cancelled, or
  * that a target the project already has was chosen.
  */
 export async function pickToolkit(project: DayProject): Promise<string | undefined> {

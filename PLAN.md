@@ -77,11 +77,11 @@ put AppKit, UIKit, Android, GTK, Qt, XAML, and ArkUI behind one picker).
   (`Day: New Project` — multi-step QuickPick over `day new` templates + toolkit multi-select)
   → first launch. Flutter's "Download SDK" flow is the bar for zero-terminal onboarding.
 - **Devices & emulators in the tree**: a "Devices" section listing booted iOS simulators,
-  Android devices/AVDs, OHOS emulator state, with launch actions (`day ohos emulator launch`
+  Android devices/AVDs, OHOS emulator state, with launch actions (`day devices boot -p harmony-arkui`
   exists; CLI ask: a unified `day devices --format json` / `day emulator launch <kind>`).
   Newly connected device → offer it (Flutter's `flutterSelectDeviceWhenConnected`).
 - **Expose the rest of the CLI**: `Day: Pack` (with format picker), `Day: Lint`,
-  `Day: Add Toolkit` (wraps `app add-toolkit`), `Day: Icon` preview/generate.
+  `Day: Add Target` (wraps `project add-target`), `Day: Icon` preview/generate.
 
 ## Phase 2 — The differentiator: the live app surface (2–4 weeks)
 

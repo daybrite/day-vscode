@@ -7,7 +7,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 import {
-  addToolkitArgs,
+  addTargetArgs,
   cleanArgs,
   MCP_PROVIDER_ID,
   mcpServerSpecs,
@@ -1400,10 +1400,10 @@ export async function activate(
 
   // Adds a target to a project: from the + on its Targets row, from that row's or the project
   // row's context menu, or from the palette for the focused project. It asks for no confirmation.
-  // The picker says what the command writes, and `day app add-toolkit` only adds files, never
+  // The picker says what the command writes, and `day project add-target` only adds files, never
   // overwriting one, so the result is a plain diff to review or revert. `targets` skips the
   // picker, for a caller that already knows what to add.
-  register("day.addToolkit", (node?: Node, targets?: string[]) =>
+  register("day.addTarget", (node?: Node, targets?: string[]) =>
     guard(async () => {
       const root = configRoot(node);
       const project = projects.find((p) => p.root === root);
@@ -1421,7 +1421,29 @@ export async function activate(
       }
       const label = project.title ?? project.name;
       const cli = resolveCli(project.root);
-      const args = [...cli.baseArgs, ...addToolkitArgs(project.root, wanted)];
+      const capabilityError = await new Promise<string | undefined>((resolve) => {
+        childProcess.execFile(
+          cli.command,
+          [...cli.baseArgs, "project", "add-target", "--help"],
+          { cwd: cli.cwd ?? project.root, timeout: 120_000, env: { ...process.env, ...toolchainEnv() } },
+          (err, _stdout, stderr) => resolve(err ? stderr.trim() || err.message : undefined),
+        );
+      });
+      if (capabilityError) {
+        output.appendLine(`[add-target] ${capabilityError}`);
+        const choice = await vscode.window.showErrorMessage(
+          "Day: the configured CLI could not run `project add-target --help`. Update the CLI or set day.cliPath to a current build.",
+          "Install/Update the Day CLI",
+          "Show Log",
+        );
+        if (choice === "Install/Update the Day CLI") {
+          await vscode.commands.executeCommand("day.installCli");
+        } else if (choice === "Show Log") {
+          output.show(true);
+        }
+        return;
+      }
+      const args = [...cli.baseArgs, ...addTargetArgs(project.root, wanted)];
       output.appendLine(`$ ${renderCommand(cli, args.slice(cli.baseArgs.length))}`);
       const failure = await vscode.window.withProgress(
         {
@@ -1459,7 +1481,7 @@ export async function activate(
       );
       if (failure !== undefined) {
         const choice = await vscode.window.showErrorMessage(
-          `Day: \`day app add-toolkit\` failed: ${failure}`,
+          `Day: \`day project add-target\` failed: ${failure}`,
           "Show Log",
         );
         if (choice === "Show Log") {
