@@ -225,6 +225,7 @@ jobs:
             xvfb imagemagick fonts-noto-cjk
 
       - name: Install the day CLI
+        id: cli
         uses: daybrite/actions/.github/actions/setup-day-cli@main
         with:
           # `main`, built from git, not `latest`. day-cli is published now (0.3.0), so `latest`
@@ -234,23 +235,42 @@ jobs:
           version: main
 
       # Prove it, rather than trusting the input. `cargo install --list` records the exact source
-      # of what is on PATH (the git URL, the branch and the commit), which is the only
-      # authoritative answer. `day version` cannot serve here: the ref it bakes in is whatever
-      # cargo named its checkout branch, and a `--branch main` install reported "branch master" on
-      # the Windows runner while being a perfectly correct build of main.
+      # of what is on PATH (the git URL, the branch or commit), which is the only authoritative
+      # answer. `day version` cannot serve here: the ref it bakes in is whatever cargo named its
+      # checkout branch, and a `--branch main` install reported "branch master" on the Windows
+      # runner while being a perfectly correct build of main.
+      #
+      # The record lives in the install root the action reports (`cargo-root`): the action's
+      # per-commit cache installs into a directory of its own, not ~/.cargo. That cached build is
+      # recorded as `?rev=<commit>`, the commit the action resolved `main` to (`commit`), so
+      # either record proves a build of main.
       - name: Verify the day CLI is a fresh build of day's main
         shell: bash
+        env:
+          ROOT: ${{ steps.cli.outputs.cargo-root }}
+          COMMIT: ${{ steps.cli.outputs.commit }}
         run: |
           set -euo pipefail
-          src="$(cargo install --list | grep -E '^day-cli ' || true)"
+          src="$(cargo install --list --root "$ROOT" | grep -E '^day-cli ' || true)"
           echo "installed: ${src:-<nothing>}"
+          echo "install root: ${ROOT:-<not reported>}; commit main resolved to: ${COMMIT:-<not cached>}"
           case "$src" in
-            *"daybrite/day.git"*"branch=main"*) ;;
-            *)
-              echo "::error::the day CLI on PATH is not a git build of daybrite/day main: ${src:-<not installed>}"
-              exit 1
-              ;;
+            *"daybrite/day.git?branch=main#"*) ;;
+            *"daybrite/day.git?rev=$COMMIT#"*) [ -n "$COMMIT" ] || src="" ;;
+            *) src="" ;;
           esac
+          if [ -z "$src" ]; then
+            echo "::error::the day CLI on PATH is not a git build of daybrite/day main (install root ${ROOT:-<not reported>}, resolved commit ${COMMIT:-<none>}); see the log for what that root holds"
+            echo "::group::cargo install --list --root ${ROOT:-<default>}"
+            cargo install --list --root "$ROOT" || true
+            echo "::endgroup::"
+            echo "::group::day on PATH"
+            command -v day || echo "no day on PATH"
+            echo "DAY_BIN=${DAY_BIN:-<unset>}"
+            "${DAY_BIN:-day}" version || true
+            echo "::endgroup::"
+            exit 1
+          fi
           # Advisory only: main legitimately moves while a job runs, and failing on that would make
           # every leg a race against whoever pushed last.
           head="$(git ls-remote https://github.com/daybrite/day.git refs/heads/main | cut -c1-8)"
