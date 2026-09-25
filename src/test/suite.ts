@@ -784,8 +784,10 @@ const checks: Check[] = [
     "a quick fix repairs the file and the finding is gone on the next lint",
     async () => {
       // The whole loop, against a real CLI: lint → diagnostic → apply the edit → save → re-lint.
-      // A four-file project is enough, because the two fixable rules are store rules and the
-      // store lint only needs a mobile target declared.
+      // A five-file project is enough: the store lint only needs a mobile target declared. The
+      // listing is store/storefront.toml, and its name is a `name-ref` to a file of its own,
+      // because the CLI repairs whitespace in a referenced file; an inline value in the TOML is
+      // reported without a fix.
       const root = fs.mkdtempSync(`${os.tmpdir()}/day-lint-`);
       const write = (rel: string, text: string): void => {
         const full = `${root}/${rel}`;
@@ -801,6 +803,10 @@ const checks: Check[] = [
         'schema = 1\n\n[app]\nid = "com.example.min"\ntitle = "Min"\ntargets = ["ios-uikit"]\n',
       );
       write("src/lib.rs", "pub fn f() {}\n");
+      write(
+        "store/storefront.toml",
+        '[storefront.metadata]\nname-ref = "store/en/name.txt"\n',
+      );
       write("store/en/name.txt", "Min  \n");
 
       const output = vscode.window.createOutputChannel("Day lint fix check");
