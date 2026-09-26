@@ -1,5 +1,22 @@
 ## Unreleased
 
+- **Debugging works from VS Code installed as a snap.** The snap points `LD_LIBRARY_PATH` and the
+  GTK/Qt module paths at its own older libraries, so a debugged Linux app loaded those and failed
+  with `symbol lookup error`. Debug sessions now start the app without the snap's `/snap/` entries.
+  Build and Run are fixed in the `day` CLI, which cleans its own environment the same way.
+
+- **Finds a `day` in `~/.cargo/bin` when the editor's PATH misses it.** An editor started from
+  the Dock, the Start menu or a launcher often inherits a PATH without `~/.cargo/bin`, where
+  `cargo install day-cli` puts the CLI, and every command then reported that `day` was not
+  installed. The extension now looks there (and in `$CARGO_HOME/bin`, `~/.local/bin`, and
+  `/opt/homebrew/bin` or `/usr/local/bin`) when PATH has no `day`, and gives the commands it runs
+  those directories too, so the CLI finds `cargo` beside it.
+
+- **The install picker no longer offers the installer scripts.** **Run the install script** and
+  **Run the Windows installer** are gone, since they are not a supported way to install Day. The
+  picker installs the latest release, a pinned `day.cliVersion`, or the `main` branch with
+  `cargo install`, and links to the install instructions.
+
 - **Open a project's Day.toml, its folder, or its settings from its row.** Right-click a project in
   the Day view for **Open Day.toml**, **Reveal in Explorer View**, and **Open Day Extension
   Settings**, which opens the Settings editor filtered to Day on that project's own settings. All

@@ -85,7 +85,7 @@ export interface NativeProject {
  * These are committed source under `platform/`, not build output (`day new` writes them and the
  * app owns them from then on), so opening one is just handing the IDE a path, with no build
  * required first. `platform` is a parameter rather than `process.platform` so the macOS-only rule
- * can be tested from any host, the way `installRoutes` is.
+ * can be tested from any host, the way `cliSearchDirs` is.
  */
 export function nativeProjectFor(
   target: string,

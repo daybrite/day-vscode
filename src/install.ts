@@ -1,16 +1,12 @@
 // Getting the `day` CLI, so that having one is not a prerequisite for using this extension.
 //
-// Two kinds of route live here. The first is a source build the extension owns: `cargo install
-// --git` at the revision `day.cliVersion` names, into the extension's own global storage. That is
+// Every install here is a `cargo install` the extension owns: the latest crates.io release, a tag
+// `day.cliVersion` pins, or the `main` branch, into the extension's own global storage. That is
 // what makes an installed CLI optional: nothing has to be on PATH, `resolveCli` finds it, and
 // `day.cliVersion` decides which day-cli an app is built with. It also solves version skew the
 // other way round: when this extension needs a CLI change that has not been released, `main` is a
-// setting rather than a support thread.
-//
-// The rest are the day release's own installers (rendered per release by scripts/release/templates
-// in the day repository), which put a prebuilt binary on PATH. They stay because a source build
-// needs a Rust toolchain and takes minutes, and someone who just wants to read a Day project
-// should not have to compile a compiler front-end first.
+// setting rather than a support thread. A `cargo install day-cli` the user ran themselves is
+// found too, on PATH or in `~/.cargo/bin` (`resolveCli`).
 //
 // Nothing here installs silently. Every route shows its command before running it, in a terminal
 // the user can watch and interrupt. Running an install unattended, on activation, because a file
@@ -117,62 +113,6 @@ export function sourceInstallCommand(
   ].join(" ");
 }
 
-/** One way to get the CLI, with the command a user can read before running it. */
-export interface InstallRoute {
-  /** Short label for a quick pick. */
-  label: string;
-  /** What it does and what it needs. One short line: a quick pick truncates the rest. */
-  detail: string;
-  /** The dimmed column beside the label: a name, not the command, which is long enough to be
-   *  cut mid-flag and reads as noise when it is. The terminal shows the command itself. */
-  description: string;
-  /** The command, exactly as it would be typed. */
-  command: string;
-  /** Shell to run it in, when the platform's default is wrong for the command. */
-  shell?: string;
-}
-
-const SH_INSTALLER =
-  "curl --proto '=https' --tlsv1.2 -LsSf " +
-  "https://github.com/daybrite/day/releases/latest/download/day-installer.sh | sh";
-
-const PS_INSTALLER =
-  'powershell -ExecutionPolicy Bypass -c "irm ' +
-  'https://github.com/daybrite/day/releases/latest/download/day-installer.ps1 | iex"';
-
-/**
- * The PATH routes for a platform, best first.
- *
- * The release installer comes first because it downloads a prebuilt binary, which needs neither
- * a Rust toolchain nor a compile. `cargo install` is last: it needs a toolchain, and someone who
- * has not got the CLI often has not got Rust either.
- */
-export function installRoutes(
-  platform: NodeJS.Platform = process.platform,
-): InstallRoute[] {
-  // Only the prebuilt installer. `cargo install day-cli` used to sit here too, but its one
-  // distinction from the managed release row above it was landing on PATH, and this route does
-  // that without a Rust toolchain and without a multi-minute compile, so it was strictly worse at
-  // the only job that made it a separate choice.
-  return platform === "win32"
-    ? [
-        {
-          label: "Run the Windows installer",
-          detail: "Prebuilt binary onto your PATH.",
-          description: "day-installer.ps1",
-          command: PS_INSTALLER,
-        },
-      ]
-    : [
-        {
-          label: "Run the install script",
-          detail: "Prebuilt binary onto your PATH.",
-          description: "day-installer.sh",
-          command: SH_INSTALLER,
-        },
-      ];
-}
-
 /** The docs page that explains all of this at length. */
 export const DOCS_URL = "https://daybrite.dev/docs/getting-started/";
 
@@ -274,14 +214,14 @@ export async function installFromSource(
 ): Promise<void> {
   if (!hasCargo()) {
     const choice = await vscode.window.showErrorMessage(
-      "Day: building the CLI from source needs a Rust toolchain, and `cargo` is not on the PATH this window inherited. Install Rust, or use a prebuilt binary instead.",
+      "Day: installing the CLI needs a Rust toolchain, and `cargo` is not on the PATH this window inherited or in ~/.cargo/bin. Install Rust, then try again.",
       "Get Rust",
-      "Other install options",
+      "Install instructions",
     );
     if (choice === "Get Rust") {
       await vscode.env.openExternal(vscode.Uri.parse("https://rustup.rs"));
-    } else if (choice === "Other install options") {
-      await promptToInstall();
+    } else if (choice === "Install instructions") {
+      await vscode.env.openExternal(vscode.Uri.parse(DOCS_URL));
     }
     return;
   }
@@ -355,13 +295,6 @@ export async function checkVersions(
   return { installed, latest };
 }
 
-/**
- * Offer the install routes, and run the chosen one in a terminal.
- *
- * A terminal rather than a hidden child process: the command is visible, its output is visible,
- * and anything it asks for (a sudo prompt, a password) can be answered. When it
- * finishes, the caller's refresh is what picks the CLI up.
- */
 /** One row of the install picker. `version` marks the rows the extension installs itself. */
 export interface InstallChoice {
   label: string;
@@ -369,8 +302,6 @@ export interface InstallChoice {
   detail: string;
   /** The command, or a shortened form of it. Keep it to 50 characters, same reason. */
   description: string;
-  /** A PATH route to run in a terminal, for the rows that are one. */
-  route?: InstallRoute;
   /** A `day.cliVersion` value for the rows the extension installs into its own storage. */
   version?: string;
 }
@@ -379,13 +310,12 @@ export interface InstallChoice {
  * The picker's rows, in the order they are offered.
  *
  * The order matters, so it is a function rather than an array literal inside the `showQuickPick`
- * call: the released CLI first because it is what almost everyone wants and the extension owns
- * that copy, the PATH routes next, and the source build last because it needs a Rust toolchain
- * and takes minutes. `managed` is false when there is nowhere to put an extension-owned copy,
- * which drops those rows entirely rather than offering something that cannot run.
+ * call: the released CLI first because it is what almost everyone wants, a pinned tag next, and
+ * the development branch last. `managed` is false when there is nowhere to put an
+ * extension-owned copy, which drops those rows entirely rather than offering something that
+ * cannot run, and leaves the install instructions.
  */
 export function installChoices(
-  routes: InstallRoute[],
   managed: boolean,
   pinned?: string,
 ): InstallChoice[] {
@@ -410,14 +340,6 @@ export function installChoices(
       });
     }
   }
-  for (const r of routes) {
-    out.push({
-      label: r.label,
-      detail: r.detail,
-      description: r.description,
-      route: r,
-    });
-  }
   if (managed) {
     out.push({
       label: "Install from Source (main branch)",
@@ -439,14 +361,13 @@ export async function promptToInstall(
   globalStorage?: string,
   versions?: CliVersions,
 ): Promise<void> {
-  const routes = installRoutes();
   // A `day.cliVersion` that is neither the release nor the branch is a pin, and gets its own row.
   const setting = (
     vscode.workspace.getConfiguration("day").get<string>("cliVersion") ?? ""
   ).trim();
   const pinned = setting !== "" && setting !== "main" ? setting : undefined;
   const picked = await vscode.window.showQuickPick(
-    installChoices(routes, !!globalStorage, pinned),
+    installChoices(!!globalStorage, pinned),
     {
       title: versions
         ? `Day CLI — installed ${versions.installed ?? "none"}, latest ${versions.latest ?? "unknown"}`
@@ -464,29 +385,5 @@ export async function promptToInstall(
     await installFromSource(globalStorage, picked.version);
     return;
   }
-  if (!picked.route) {
-    await vscode.env.openExternal(vscode.Uri.parse(DOCS_URL));
-    return;
-  }
-
-  const terminal = vscode.window.createTerminal({ name: "Install day CLI" });
-  terminal.show(true);
-  terminal.sendText(picked.route.command, true);
-
-  // The CLI lands on PATH, and a terminal VS Code already started does not see a PATH change,
-  // so tell the user what to do next rather than leaving them to guess why the view is still
-  // empty. `day.refresh` re-runs the scan for the common case where the shell picks it up.
-  void vscode.window
-    .showInformationMessage(
-      "Installing the day CLI in the terminal. When it finishes, refresh the Day view — or reload the window if `day` still isn't found.",
-      "Refresh",
-      "Reload Window",
-    )
-    .then((choice) => {
-      if (choice === "Refresh") {
-        void vscode.commands.executeCommand("day.refresh");
-      } else if (choice === "Reload Window") {
-        void vscode.commands.executeCommand("workbench.action.reloadWindow");
-      }
-    });
+  await vscode.env.openExternal(vscode.Uri.parse(DOCS_URL));
 }

@@ -18,7 +18,9 @@ import * as path from "path";
 import * as vscode from "vscode";
 
 import {
+  cliSearchDirs,
   findDayRepoRoot,
+  findInstalledCli,
   launchArgs,
   lintArgs,
   MCP_PROVIDER_ID,
@@ -57,7 +59,6 @@ import {
 } from "../tasks";
 import {
   installChoices,
-  installRoutes,
   isNewer,
   managedCliDir,
   parseVersion,
@@ -861,7 +862,7 @@ const checks: Check[] = [
       // Order is what this list is for. The released CLI is what almost everyone wants and
       // the extension owns that copy; the source build needs a Rust toolchain and takes minutes,
       // so it goes last among the things that actually install something.
-      const choices = installChoices(installRoutes("darwin"), true);
+      const choices = installChoices(true);
       const labels = choices.map((c) => c.label);
       assert.strictEqual(labels[0], "Install the latest release (crates.io)");
       assert.strictEqual(
@@ -894,69 +895,96 @@ const checks: Check[] = [
       );
 
       // A pinned `day.cliVersion` earns its own row, right after the release.
-      const withPin = installChoices(installRoutes("linux"), true, "v0.3.0");
+      const withPin = installChoices(true, "v0.3.0");
       assert.strictEqual(withPin[1].label, "Install v0.3.0 (day.cliVersion)");
       assert.strictEqual(withPin[1].version, "v0.3.0");
 
       // With nowhere to put an extension-owned copy, those rows are gone rather than offered
       // and then failing.
-      const unmanaged = installChoices(installRoutes("win32"), false);
+      const unmanaged = installChoices(false);
       assert.ok(unmanaged.every((c) => c.version === undefined));
       assert.ok(!unmanaged.some((c) => /crates\.io|Source/.test(c.label)));
+
+      // The release installer scripts are not a supported way to install, so no row runs one.
+      assert.ok(
+        !installChoices(true, "v0.3.0").some((c) =>
+          /install script|installer|curl|irm/i.test(`${c.label} ${c.description}`),
+        ),
+        `an installer script is still offered: ${labels.join(" | ")}`,
+      );
     },
   ],
   [
-    "every PATH route is Rust-free, and no row is long enough to be truncated",
+    "no install picker row is long enough to be truncated",
     () => {
-      // The routes that touch PATH exist for someone who has no Rust toolchain, which is why they
-      // are separate from the managed rows. `cargo install day-cli` used to sit among them and
-      // needed one, which is what made it the wrong thing to offer here.
-      for (const platform of [
-        "darwin",
-        "linux",
-        "win32",
-      ] as NodeJS.Platform[]) {
-        const routes = installRoutes(platform);
-        assert.ok(routes.length > 0, `${platform}: no route at all`);
-        for (const r of routes) {
-          assert.ok(
-            !/cargo/.test(r.command),
-            `${platform}: a PATH route needs no toolchain, got ${r.command}`,
-          );
-          assert.match(
-            r.command,
-            /curl|irm/,
-            `${platform}: expected a prebuilt download, got ${r.command}`,
-          );
-        }
-        assert.ok(
-          !routes.some((r) => r.command.includes("brew")),
-          `${platform} still offers Homebrew`,
-        );
-      }
-
       // A quick pick truncates a long `detail` with an ellipsis, and the description column shows
       // whatever it is given, and a raw install command is long enough to be cut mid-flag. Both are
       // bounded here because both looked wrong in the picker before they were.
-      for (const platform of ["darwin", "win32"] as NodeJS.Platform[]) {
-        for (const c of installChoices(
-          installRoutes(platform),
-          true,
-          "v0.3.0",
-        )) {
-          assert.ok(
-            c.detail.length <= 70,
-            `"${c.label}" detail is ${c.detail.length} chars: ${c.detail}`,
-          );
-          // Bounded rather than ellipsis-free: one row writes its own ellipsis to elide a long
-          // flag list (`cargo install --git … --tag`), which is not the same as a command cut
-          // mid-flag by a width limit. Length is what the picker punishes.
-          assert.ok(
-            c.description.length <= 50,
-            `"${c.label}" description is ${c.description.length} chars: ${c.description}`,
-          );
-        }
+      for (const c of installChoices(true, "v0.3.0")) {
+        assert.ok(
+          c.detail.length <= 70,
+          `"${c.label}" detail is ${c.detail.length} chars: ${c.detail}`,
+        );
+        // Bounded rather than ellipsis-free: one row writes its own ellipsis to elide a long
+        // flag list (`cargo install --git … --tag`), which is not the same as a command cut
+        // mid-flag by a width limit. Length is what the picker punishes.
+        assert.ok(
+          c.description.length <= 50,
+          `"${c.label}" description is ${c.description.length} chars: ${c.description}`,
+        );
       }
+    },
+  ],
+  [
+    "a day in ~/.cargo/bin is found when the editor's PATH misses it",
+    () => {
+      // An editor started from the Dock or a launcher often inherits no ~/.cargo/bin, which is
+      // where `cargo install day-cli` puts the CLI. The lookup is pure, so every platform's
+      // answer is checked here with a fake filesystem.
+      const home = "/Users/someone";
+      const only = (...present: string[]) => (p: string) => present.includes(p);
+
+      // On PATH: the bare name, resolved by the OS as before.
+      assert.strictEqual(
+        findInstalledCli("darwin", { PATH: "/usr/bin:/somewhere/bin" }, home, only("/somewhere/bin/day")),
+        "day",
+      );
+      // Not on PATH, but where rustup's cargo installs it: the absolute path.
+      assert.strictEqual(
+        findInstalledCli("darwin", { PATH: "/usr/bin" }, home, only(`${home}/.cargo/bin/day`)),
+        `${home}/.cargo/bin/day`,
+      );
+      // CARGO_HOME wins over the default, since that is where cargo itself installs.
+      assert.strictEqual(
+        findInstalledCli(
+          "linux",
+          { PATH: "/usr/bin", CARGO_HOME: "/opt/cargo" },
+          "/home/someone",
+          only("/opt/cargo/bin/day", "/home/someone/.cargo/bin/day"),
+        ),
+        "/opt/cargo/bin/day",
+      );
+      // Homebrew's prefix on Apple silicon.
+      assert.strictEqual(
+        findInstalledCli("darwin", { PATH: "/usr/bin" }, home, only("/opt/homebrew/bin/day")),
+        "/opt/homebrew/bin/day",
+      );
+      // Windows: day.exe under the user's .cargo\bin.
+      assert.strictEqual(
+        findInstalledCli(
+          "win32",
+          { Path: "C:\\Windows" },
+          "C:\\Users\\someone",
+          only("C:\\Users\\someone\\.cargo\\bin\\day.exe"),
+        ),
+        "C:\\Users\\someone\\.cargo\\bin\\day.exe",
+      );
+      // Nowhere: undefined, so the caller falls back to the bare name and its usual error.
+      assert.strictEqual(findInstalledCli("linux", { PATH: "/usr/bin" }, "/home/someone", only()), undefined);
+
+      // ~/.cargo/bin is always searched, first after an explicit cargo root.
+      assert.strictEqual(cliSearchDirs("linux", {}, "/home/someone")[0], "/home/someone/.cargo/bin");
+      assert.ok(!cliSearchDirs("win32", {}, "C:\\Users\\someone").some((d) => d.startsWith("/")));
     },
   ],
   [

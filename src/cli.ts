@@ -164,6 +164,60 @@ export function hasCargo(): boolean {
   return cargoOnPath;
 }
 
+/**
+ * Where a `day` CLI usually lands, beyond PATH, best first.
+ *
+ * An editor started from the Dock, the Start menu or a desktop launcher inherits the login
+ * environment rather than the shell's, so a PATH entry the shell profile adds (rustup's
+ * `~/.cargo/bin` above all) is often missing there. `cargo install day-cli` puts the binary in
+ * cargo's bin directory: `$CARGO_INSTALL_ROOT/bin` or `$CARGO_HOME/bin` when set, else
+ * `~/.cargo/bin`. The rest are the other places a CLI conventionally sits on each platform.
+ * `platform`, `env` and `home` are parameters so every platform's list can be tested anywhere.
+ */
+export function cliSearchDirs(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = os.homedir(),
+): string[] {
+  const join = platform === "win32" ? path.win32.join : path.posix.join;
+  const dirs: string[] = [];
+  if (env.CARGO_INSTALL_ROOT) {
+    dirs.push(join(env.CARGO_INSTALL_ROOT, "bin"));
+  }
+  if (env.CARGO_HOME) {
+    dirs.push(join(env.CARGO_HOME, "bin"));
+  }
+  dirs.push(join(home, ".cargo", "bin"));
+  if (platform === "darwin") {
+    dirs.push(join(home, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin");
+  } else if (platform !== "win32") {
+    dirs.push(join(home, ".local", "bin"), "/usr/local/bin");
+  }
+  return [...new Set(dirs)];
+}
+
+/**
+ * The `day` binary to run when the settings and the checkouts name none: `"day"` when it is on
+ * PATH (resolved by the OS as always), else the first one in [`cliSearchDirs`], by absolute path,
+ * so an install the editor's PATH does not reach still works. `undefined` when there is none.
+ */
+export function findInstalledCli(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = os.homedir(),
+  exists: (p: string) => boolean = fs.existsSync,
+): string | undefined {
+  const exe = platform === "win32" ? "day.exe" : "day";
+  const join = platform === "win32" ? path.win32.join : path.posix.join;
+  const delimiter = platform === "win32" ? ";" : ":";
+  const onPath = (env.PATH ?? env.Path ?? "").split(delimiter).filter(Boolean);
+  if (onPath.some((d) => exists(join(d, exe)))) {
+    return "day";
+  }
+  const dir = cliSearchDirs(platform, env, home).find((d) => exists(join(d, exe)));
+  return dir ? join(dir, exe) : undefined;
+}
+
 /** Warned once per session, because `resolveCli` runs on every CLI invocation. */
 let warnedAboutSource = false;
 function warnOnce(message: string): void {
@@ -254,7 +308,10 @@ export function resolveCli(projectDir?: string): DayCli {
     return { command: managed, baseArgs: [], display: managed };
   }
 
-  return { command: "day", baseArgs: [], display: "day" };
+  // On PATH, or in a usual install location the editor's PATH misses. Bare `day` when neither
+  // has one, so the error a caller reports is the familiar "not found".
+  const installed = findInstalledCli() ?? "day";
+  return { command: installed, baseArgs: [], display: installed };
 }
 
 export interface LaunchOptions {

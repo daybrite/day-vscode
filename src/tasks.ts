@@ -7,7 +7,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 
-import { buildArgs, launchArgs, renderCommand, resolveCli } from "./cli";
+import { buildArgs, cliSearchDirs, launchArgs, renderCommand, resolveCli } from "./cli";
 import { Profile } from "./config";
 import { findTarget } from "./targets";
 
@@ -280,6 +280,13 @@ export function toolchainEnv(): Record<string, string> {
   if (developer) {
     env.DEVELOPER_DIR = developerDir(developer);
   }
+  // The places a `day` or a `cargo` usually lives, for the editor that inherited a PATH without
+  // them: `resolveCli` finds a `day` there by absolute path, and that `day` then runs `cargo`,
+  // which rustup put beside it in `~/.cargo/bin`. Appended rather than prepended, so anything
+  // the user's own PATH already names still wins.
+  for (const dir of cliSearchDirs()) {
+    appendPath(env, dir);
+  }
   return env;
 }
 
@@ -302,6 +309,15 @@ function developerDir(setting: string): string {
 }
 
 /** Prepend `dir` to the env's PATH, building on the process PATH the first time. */
+/** Add `dir` at the end of PATH, when it exists and PATH does not already name it. */
+function appendPath(env: Record<string, string>, dir: string): void {
+  const current = env.PATH ?? process.env.PATH ?? "";
+  if (!fs.existsSync(dir) || current.split(path.delimiter).includes(dir)) {
+    return;
+  }
+  env.PATH = current ? `${current}${path.delimiter}${dir}` : dir;
+}
+
 function prependPath(env: Record<string, string>, dir: string): void {
   if (!fs.existsSync(dir)) {
     return;

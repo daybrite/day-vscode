@@ -21,6 +21,7 @@ import * as vscode from "vscode";
 import { buildArgs, launchArgs, LaunchOptions, renderCommand, resolveCli } from "./cli";
 import { Profile, Selection } from "./config";
 import { DayProject } from "./project";
+import { snapEnvOverrides } from "./snapEnv";
 import { findTarget, isBuildableHere } from "./targets";
 import { launchEnv, taskEnv, verbose } from "./tasks";
 
@@ -376,7 +377,11 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
     // The locale and extra environment the cockpit would have passed as `--locale` / `--env`. A
     // plain `day build` knows neither, so the CLI's plan cannot carry them and they are layered
     // here; otherwise a debugged run would quietly differ from the same run through Run.
+    // A debug adapter starts the app with the extension host's environment, which a snap-packaged
+    // VS Code fills with its own library paths; override those first so the plan and the user's
+    // settings still win.
     const env: Record<string, string> = {
+      ...snapEnvOverrides(process.env),
       ...plan.env,
       ...(cfg.locale ? { DAY_LOCALE: cfg.locale } : {}),
       ...launchEnv(cfg.project),
