@@ -33,6 +33,8 @@ export interface SpecField {
   help?: string;
   type: "text" | "select" | "multi-select" | "boolean";
   flag?: string | null;
+  /** A boolean's flag for "false" (`--no-github`); `flag` is its flag for "true". */
+  negated_flag?: string | null;
   /** How a list reaches the command line: `--toolkit a --toolkit b`, or `--toolkits a,b`. */
   list?: "repeat" | "comma";
   positional?: boolean;
@@ -124,6 +126,15 @@ export function composeArgs(kind: SpecKind, answers: Answers): string[] {
       continue;
     }
     if (!field.flag || empty) {
+      continue;
+    }
+    // A boolean is a pair of bare flags, one per answer, never a flag with a value.
+    if (field.type === "boolean") {
+      const on = value === "true";
+      const flag = on ? field.flag : field.negated_flag;
+      if (flag) {
+        args.push(flag);
+      }
       continue;
     }
     if (Array.isArray(value)) {

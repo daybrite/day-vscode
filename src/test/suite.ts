@@ -377,8 +377,26 @@ const checks: Check[] = [
             list: "repeat" as const,
           },
           { id: "title", label: "Window title", type: "text" as const, flag: "--title" },
+          {
+            id: "github",
+            label: "Git repository and GitHub workflow",
+            type: "boolean" as const,
+            flag: "--github",
+            negated_flag: "--no-github",
+          },
         ],
       };
+
+      // A boolean is one bare flag per answer — `--github` or `--no-github`, never a value —
+      // and, unanswered, is left to the CLI's default like any other optional field.
+      assert.deepStrictEqual(
+        composeArgs(app, { name: "a", targets: ["web-dom"], github: "true" }),
+        ["new", "app", "a", "--toolkit", "web-dom", "--github", "--no-input"],
+      );
+      assert.deepStrictEqual(
+        composeArgs(app, { name: "a", targets: ["web-dom"], github: "false" }),
+        ["new", "app", "a", "--toolkit", "web-dom", "--no-github", "--no-input"],
+      );
 
       // A repeatable list is repeated, and the name is positional.
       assert.deepStrictEqual(

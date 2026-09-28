@@ -226,13 +226,7 @@ jobs:
 
       - name: Install the day CLI
         id: cli
-        uses: daybrite/actions/.github/actions/setup-day-cli@main
-        with:
-          # `main`, built from git, not `latest`. day-cli is published now (0.3.0), so `latest`
-          # would install and quietly lag: this extension calls CLI surfaces as they land on main
-          # (`day lint --json`, `day new --describe`), and against a published build those come
-          # back as "unknown argument", which reads like an extension bug rather than a stale CLI.
-          version: main
+        uses: daybrite/actions/.github/actions/setup-day-cli@v1
 
       # Prove it, rather than trusting the input. `cargo install --list` records the exact source
       # of what is on PATH (the git URL, the branch or commit), which is the only authoritative
