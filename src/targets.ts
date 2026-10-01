@@ -6,6 +6,7 @@
 
 export type TargetKind = "desktop" | "iosSim" | "android" | "harmonyOs" | "web";
 export type HostOs = "macos" | "linux" | "windows" | "any";
+export type SupportTier = 1 | 2 | 3 | 4 | 5;
 
 export interface Target {
   name: string;
@@ -15,6 +16,9 @@ export interface Target {
   /** Optional extras the CLI catalog carries (label for menus, experimental flag). */
   label?: string;
   experimental?: boolean;
+  tier?: SupportTier;
+  /** Replacement target, when deprecated (older CLIs omit this field). */
+  deprecated?: string | null;
 }
 
 let activeCatalog: Target[] | undefined;
@@ -34,7 +38,8 @@ export const TARGETS: Target[] = [
   { name: "macos-gtk", toolkit: "gtk", kind: "desktop", host: "macos" },
   { name: "macos-qt", toolkit: "qt", kind: "desktop", host: "macos" },
   { name: "linux-gtk", toolkit: "gtk", kind: "desktop", host: "linux" },
-  { name: "windows-xaml", toolkit: "xaml", kind: "desktop", host: "windows" },
+  { name: "windows-winui", toolkit: "winui", kind: "desktop", host: "windows", label: "Windows (WinUI 3)" },
+  { name: "windows-xaml", toolkit: "xaml", kind: "desktop", host: "windows", deprecated: "windows-winui" },
   { name: "windows-qt", toolkit: "qt", kind: "desktop", host: "windows" },
   { name: "windows-gtk", toolkit: "gtk", kind: "desktop", host: "windows" },
   { name: "linux-qt", toolkit: "qt", kind: "desktop", host: "linux" },
@@ -43,6 +48,90 @@ export const TARGETS: Target[] = [
   { name: "harmony-arkui", toolkit: "arkui", kind: "harmonyOs", host: "any" },
   { name: "web-dom", toolkit: "dom", kind: "web", host: "any" },
 ];
+
+// Mirrors day's documented platform support tiers. CLI-provided tiers take precedence; older
+// CLIs provide only host/experimental, and experimental is not a support-tier designation.
+const TIERS: Record<string, SupportTier> = {
+  "macos-appkit": 1, "ios-uikit": 1, "android-mdc": 1,
+  "linux-gtk": 2, "linux-qt": 2, "windows-winui": 2,
+  "harmony-arkui": 3, "web-dom": 3,
+  "macos-gtk": 4, "macos-qt": 4, "windows-gtk": 4, "windows-qt": 4,
+  "windows-xaml": 5,
+};
+
+const TIER_NAMES: Record<SupportTier, string> = {
+  1: "Supported", 2: "Demi-supported", 3: "Experimental", 4: "Development", 5: "Deprecated",
+};
+const TIER_MEANINGS: Record<SupportTier, string> = {
+  1: "For shipping apps; full walkthrough coverage and regressions block releases.",
+  2: "For shipping apps; CI coverage, with less manual testing and production use.",
+  3: "For evaluation; walkthrough coverage, but no shipping applications yet.",
+  4: "For compatibility testing; no release packaging.",
+  5: "For existing projects only; superseded and due for removal.",
+};
+
+export const TIER_LEGEND = "Tiers: 1 Supported · 2 Demi-supported · 3 Experimental · 4 Development · 5 Deprecated";
+export const TIER_SUMMARY = [
+  "Tiers describe testing and maintenance, not API completeness.",
+  ...([1, 2, 3, 4, 5] as const).map((tier) => `Tier ${tier} · ${TIER_NAMES[tier]}: ${TIER_MEANINGS[tier]}`),
+].join("\n");
+
+export function supportTier(target: Target): SupportTier | undefined {
+  return target.deprecated ? 5 : target.tier ?? TIERS[target.name];
+}
+
+export function isDeprecated(target: Target): boolean {
+  return supportTier(target) === 5;
+}
+
+export function replacementTarget(target: Target): string | undefined {
+  return target.deprecated || (target.name === "windows-xaml" ? "windows-winui" : undefined);
+}
+
+export function tierLabel(target: Target | undefined): string {
+  const tier = target && supportTier(target);
+  return tier ? `Tier ${tier} · ${TIER_NAMES[tier]}` : "Tier unassigned";
+}
+
+export function tierDetail(target: Target | undefined): string {
+  const tier = target && supportTier(target);
+  const replacement = target && replacementTarget(target);
+  return [
+    tier ? TIER_MEANINGS[tier] : "This target has no declared support tier.",
+    replacement ? `Use ${replacement} for new projects.` : undefined,
+  ].filter(Boolean).join(" ");
+}
+
+/** Keep the author's order within groups, but put deprecated targets after usable alternatives. */
+export function targetPreference(target: Target | undefined): number {
+  return target && isDeprecated(target) ? 2 : target && !isBuildableHere(target) ? 1 : 0;
+}
+
+/** Visibility in the cockpit. Explicitly selected/running legacy targets remain controllable. */
+export function orderTargetNames(names: string[], hideUnavailable: boolean, retained: string[] = []): { shown: string[]; hidden: number } {
+  const shown = names.filter((name) => {
+    const t = findTarget(name);
+    return !hideUnavailable || !t || (isBuildableHere(t) && (!isDeprecated(t) || retained.includes(name)));
+  });
+  shown.sort((a, b) => targetPreference(findTarget(a)) - targetPreference(findTarget(b)));
+  return { shown, hidden: names.length - shown.length };
+}
+
+/** A native toolkit (such as gtk) may have different tiers on different operating systems. */
+export function optionSupport(value: string): { label: string; detail: string; deprecated: boolean } | undefined {
+  // Describing annotations never adds choices: a newer `day new --describe` may name a target
+  // that the last loaded project's catalog did not contain yet.
+  const known = new Map([...TARGETS, ...catalog()].map((t) => [t.name, t]));
+  const exact = known.get(value);
+  const matches = exact ? [exact] : [...known.values()].filter((t) => t.toolkit === value);
+  if (!matches.length) { return undefined; }
+  const labels = [...new Set(matches.map(tierLabel))];
+  return {
+    label: labels.join(" / "),
+    detail: matches.map((t) => `${t.name}: ${tierLabel(t)}. ${tierDetail(t)}`).join(" "),
+    deprecated: matches.every(isDeprecated),
+  };
+}
 
 export function findTarget(name: string): Target | undefined {
   return catalog().find((t) => t.name === name);

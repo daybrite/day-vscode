@@ -30,8 +30,13 @@ import {
   catalog,
   findTarget,
   isBuildableHere,
+  isDeprecated,
   kindLabel,
   nativeProjectFor,
+  orderTargetNames,
+  tierLabel,
+  tierDetail,
+  TIER_SUMMARY,
 } from "./targets";
 
 /** Which configuration row a `config` node is. */
@@ -144,9 +149,8 @@ export function targetContextValue(
 /**
  * The targets a project's list shows, and how many it left out.
  *
- * Unavailable means this host cannot build it: `windows-xaml` on a Mac. Those rows sink to the
- * bottom rather than sorting away entirely, so the ones you can act on are the ones under the
- * cursor; hiding them is the separate `day.hideUnavailableTargets` choice.
+ * Foreign-host and deprecated targets sink to the bottom, or are hidden by
+ * `day.hideUnavailableTargets`. Selected/running deprecated targets remain controllable.
  *
  * The partition is stable: within each half the project's own declaration order from `Day.toml`
  * survives, because that order is the author's and re-sorting it alphabetically would shuffle a
@@ -159,16 +163,9 @@ export function targetContextValue(
 export function orderTargets(
   names: string[],
   hideUnavailable: boolean,
+  retained: string[] = [],
 ): { shown: string[]; hidden: number } {
-  const available: string[] = [];
-  const unavailable: string[] = [];
-  for (const name of names) {
-    const target = findTarget(name);
-    (target && !isBuildableHere(target) ? unavailable : available).push(name);
-  }
-  return hideUnavailable
-    ? { shown: available, hidden: unavailable.length }
-    : { shown: [...available, ...unavailable], hidden: 0 };
+  return orderTargetNames(names, hideUnavailable, retained);
 }
 
 /**
@@ -377,7 +374,10 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
 
   /** A project's target rows, ordered and filtered by `day.hideUnavailableTargets`. */
   private targetRows(project: DayProject): { shown: string[]; hidden: number } {
-    return orderTargets(this.targetNames(project), hideUnavailableTargets(project.root));
+    return orderTargets(this.targetNames(project), hideUnavailableTargets(project.root), [
+      ...this.deps.state.selectionFor(project.root).targets,
+      ...this.deps.runner.runningIn(project.root),
+    ]);
   }
 
   getChildren(element?: Node): Node[] {
@@ -515,12 +515,10 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
         bits.push(`${running} running`);
       }
       if (hidden > 0) {
-        bits.push(`${hidden} unavailable hidden`);
+        bits.push(`${hidden} hidden`);
       }
       item.description = bits.join(" · ");
-      if (hidden > 0) {
-        item.tooltip = `${hidden} target(s) this host cannot build are hidden. Turn off day.hideUnavailableTargets to list them.`;
-      }
+      item.tooltip = `${hidden > 0 ? `${hidden} unavailable or deprecated target(s) hidden. Turn off day.hideUnavailableTargets to list them.\n\n` : ""}${TIER_SUMMARY}`;
     }
     return item;
   }
@@ -720,7 +718,10 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
 
     const parts: string[] = [];
     if (target) {
+      parts.push(tierLabel(target));
       parts.push(kindLabel(target));
+    } else {
+      parts.push(tierLabel(undefined));
     }
     if (building) {
       parts.push("building");
@@ -756,7 +757,9 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
       item.contextValue = "dayTargetDisabled";
     } else {
       const kindIcon = target && target.kind === "desktop" ? "device-desktop" : "device-mobile";
-      item.iconPath = new vscode.ThemeIcon(kindIcon);
+      item.iconPath = target && isDeprecated(target)
+        ? new vscode.ThemeIcon("warning", new vscode.ThemeColor("disabledForeground"))
+        : new vscode.ThemeIcon(kindIcon);
       item.contextValue = "dayTarget";
     }
 
@@ -788,8 +791,8 @@ export class DayTree implements vscode.TreeDataProvider<Node> {
         : vscode.TreeItemCheckboxState.Unchecked;
     }
     item.tooltip = target
-      ? `${name} — ${kindLabel(target)}${buildable ? "" : ` (requires a ${target.host} host)`}`
-      : name;
+      ? `${name} — ${tierLabel(target)}\n${tierDetail(target)}\n${kindLabel(target)}${buildable ? "" : ` (requires a ${target.host} host)`}\n\n${TIER_SUMMARY}`
+      : `${name}\n${tierLabel(undefined)}\n${tierDetail(undefined)}`;
     return item;
   }
 }

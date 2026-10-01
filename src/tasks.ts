@@ -9,7 +9,7 @@ import * as vscode from "vscode";
 
 import { buildArgs, cliSearchDirs, launchArgs, renderCommand, resolveCli } from "./cli";
 import { Profile } from "./config";
-import { findTarget } from "./targets";
+import { findTarget, tierLabel, tierDetail } from "./targets";
 
 export interface DayTaskDefinition extends vscode.TaskDefinition {
   type: "day";
@@ -180,7 +180,7 @@ export function verbose(root?: string): boolean {
 }
 
 /**
- * Whether the Day view leaves out the targets this host cannot build
+ * Whether the Day view leaves out unavailable and unselected deprecated targets
  * (`day.hideUnavailableTargets`).
  *
  * Folder-scoped like the rest: a Windows-only app in the same window as a cross-platform one can
@@ -386,6 +386,6 @@ export function buildDayTask(
     focus: false,
     showReuseMessage: false,
   };
-  task.detail = renderCommand(cli, args);
+  task.detail = `${tierLabel(findTarget(def.target))} — ${tierDetail(findTarget(def.target))} ${renderCommand(cli, args)}`;
   return task;
 }

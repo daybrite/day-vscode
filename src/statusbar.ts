@@ -14,7 +14,7 @@ import { resolveCli } from "./cli";
 import { State } from "./config";
 import { DayProject } from "./project";
 import { Runner } from "./runner";
-import { findTarget, isBuildableHere } from "./targets";
+import { findTarget, isBuildableHere, supportTier, tierLabel, tierDetail, targetPreference, TIER_SUMMARY } from "./targets";
 
 /** `command:` link with JSON args, for trusted Markdown tooltips. */
 function cmd(command: string, ...args: unknown[]): string {
@@ -89,7 +89,11 @@ export class StatusBar implements vscode.Disposable {
       this.targets.text = "$(vm) pick targets";
       this.targets.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
     } else {
-      const shorts = chosen.map(short);
+      const shorts = chosen.map((name) => {
+        const t = findTarget(name);
+        const tier = t && supportTier(t);
+        return `${short(name)} (T${tier ?? "?"})`;
+      });
       const label =
         shorts.length <= 2 ? shorts.join(" · ") : `${shorts.slice(0, 2).join(" · ")} +${shorts.length - 2}`;
       const spin = building.length > 0 ? "$(sync~spin) " : "";
@@ -189,13 +193,13 @@ export class StatusBar implements vscode.Disposable {
     md.supportThemeIcons = true;
     md.appendMarkdown(`**${project.title ?? project.name ?? "Day"}** — targets\n\n`);
     const names = project.targets.length > 0 ? project.targets : this.state.selection.targets;
-    for (const name of names) {
+    for (const name of [...names].sort((a, b) => targetPreference(findTarget(a)) - targetPreference(findTarget(b)))) {
       const target = findTarget(name);
       const buildable = target ? isBuildableHere(target) : true;
       const isRunning = running.includes(name);
       const picked = this.state.selection.targets.includes(name);
       if (!buildable) {
-        md.appendMarkdown(`$(circle-slash) ${name} — _not buildable on this host_\n\n`);
+        md.appendMarkdown(`$(circle-slash) ${name} — ${tierLabel(target)} — _not buildable on this host_\n\n`);
         continue;
       }
       const dot = isRunning
@@ -208,8 +212,12 @@ export class StatusBar implements vscode.Disposable {
       const actions = isRunning
         ? `[stop](${cmd("day.stop", name)}) · [restart](${cmd("day.restart", name)})`
         : `[run](${cmd("day.runTarget", name)}) · [build](${cmd("day.buildTarget", name)})`;
-      md.appendMarkdown(`${dot} **${name}** — ${actions}\n\n`);
+      md.appendMarkdown(`${dot} **${name}** — ${tierLabel(target)} — ${actions}\n\n`);
+      md.appendText(tierDetail(target));
+      md.appendMarkdown("\n\n");
     }
+    md.appendText(TIER_SUMMARY);
+    md.appendMarkdown("\n\n");
     md.appendMarkdown(`---\n\n`);
     md.appendMarkdown(
       `[$(checklist) choose](${cmd("day.selectTargets")}) · ` +

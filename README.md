@@ -54,7 +54,13 @@ The **Day** view lists every project in the window and the platforms each one sh
 ones you want and press Run.
 
 - Each target builds in its own terminal, and stops and restarts on its own.
-- Targets your machine cannot build are shown greyed, rather than hidden.
+- Unavailable and deprecated targets are hidden by default; turn off
+  `day.hideUnavailableTargets` to list them. Selected or running legacy targets stay visible.
+- Windows uses `windows-winui` (Tier 2). `windows-xaml` is deprecated (Tier 5), remains usable
+  for existing projects, and appears last in target pickers.
+- Target selectors show support tiers: **1 Supported**, **2 Demi-supported**, **3 Experimental**,
+  **4 Development**, **5 Deprecated**. Hover a target or use the picker's information button for
+  the testing and maintenance expectations. Tiers do not measure API completeness.
 - The **+** on a project's **Targets** row adds another platform to the app.
 - Mobile targets expand to a **Device** row — a booted simulator, a plugged-in phone, an emulator,
   or every one at once. Right-click one to start or stop the simulator or emulator itself.

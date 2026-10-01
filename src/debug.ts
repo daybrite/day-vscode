@@ -22,7 +22,7 @@ import { buildArgs, launchArgs, LaunchOptions, renderCommand, resolveCli } from 
 import { Profile, Selection } from "./config";
 import { DayProject } from "./project";
 import { snapEnvOverrides } from "./snapEnv";
-import { findTarget, isBuildableHere } from "./targets";
+import { findTarget, isBuildableHere, targetPreference, tierLabel, tierDetail, TIER_LEGEND } from "./targets";
 import { launchEnv, taskEnv, verbose } from "./tasks";
 
 /** A `day` launch configuration (mirrors the launch fields of DayTaskDefinition). */
@@ -243,7 +243,7 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
     return {
       type: "day",
       request: "launch",
-      name: `Day: Run ${target}`,
+      name: `Day: Run ${target} — ${tierLabel(findTarget(target))}`,
       target,
       profile: sel.profile,
       ...(sel.locale ? { locale: sel.locale } : {}),
@@ -261,7 +261,7 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
     if (targets.length === 0) {
       return [{ type: "day", request: "launch", name: "Day: Run", target: "" } as DayLaunchConfig];
     }
-    return targets.map((t) => this.make(t));
+    return [...targets].sort((a, b) => targetPreference(findTarget(a)) - targetPreference(findTarget(b))).map((t) => this.make(t));
   }
 
   /**
@@ -439,7 +439,7 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
     const buildable = (project?.targets ?? []).filter((name) => {
       const t = findTarget(name);
       return !t || isBuildableHere(t);
-    });
+    }).sort((a, b) => targetPreference(findTarget(a)) - targetPreference(findTarget(b)));
     if (buildable.length === 0) {
       void vscode.window.showInformationMessage(
         "This Day project has no targets buildable on this host.",
@@ -450,8 +450,8 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
       return buildable; // nothing to choose
     }
     const picks = await vscode.window.showQuickPick(
-      buildable.map((name) => ({ label: name })),
-      { canPickMany: true, title: "Day: Run", placeHolder: "Pick the target(s) to run" },
+      buildable.map((name) => ({ label: name, description: tierLabel(findTarget(name)), detail: tierDetail(findTarget(name)) })),
+      { canPickMany: true, title: "Day: Run", placeHolder: `Pick targets. ${TIER_LEGEND}`, matchOnDescription: true },
     );
     return picks?.map((p) => p.label);
   }

@@ -11,7 +11,7 @@ import * as vscode from "vscode";
 
 import { State } from "./config";
 import { DayProject } from "./project";
-import { isBuildableHere, findTarget } from "./targets";
+import { isBuildableHere, findTarget, targetPreference } from "./targets";
 import { buildDayTask, DayTaskDefinition } from "./tasks";
 
 export class DayTaskProvider implements vscode.TaskProvider {
@@ -30,7 +30,7 @@ export class DayTaskProvider implements vscode.TaskProvider {
       // focused project's choice put in its task's command line.
       const selection = this.state.selectionFor(project.root);
       const profile = selection.profile;
-      for (const name of project.targets) {
+      for (const name of [...project.targets].sort((a, b) => targetPreference(findTarget(a)) - targetPreference(findTarget(b)))) {
         const target = findTarget(name);
         if (!target || !isBuildableHere(target)) {
           continue;

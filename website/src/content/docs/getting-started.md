@@ -76,11 +76,20 @@ one:
   <figcaption>The targets this machine can build. Mobile targets hold a list of devices you add with +.</figcaption>
 </figure>
 
-A macOS machine cannot build `windows-xaml`, so that row is left out and the **Targets** heading
+A macOS machine cannot build `windows-winui`, so that row is left out and the **Targets** heading
 says how many were hidden. Set `day.hideUnavailableTargets` to `false` to list them instead: they
 sit at the bottom of the group, greyed out and giving the reason. Either way an app can ship to
 platforms you only ever build on CI. What each target is, and what it needs installed, is covered
 in [Platforms](https://daybrite.dev/docs/platforms/).
+
+Windows projects should use `windows-winui` (Tier 2). The old `windows-xaml` target is Tier 5
+(deprecated): it is hidden by the same setting unless selected or running, and appears last in
+target pickers. Existing projects can still build and run it.
+
+Every target selector shows its support tier: **1 Supported**, **2 Demi-supported**,
+**3 Experimental**, **4 Development**, **5 Deprecated**. Hover a target or use the information
+button in the Add Target or New Project picker for a short explanation. Tiers describe testing
+and maintenance, not API completeness.
 
 ## 4. Run it
 

@@ -129,7 +129,8 @@ const label = (slug) =>
 /** Human labels for the three hosts the e2e matrix covers. */
 const COMBOS = {
   'macos-appkit': { os: 'macOS', toolkit: 'AppKit', order: 1 },
-  'windows-xaml': { os: 'Windows', toolkit: 'XAML', order: 2 },
+  'windows-winui': { os: 'Windows', toolkit: 'WinUI 3', order: 2 },
+  'windows-xaml': { os: 'Windows', toolkit: 'XAML (deprecated)', order: 2 },
   'linux-gtk': { os: 'Linux', toolkit: 'GTK 4', order: 3 },
 };
 

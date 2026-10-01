@@ -1,9 +1,8 @@
 // Scaffolding a Day app, piece or part, asking the questions the CLI says to ask.
 //
 // The question set lives in `day new --describe`: every field, its options, and the flag it fills.
-// Nothing here knows what a target is called or which toolkits a native piece can have; the copy
-// that used to live in this extension named `windows-winui`, which is not a Day target, and it
-// went unnoticed because nothing compares the two lists.
+// Choices come from the CLI, so this extension never offers a target that the installed CLI
+// cannot scaffold. Support-tier annotations also work with older CLI metadata.
 //
 // The steps are native QuickPick/InputBox prompts rather than a webview, with a Back button so a
 // typo three questions ago does not mean starting over. VS Code's own `showQuickPick` has no Back,
@@ -14,6 +13,8 @@ import * as vscode from "vscode";
 
 import { renderCommand, resolveCli } from "./cli";
 import { toolchainEnv } from "./tasks";
+import { optionSupport, findTarget, replacementTarget, TIER_LEGEND } from "./targets";
+import { tierHelpButton, showTierHelp } from "./targetUi";
 
 /** One choice for a select/multi-select field. */
 export interface SpecOption {
@@ -24,6 +25,7 @@ export interface SpecOption {
    *  platform it is not developed on. */
   buildable_here?: boolean;
   experimental?: boolean;
+  deprecated?: string | null;
 }
 
 /** One question. `flag` is the `day new` flag it fills; a positional field fills the name. */
@@ -164,6 +166,7 @@ function pick(
   many: boolean,
   canGoBack: boolean,
   placeholder?: string,
+  targetPicker = false,
 ): Promise<string[] | Outcome> {
   return new Promise((resolve) => {
     const qp = vscode.window.createQuickPick();
@@ -174,10 +177,12 @@ function pick(
     qp.canSelectMany = many;
     qp.placeholder = placeholder;
     qp.ignoreFocusOut = true;
-    qp.buttons = canGoBack ? [vscode.QuickInputButtons.Back] : [];
+    qp.buttons = [...(canGoBack ? [vscode.QuickInputButtons.Back] : []), ...(targetPicker ? [tierHelpButton] : [])];
+    qp.matchOnDescription = targetPicker;
     qp.selectedItems = items.filter((i) => i.picked);
     let done: Outcome | string[] = "cancel";
     qp.onDidTriggerButton((b) => {
+      if (b === tierHelpButton) { showTierHelp(); return; }
       if (b === vscode.QuickInputButtons.Back) {
         done = "back";
         qp.hide();
@@ -253,28 +258,39 @@ function input(
   });
 }
 
-/** Whether an option was marked as one this host cannot build. */
-const foreign = (i: vscode.QuickPickItem): boolean => Boolean(i.detail?.includes("not buildable"));
-
-function optionItems(field: SpecField, answers: Answers): vscode.QuickPickItem[] {
+export function optionItems(field: SpecField, answers: Answers): vscode.QuickPickItem[] {
+  const targetPicker = field.flag === "--toolkit" || field.flag === "--toolkits";
   const chosen = answers[field.id];
   const already = Array.isArray(chosen) ? chosen : chosen ? [chosen] : undefined;
-  const preset = already ?? (Array.isArray(field.default) ? field.default : [field.default ?? ""]);
+  const defaults = Array.isArray(field.default) ? field.default : [field.default ?? ""];
+  const preset = already ?? defaults.map((name) => {
+    const t = findTarget(name);
+    const replacement = targetPicker
+      ? (t && replacementTarget(t)) || (name === "xaml" ? "winui" : undefined)
+      : undefined;
+    return replacement && field.options?.some((o) => o.value === replacement) ? replacement : name;
+  });
   return (field.options ?? [])
-    .map((o) => ({
-      label: o.value,
-      description: [o.label, o.experimental ? "experimental" : undefined]
-        .filter(Boolean)
-        .join(" · "),
-      detail:
-        o.buildable_here === false
-          ? `${o.detail ?? ""} — not buildable on this host`.trim()
-          : o.detail,
-      picked: preset.includes(o.value),
-    }))
+    .map((o) => {
+      const support = targetPicker ? optionSupport(o.value) : undefined;
+      return {
+        label: o.value,
+        description: [
+          o.label,
+          o.deprecated ? "Tier 5 · Deprecated" : support?.label ?? (targetPicker ? "Tier unassigned" : o.experimental ? "experimental" : undefined),
+        ].filter(Boolean).join(" · "),
+        detail: [
+          o.detail, support?.detail,
+          o.deprecated && !support?.deprecated ? `Use ${o.deprecated} for new projects.` : undefined,
+          o.buildable_here === false ? "not buildable on this host" : undefined,
+        ].filter(Boolean).join(" — "),
+        picked: preset.includes(o.value),
+        preference: o.deprecated || support?.deprecated ? 2 : o.buildable_here === false ? 1 : 0,
+      };
+    })
     // What this machine can build first. The rest stay pickable: an app may ship to a platform
     // it is not developed on, and CI is where those get built.
-    .sort((a, b) => Number(foreign(a)) - Number(foreign(b)));
+    .sort((a, b) => a.preference - b.preference);
 }
 
 /**
@@ -340,7 +356,9 @@ export async function askAll(
     } else {
       const many = field.type === "multi-select";
       const items = optionItems(field, answers);
-      const got = await pick(title, at + 1, total, items, many, true, field.help);
+      const targetPicker = field.flag === "--toolkit" || field.flag === "--toolkits";
+      const got = await pick(title, at + 1, total, items, many, true,
+        targetPicker ? `${field.help ?? "Choose targets"} · ${TIER_LEGEND}` : field.help, targetPicker);
       if (got === "back" || got === "cancel") {
         outcome = got;
       } else {

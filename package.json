@@ -724,7 +724,7 @@
             "type": "boolean",
             "default": true,
             "scope": "resource",
-            "markdownDescription": "Leave the platform-toolkit targets this host cannot build out of the Day view's **Targets** list — `windows-xaml` on a Mac, `macos-appkit` on Linux. The group heading says how many were hidden. Turn this off to list them at the bottom of the group instead, greyed out with the reason: an app can ship to platforms you only build on CI.",
+            "markdownDescription": "Hide targets this host cannot build and deprecated targets such as `windows-xaml` (use `windows-winui`, Tier 2). Selected or running deprecated targets stay visible so existing projects remain controllable. The group heading reports how many are hidden. Turn this off to show all targets, with deprecated ones last. Target rows show their support tier; hover for the tier meanings.",
             "order": 7
           },
           "day.followActiveEditor": {
@@ -1203,7 +1203,7 @@
     "prelaunch": "npm run compile && npm run bundle",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
-    "test:unit": "npm run compile && node --test test/cargo-toml.mjs test/snap-env.mjs",
+    "test:unit": "npm run compile && node --test test/cargo-toml.mjs test/snap-env.mjs test/targets.mjs",
     "test:integration": "npm run bundle && npm run compile && node test/run-integration.mjs",
     "test:debug": "npm run bundle && node test/run-debug-e2e.mjs",
     "test:e2e": "node test/e2e/drive.mjs"

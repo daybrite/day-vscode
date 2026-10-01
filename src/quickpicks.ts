@@ -9,7 +9,8 @@ import { DeviceChoice, Profile } from "./config";
 import { TargetDevices } from "./devices";
 import { DayProject } from "./project";
 import { LogLevel } from "./tasks";
-import { catalog, findTarget, isBuildableHere, Target } from "./targets";
+import { catalog, findTarget, isBuildableHere, isDeprecated, targetPreference, tierLabel, tierDetail, TIER_LEGEND, Target } from "./targets";
+import { tierHelpButton, showTierHelp } from "./targetUi";
 
 export async function pickMode(current: Profile): Promise<Profile | undefined> {
   const items: (vscode.QuickPickItem & { value: Profile })[] = [
@@ -142,7 +143,7 @@ export type ToolkitChoice = vscode.QuickPickItem & { name?: string };
 const HOST_NAMES: Record<string, string> = { macos: "macOS", linux: "Linux", windows: "Windows" };
 
 /**
- * The Add Target picker's rows: the CLI's whole target catalog, in its order.
+ * The Add Target picker's rows: usable targets first, deprecated targets last.
  *
  * A target the project already declares stays on the list, checked and with nothing to add, the
  * way the device picker shows a device that is already configured. A quick pick has no disabled
@@ -150,17 +151,18 @@ const HOST_NAMES: Record<string, string> = { macos: "macOS", linux: "Linux", win
  * cannot build is still offered, because CI can build it, and says which OS builds it.
  */
 export function toolkitChoices(declared: string[], targets: Target[] = catalog()): ToolkitChoice[] {
-  return targets.map((t) => {
+  return [...targets].sort((a, b) => targetPreference(a) - targetPreference(b)).map((t) => {
     const added = declared.includes(t.name);
     const notes = [
       t.label,
+      tierLabel(t),
       added ? "already in this project" : undefined,
       !added && !isBuildableHere(t) ? `builds on ${HOST_NAMES[t.host] ?? t.host}` : undefined,
-      t.experimental ? "experimental" : undefined,
     ];
     return {
       label: added ? `$(check) ${t.name}` : t.name,
       description: notes.filter(Boolean).join(" · "),
+      detail: tierDetail(t),
       name: added ? undefined : t.name,
     };
   });
@@ -178,6 +180,9 @@ export async function pickToolkit(project: DayProject): Promise<string | undefin
   qp.title = `Day: Add a Toolkit to ${project.title ?? project.name}`;
   qp.placeholder = "Adds the target to Day.toml and writes any native project it needs under platform/";
   qp.items = items;
+  qp.matchOnDescription = true;
+  qp.buttons = [tierHelpButton];
+  qp.onDidTriggerButton(() => showTierHelp());
   const first = items.find((i) => i.name);
   if (first) {
     qp.activeItems = [first];
@@ -322,41 +327,61 @@ export async function pickTargets(
   project: DayProject | undefined,
   current: string[],
 ): Promise<string[] | undefined> {
+  const items = targetChoices(project?.targets ?? [], current);
+  const chosen = await vscode.window.showQuickPick(items, {
+    title: "Day: Targets",
+    placeHolder: `Select Run/Build targets. ${TIER_LEGEND}`,
+    matchOnDescription: true,
+    canPickMany: true,
+  });
+  return chosen?.map((i) => i.name).filter((n): n is string => typeof n === "string");
+}
+
+/** Shared row builder so deprecated declared targets cannot outrank recommended alternatives. */
+export function targetChoices(declared: string[], current: string[]): (vscode.QuickPickItem & { name?: string })[] {
   type Item = vscode.QuickPickItem & { name?: string };
-  const declared = project?.targets ?? [];
   const items: Item[] = [];
+  const deprecated = (name: string): boolean => {
+    const t = findTarget(name);
+    return Boolean(t && isDeprecated(t));
+  };
 
   const push = (name: string): void => {
     const t = findTarget(name);
     const buildable = t ? isBuildableHere(t) : true;
     items.push({
       name: buildable ? name : undefined,
-      label: buildable ? `$(vm) ${name}` : `$(circle-slash) ${name}`,
-      description: buildable ? t?.label : "not buildable on this host",
+      label: buildable ? `$(${deprecated(name) ? "warning" : "vm"}) ${name}` : `$(circle-slash) ${name}`,
+      description: [tierLabel(t), buildable ? t?.label : "not buildable on this host"].filter(Boolean).join(" · "),
+      detail: tierDetail(t),
       picked: buildable && current.includes(name),
     });
   };
 
-  for (const name of declared) {
+  for (const name of declared.filter((n) => !deprecated(n) && (!findTarget(n) || isBuildableHere(findTarget(n)!)))) {
     push(name);
   }
   const extras = catalog()
+    .slice().sort((a, b) => targetPreference(a) - targetPreference(b))
     .map((t) => t.name)
     .filter((n) => !declared.includes(n) && isBuildableHere(findTarget(n)!));
-  if (extras.length > 0) {
+  const recommendedExtras = extras.filter((n) => !deprecated(n));
+  if (recommendedExtras.length > 0) {
     items.push({ label: "also buildable here", kind: vscode.QuickPickItemKind.Separator });
-    for (const name of extras) {
+    for (const name of recommendedExtras) {
       push(name);
     }
   }
 
-  const chosen = await vscode.window.showQuickPick(items, {
-    title: "Day: Targets",
-    placeHolder: "Select the targets Run and Build act on",
-    canPickMany: true,
-  });
-  if (!chosen) {
-    return undefined;
+  const foreign = declared.filter((n) => !deprecated(n) && findTarget(n) && !isBuildableHere(findTarget(n)!));
+  if (foreign.length) {
+    items.push({ label: "not buildable on this host", kind: vscode.QuickPickItemKind.Separator });
+    foreign.forEach(push);
   }
-  return chosen.map((i) => i.name).filter((n): n is string => typeof n === "string");
+  const legacy = [...declared, ...extras].filter(deprecated);
+  if (legacy.length) {
+    items.push({ label: "deprecated — existing projects only", kind: vscode.QuickPickItemKind.Separator });
+    legacy.forEach(push);
+  }
+  return items;
 }
