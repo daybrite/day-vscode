@@ -181,7 +181,7 @@ jobs:
         include:
           - { os: xcode-27, combo: macos-appkit }
           - { os: ubuntu-24.04, combo: linux-gtk }
-          - { os: windows-latest, combo: windows-xaml }
+          - { os: windows-latest, combo: windows-winui }
     env:
       DAY_E2E_COMBO: ${{ matrix.combo }}
       # Inside the workspace, so the rust-cache entry below can restore the fixture's target/.
