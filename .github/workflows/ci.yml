@@ -94,8 +94,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint --if-present
-      - name: Typecheck
-        run: npx tsc -p ./ --noEmit
+      - name: Typecheck + unit tests
+        run: npm run test:unit
       - name: Bundle
         run: npm run bundle
 
@@ -161,7 +161,7 @@ jobs:
   # stays the PR gate.
   #
   # Prerequisites per host mirror the day repository's own combo jobs (day/.github/workflows/
-  # ci.yml): macOS and Windows need nothing beyond Rust, Linux needs the GTK 4 development
+  # ci.yml): macOS needs Rust, WinUI needs the Windows App Runtime, Linux needs GTK 4 development
   # libraries. The whole Linux leg runs under one xvfb, which is what puts VS Code and the app
   # it launches on the same display; `day launch` skips its own xvfb wrapper when DISPLAY is
   # already set, so the app renders where the screenshot can see it.
@@ -223,6 +223,13 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev pkg-config \
             xvfb imagemagick fonts-noto-cjk
+
+      - name: Set up WinUI build and runtime dependencies
+        if: matrix.combo == 'windows-winui'
+        uses: daybrite/actions/.github/actions/setup-day-deps@v1
+        with:
+          target: ${{ matrix.combo }}
+          pack: "false"
 
       - name: Install the day CLI
         id: cli

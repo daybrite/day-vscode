@@ -16,7 +16,7 @@ import { join } from "node:path";
  */
 export const FIXTURE_TARGETS = [
   "macos-appkit",
-  "windows-xaml",
+  "windows-winui",
   "linux-gtk",
   "ios-uikit",
   "android-mdc",
@@ -33,10 +33,10 @@ export function fixtureParent(fallback) {
 }
 
 /** The combo this host builds and runs, matching the day repo's own per-combo CI legs. */
-export function hostCombo() {
+export function hostCombo(platform = process.platform) {
   if (process.env.DAY_E2E_COMBO) return process.env.DAY_E2E_COMBO;
-  if (process.platform === "darwin") return "macos-appkit";
-  if (process.platform === "win32") return "windows-xaml";
+  if (platform === "darwin") return "macos-appkit";
+  if (platform === "win32") return "windows-winui";
   return "linux-gtk";
 }
 

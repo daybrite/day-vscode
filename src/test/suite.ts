@@ -92,7 +92,7 @@ function baseName(p: string): string {
 
 type Check = [name: string, fn: () => Promise<void> | void];
 
-/** The combo the CI leg scaffolded for (macos-appkit / windows-xaml / linux-gtk). */
+/** The combo the CI leg scaffolded for (macos-appkit / windows-winui / linux-gtk). */
 const COMBO = process.env.DAY_E2E_COMBO ?? "";
 
 const checks: Check[] = [

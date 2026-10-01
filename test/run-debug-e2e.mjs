@@ -16,13 +16,14 @@ import { fileURLToPath } from "node:url";
 
 import { runTests } from "@vscode/test-electron";
 
+import { hostCombo } from "./e2e/fixture.mjs";
 import { shortTmp, VSCODE_VERSION } from "./e2e/vscode.mjs";
 
 const root = resolve(fileURLToPath(import.meta.url), "..", "..");
 const siblings = resolve(root, "..");
 
 const project = process.argv[2] || join(siblings, "Day-Showcase");
-const target = process.argv[3] || { darwin: "macos-appkit", win32: "windows-xaml", linux: "linux-gtk" }[process.platform];
+const target = process.argv[3] || hostCombo();
 // `showcase::root()` runs as the UI mounts, so the program reaches it with no interaction. It also
 // lives in the LIB crate, which matters: an Xcode-hosted macos-appkit build supplies its own
 // `main`, so nothing in the binary crate's src/main.rs is present to break on.
