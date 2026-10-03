@@ -99,8 +99,12 @@ jobs:
       - name: Bundle
         run: npm run bundle
 
-      # Pre-release channel convention (see PLAN.md): odd minor = pre-release train. The
-      # Marketplace has no semver pre-release tags, so the flag must ride the publish command.
+      # Pre-release channel convention (see PLAN.md): odd minor = pre-release train, as the
+      # Marketplace's guidelines put it (code.visualstudio.com/api/working-with-extensions/
+      # publishing-extension#pre-release-extensions). The Marketplace has no semver pre-release
+      # tags: the status is baked into the .vsix by `vsce package --pre-release`, and `vsce
+      # publish` refuses `--pre-release` on a package made without it (0.5.0, 2026-10-03), so the
+      # flag rides both commands.
       - name: Version / channel
         id: meta
         run: |
@@ -115,7 +119,10 @@ jobs:
       # does (publisher, engines, icon format, activation events, …) with no --allow-* escapes,
       # and fails the build on anything the Marketplace would reject.
       - name: Validate publishability (vsce package, strict)
-        run: npx @vscode/vsce package -o day-vscode.vsix
+        run: |
+          FLAGS=""
+          if [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then FLAGS="--pre-release"; fi
+          npx @vscode/vsce package -o day-vscode.vsix $FLAGS
 
       - name: Validate publishability (Marketplace checklist)
         run: |

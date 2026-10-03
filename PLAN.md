@@ -51,7 +51,8 @@ put AppKit, UIKit, Android, GTK, Qt, XAML, and ArkUI behind one picker).
 - **Distribution hygiene**: esbuild bundling; drop `onStartupFinished` (activation events are
   auto-generated from contributions since 1.74; keep `workspaceContains:**/Day.toml`); declare
   `capabilities.untrustedWorkspaces` + `virtualWorkspaces`; `engines ≥ 1.101`; pre-release
-  channel (odd-minor convention).
+  channel (the Marketplace's odd-minor convention: `vsce package --pre-release` and `vsce
+  publish --pre-release` on an odd minor, both, since the flag is baked into the .vsix).
 - **Day.toml schema**: emit a JSON Schema (new `day metadata --schema`), publish to SchemaStore,
   and associate via `contributes.configurationDefaults` →
   `evenBetterToml.schema.associations` (supported cross-extension since 1.63). Recommend (not

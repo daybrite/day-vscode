@@ -141,7 +141,9 @@ unreleased build, take the `.vsix` from the
 ## Publishing
 
 CI validates Marketplace publishability on every push (strict `vsce package` + the documented
-requirements checklist). Tagging `v*` attaches the `.vsix` to a GitHub Release; actual
+requirements checklist). An odd minor version (0.5.x) is a pre-release in the Marketplace's own
+convention, so CI packages and publishes it with `--pre-release`; both commands need the flag,
+since it is baked into the `.vsix`. Tagging `v*` attaches the `.vsix` to a GitHub Release; actual
 Marketplace / Open VSX publication is fully wired but **off** until the repository variables
 flip. Marketplace auth is **tokenless** — Entra ID workload-identity federation via GitHub
 OIDC and `vsce publish --azure-credential` (Azure DevOps PATs retire Dec 1 2026); Open VSX

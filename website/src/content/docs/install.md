@@ -62,7 +62,15 @@ faster loop when you are changing the extension itself.
 ## Version channels
 
 The minor version says which channel a build belongs to: **even minors are stable** (0.4.x), **odd
-minors are pre-release** (0.5.x). The version alone tells you which one you are on.
+minors are pre-release** (0.5.x). The version alone tells you which one you are on. This is the
+[Marketplace's own convention](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#pre-release-extensions):
+a version number is plain `major.minor.patch`, so the channel has to be read from the minor.
+
+An odd-minor build is published as a Marketplace pre-release. VS Code offers it only to people
+who choose **Switch to Pre-Release Version** on the extension's page; everyone else stays on the
+newest even-minor build and is updated when the next one ships. A pre-release build is built from
+a tag like any other, carries the same `.vsix` on its GitHub release (marked pre-release there
+too), and is what the stable build that follows it is made from.
 
 ## Getting the CLI
 

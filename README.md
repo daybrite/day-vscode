@@ -24,7 +24,7 @@
 <p align="center">
   <a href="https://marketplace.visualstudio.com/items?itemName=daybrite.day-vscode"><b>Install from the VS Code Marketplace</b></a>
   <br />
-  <sub>or <code>code --install-extension daybrite.day-vscode</code></sub>
+  <sub>or <code>code --install-extension daybrite.day-vscode</code>. Odd minor versions (0.5.x) are pre-releases: choose <b>Switch to Pre-Release Version</b> on the Marketplace page to get them.</sub>
 </p>
 
 <p align="center">
