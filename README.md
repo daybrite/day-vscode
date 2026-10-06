@@ -96,6 +96,10 @@ every step.
   reclaimed.
 - **F5** builds a desktop target and hands the binary to a Rust debugger you already have, so
   breakpoints in `.rs` files are real ones.
+- **Tests run where tests run.** Every `#[day::test]` function appears in the Test Explorer and
+  gets the play icon in the gutter, with one row per target you have ticked; one click runs it on
+  each of them through `day test`, and a failure links the screen at the moment it failed. Debug
+  one on a desktop target and a breakpoint in the app holds the run.
 
 <br clear="right" />
 

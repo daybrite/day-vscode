@@ -13,6 +13,7 @@
   },
   "categories": [
     "Debuggers",
+    "Testing",
     "Linters",
     "AI"
   ],
@@ -173,6 +174,24 @@
         "title": "Lint Project",
         "category": "Day",
         "icon": "$(search-fuzzy)"
+      },
+      {
+        "command": "day.testProject",
+        "title": "Run Tests",
+        "category": "Day",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "day.testProjectOn",
+        "title": "Run Tests on Target…",
+        "category": "Day",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "day.testTarget",
+        "title": "Run Tests",
+        "category": "Day",
+        "icon": "$(beaker)"
       },
       {
         "command": "day.clean",
@@ -397,6 +416,11 @@
           "group": "2_tools@0"
         },
         {
+          "command": "day.testProject",
+          "when": "view == dayTargets",
+          "group": "2_tools@0"
+        },
+        {
           "command": "day.clean",
           "when": "view == dayTargets",
           "group": "2_tools@1"
@@ -472,6 +496,16 @@
           "command": "day.lintProject",
           "when": "view == dayTargets && viewItem =~ /^dayProject/",
           "group": "2_tools@0"
+        },
+        {
+          "command": "day.testProject",
+          "when": "view == dayTargets && viewItem =~ /^dayProject/",
+          "group": "2_tools@0"
+        },
+        {
+          "command": "day.testTarget",
+          "when": "view == dayTargets && viewItem =~ /^dayTarget(Running)?(\\.\\w+)*$/",
+          "group": "1_run@9"
         },
         {
           "command": "day.clean",
@@ -578,6 +612,10 @@
           "when": "false"
         },
         {
+          "command": "day.testTarget",
+          "when": "false"
+        },
+        {
           "command": "day.runProject",
           "when": "false"
         },
@@ -669,12 +707,28 @@
             "markdownDescription": "Keep the app **running** after a dayscript completes, so you can extend the script and re-drive the live app (`day drive`). Turn off to terminate the app when its script ends, as CI does. Per-task override: the `keepAlive` property on a `day` task in `tasks.json`. Toggle quickly with **Day: Toggle Keep App Running After Script**.",
             "order": 3
           },
+          "day.tests.shots": {
+            "type": "string",
+            "enum": [
+              "never",
+              "on-failure",
+              "always"
+            ],
+            "enumDescriptions": [
+              "Keep no captures.",
+              "Keep a failing test's captures, and `failed.png` from the moment it failed.",
+              "Keep every capture a test takes."
+            ],
+            "default": "on-failure",
+            "markdownDescription": "Which captures a test run keeps (`day test --shots`). They land under `build/day/screenshots/<target>/<variant>/tests/<test>/`, and a failed test's message links its `failed.png`.",
+            "order": 4
+          },
           "day.verbose": {
             "type": "boolean",
             "default": false,
             "markdownDescription": "Run `day build` and `day launch` with `--verbose`, so the terminal shows every sub-command they execute (cargo, gradle, xcodebuild, hvigor, adb, codesign, …) and its raw output, instead of Day's own status lines alone. Useful when a build fails inside one of those tools and the summary does not say why.\n\nSet per project: put it in that app's `.vscode/settings.json` and it applies to that app alone, which is what lets several Day apps in one window run with different settings.",
             "scope": "resource",
-            "order": 4
+            "order": 5
           },
           "day.logLevel": {
             "type": "string",
@@ -697,7 +751,7 @@
             "default": "debug",
             "markdownDescription": "Log level for launched apps, passed to every launch as `--env DAY_LOG=<level>`. A native app's lines land in the task terminal; a `web-dom` launch carries the level on the page URL and its lines land in the browser console. A `DAY_LOG` entry in `day.extraEnv` overrides this setting.\n\nSet per project: put it in that app's `.vscode/settings.json` and it applies to that app alone, which is what lets several Day apps in one window run with different settings.",
             "scope": "resource",
-            "order": 5,
+            "order": 6,
             "keywords": [
               "DAY_LOG",
               "logging",
@@ -713,7 +767,7 @@
             },
             "description": "Extra environment variables passed to every launch as `--env KEY=VALUE`.\n\nSet per project: put it in that app's `.vscode/settings.json` and it applies to that app alone, which is what lets several Day apps in one window run with different settings.",
             "scope": "resource",
-            "order": 6,
+            "order": 7,
             "keywords": [
               "environment",
               "variables",
@@ -725,13 +779,13 @@
             "default": true,
             "scope": "resource",
             "markdownDescription": "Hide targets this host cannot build and deprecated targets such as `windows-xaml` (use `windows-winui`, Tier 2). Selected or running deprecated targets stay visible so existing projects remain controllable. The group heading reports how many are hidden. Turn this off to show all targets, with deprecated ones last. Target rows show their support tier; hover for the tier meanings.",
-            "order": 7
+            "order": 8
           },
           "day.followActiveEditor": {
             "type": "boolean",
             "default": true,
             "markdownDescription": "Focus the Day project that the active editor's file belongs to. With several apps open in one window, opening a file in one of them points the Configuration rows, the Run button, and the status bar at that project. Turn this off to change focus only from the Day sidebar or `Day: Select Project`.",
-            "order": 8
+            "order": 9
           },
           "day.newProject.openAfterCreate": {
             "type": "string",
@@ -750,20 +804,20 @@
             "default": "ask",
             "scope": "window",
             "markdownDescription": "What to do with a project after `Day: New Project` scaffolds it.",
-            "order": 9
+            "order": 10
           },
           "day.showWalkthroughOnStartup": {
             "type": "boolean",
             "default": false,
             "scope": "window",
             "markdownDescription": "Open the **Get started with Day** walkthrough every time a window opens, rather than once per install. `scripts/dev.sh` sets this in the workspace it generates when there is no project to open, so the welcome page is what you land on.",
-            "order": 10
+            "order": 11
           },
           "day.mcp.enabled": {
             "type": "boolean",
             "default": true,
             "description": "Expose Day to AI agents via the Model Context Protocol (`day mcp-server`): build, launch, relaunch, and drive running apps, with screenshots agents can see.",
-            "order": 11,
+            "order": 12,
             "keywords": [
               "MCP",
               "agent",
@@ -790,7 +844,7 @@
             ],
             "default": "auto",
             "markdownDescription": "Which Rust debugger **Start Debugging** hands a desktop target to. Day ships no debug adapter of its own — it builds the app and passes the binary, working directory, and environment to the debugger you already use. Device and browser targets always run without a debugger.",
-            "order": 12,
+            "order": 13,
             "keywords": [
               "debugger",
               "LLDB",
@@ -812,13 +866,13 @@
               "git",
               "CLI"
             ],
-            "order": 13
+            "order": 14
           },
           "day.cliPath": {
             "type": "string",
             "default": "day",
             "markdownDescription": "Path to the `day` CLI binary. If it is left as `day`, a local Day checkout is preferred over `PATH`: the Day repository itself when the workspace is inside one, otherwise a `day/` checkout sitting beside this extension's own `day-vscode/` source. That checkout's `target/debug/day` is used when it has been built, and `cargo run` against it (via `--manifest-path` for the sibling case) when it has not — so a dev host needs no installed CLI.",
-            "order": 14,
+            "order": 15,
             "keywords": [
               "CLI",
               "day",
@@ -830,7 +884,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Path to a `day` **source checkout** (the folder holding `Cargo.toml` and `crates/day-cli/`). When set, every CLI invocation runs as `cargo run --manifest-path <path>/Cargo.toml -q -p day-cli --`, so an edit to the CLI is compiled into the very next build, launch or project scan — no rebuild step to remember. Takes precedence over `#day.cliPath#`. Costs roughly a second per invocation for cargo's freshness check, and needs `cargo` on the PATH the editor was started with; without it the checkout's already-built binary is used instead. Leave empty for normal use.",
-            "order": 15,
+            "order": 16,
             "keywords": [
               "CLI",
               "cargo",
@@ -842,7 +896,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Sets `DEVELOPER_DIR` for every `day` command this extension runs — the Xcode to build Apple targets with, named either as the `.app` itself or as its `Contents/Developer`. `xcrun`, `xcodebuild` and `simctl` read that variable directly, so this is how a machine with several Xcodes points `macos-appkit` and `ios-uikit` at one of them. Empty = whatever `xcode-select` points to.",
-            "order": 17,
+            "order": 18,
             "keywords": [
               "DEVELOPER_DIR",
               "Xcode",
@@ -857,7 +911,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Path to the Android SDK (the directory holding `platform-tools/` and `emulator/`). Exported as both `ANDROID_HOME` and `ANDROID_SDK_ROOT` for every `day` command this extension runs — builds, launches, `day doctor` and device listing — and its `platform-tools/` and `emulator/` are added to the task `PATH`, which is what lets `adb` and the emulator be found when the editor was launched from the Dock and inherited no shell environment. Empty = whatever the environment already provides.",
-            "order": 18,
+            "order": 19,
             "keywords": [
               "ANDROID_HOME",
               "ANDROID_SDK_ROOT",
@@ -870,7 +924,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Path to the Android NDK used to cross-compile the Rust cdylib for `android-mdc`. Exported as `ANDROID_NDK_HOME`. Empty = the CLI picks the newest NDK inside the SDK.",
-            "order": 19,
+            "order": 20,
             "keywords": [
               "ANDROID_NDK_HOME",
               "NDK",
@@ -882,7 +936,7 @@
             "type": "string",
             "default": "",
             "markdownDescription": "Sets `OHOS_NDK_HOME` for the `harmony-arkui` target — the path to the HarmonyOS (OpenHarmony) NDK `native` directory, e.g. `~/ohos-sdk/native`. The SDK's sibling `toolchains/` directory, which carries `hdc`, joins the task `PATH` as well. Leave empty to auto-detect: an existing `OHOS_NDK_HOME`, then `~/ohos/ndk-extract/native`, then `~/ohos-sdk/native`.",
-            "order": 20,
+            "order": 21,
             "keywords": [
               "HarmonyOS",
               "OpenHarmony",
@@ -907,7 +961,7 @@
             "default": "prompt",
             "scope": "window",
             "markdownDescription": "What to do when this workspace holds a crate checkout one of its Day projects depends on — the `day` framework itself, or an external piece or part repository. Building against it runs `day patch --local <checkout>`, which writes the project's gitignored `.cargo/config.toml` so an edit in that checkout reaches the very next build. Without it cargo fetches the published git revision and the edit never arrives, with nothing to see. A project already pointed at a checkout is left alone.\n\nA `day` checkout in the workspace also offers to become `#day.cliSource#`, so the editor runs that checkout's CLI rather than the installed one. That is a separate question, asked separately, and it writes a workspace setting.",
-            "order": 16,
+            "order": 17,
             "keywords": [
               "patch",
               "cargo",
@@ -1203,7 +1257,7 @@
     "prelaunch": "npm run compile && npm run bundle",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
-    "test:unit": "npm run compile && node --test test/cargo-toml.mjs test/snap-env.mjs test/targets.mjs test/e2e-fixture.mjs",
+    "test:unit": "npm run compile && node --test test/cargo-toml.mjs test/snap-env.mjs test/targets.mjs test/testing.mjs test/e2e-fixture.mjs",
     "test:integration": "npm run bundle && npm run compile && node test/run-integration.mjs",
     "test:debug": "npm run bundle && node test/run-debug-e2e.mjs",
     "test:e2e": "node test/e2e/drive.mjs"

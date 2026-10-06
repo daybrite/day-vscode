@@ -38,7 +38,7 @@ import {
 import { editFor, Lint, mapFindings } from "../lint";
 import { composeArgs, describeSpec, optionItems, visibleFields } from "../newproject";
 import { targetChoices, toolkitChoices } from "../quickpicks";
-import { catalog, findTarget, isBuildableHere, isDeprecated, nativeProjectFor, targetPreference, Target } from "../targets";
+import { catalog, findTarget, hostDefaultTarget, isBuildableHere, isDeprecated, nativeProjectFor, targetPreference, Target } from "../targets";
 import { liveDevice, startPrompt, TargetDevices, virtualDevice } from "../devices";
 import {
   cliItem,
@@ -57,6 +57,7 @@ import {
   toolchainEnv,
   workspaceUri,
 } from "../tasks";
+import { discoverTests, evidencePathFrom, testArgs, verdictsFrom } from "../testing";
 import {
   installChoices,
   isNewer,
@@ -744,6 +745,87 @@ const checks: Check[] = [
       } finally {
         output.dispose();
       }
+    },
+  ],
+  [
+    "Day tests: the commands are registered and the CLI side reads a run the way the CLI writes it",
+    async () => {
+      const commands = await vscode.commands.getCommands(true);
+      for (const id of ["day.testProject", "day.testProjectOn", "day.testTarget"]) {
+        assert.ok(commands.includes(id), `${id} must be registered`);
+      }
+      // What the Test Explorer spawns per project and target, and what it reads back: the
+      // `Evidence` line names the file, and the file's `tests` map carries the verdicts.
+      assert.deepStrictEqual(
+        testArgs({ projectRoot: "/w/Day-Rise", target: "macos-appkit", profile: "debug", names: ["button-status"] }),
+        ["--project", "/w/Day-Rise", "test", "-p", "macos-appkit", "--profile", "debug", "--shots", "on-failure", "button-status"],
+      );
+      assert.strictEqual(
+        evidencePathFrom("      Evidence /w/Day-Rise/build/day/screenshots/macos-appkit/default/evidence.json\n"),
+        "/w/Day-Rise/build/day/screenshots/macos-appkit/default/evidence.json",
+      );
+      const verdicts = verdictsFrom({ tests: { "button-status": { verdict: "pass", ms: 3, shots: [] } } });
+      assert.strictEqual(verdicts.get("button-status")?.verdict, "pass");
+      // The scaffold ships no #[day::test] yet, so the source scan finds nothing in the fixture
+      // and the attribute's own spelling is what discovery is checked against.
+      assert.deepStrictEqual(
+        discoverTests("#[day::test]\nfn a_case() -> Case { Case::new() }\n").map((t) => t.name),
+        ["a-case"],
+      );
+    },
+  ],
+  [
+    "Day tests: a #[day::test] in the fixture is listed under its project, once per ticked target",
+    async () => {
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const api = (await ext.activate()) as {
+        focusedProject(): string | undefined;
+        tests: {
+          discover(force?: boolean): Promise<void>;
+          snapshot(): { id: string; label: string; children: { id: string; label: string; children: unknown[] }[] }[];
+        };
+      };
+      const root = api.focusedProject();
+      assert.ok(root, "no focused project");
+      const file = path.join(root, "src", "day_tests.rs");
+      fs.writeFileSync(
+        file,
+        '#[day::test]\nfn a_case() -> Case {\n    Case::new().page(|| label("x"))\n}\n',
+      );
+      // The fixture declares every desktop target, so the one this host builds can be ticked;
+      // the tick is undone below so the next check sees the fixture it expects.
+      const tick = COMBO || hostDefaultTarget();
+      const ticked = { kind: "target", root, name: tick };
+      try {
+        await api.tests.discover(true);
+        type Row = { id: string; label: string; children: Row[] };
+        const find = (): Row | undefined => {
+          const project = api.tests.snapshot().find((p) => p.id === root);
+          // By label: the id is the path as the workspace spells it, and the project root is
+          // the canonical one, which differ under macOS's symlinked /tmp.
+          const fileItem = project?.children.find((f) => f.label === path.join("src", "day_tests.rs")) as Row | undefined;
+          return fileItem?.children.find((t) => t.label === "a-case");
+        };
+        const test = find();
+        assert.ok(test, `a-case not found in ${JSON.stringify(api.tests.snapshot(), null, 1)}`);
+        // Nothing is ticked in a fresh fixture, so the one row is this host's own toolkit, which
+        // is what a bare `day test` runs.
+        assert.deepStrictEqual(test.children.map((c) => c.label), [hostDefaultTarget()]);
+        // Tick a target and the rows follow the Day view: that target, and only it.
+        await vscode.commands.executeCommand("day.toggleTarget", ticked);
+        assert.deepStrictEqual(find()?.children.map((c) => c.label), [tick]);
+        await vscode.commands.executeCommand("day.toggleTarget", ticked);
+        assert.deepStrictEqual(find()?.children.map((c) => c.label), [hostDefaultTarget()]);
+      } finally {
+        fs.rmSync(file, { force: true });
+        await api.tests.discover(true);
+      }
+      const gone = api.tests
+        .snapshot()
+        .find((p) => p.id === root)
+        ?.children.find((f) => f.label === path.join("src", "day_tests.rs"));
+      assert.strictEqual(gone, undefined, "a deleted file keeps no tests");
     },
   ],
   [

@@ -132,6 +132,7 @@ building today is not fully set up, which is fine until you build it.
 - **[Creating a project](/docs/new-project)** — the wizard, in full
 - **[Simulators, emulators and devices](/docs/devices)** — running on mobile
 - **[Linting](/docs/linting)** — findings in the editor, with quick fixes
+- **[Running tests](/docs/testing)** — `#[day::test]` functions from the gutter, on every ticked target
 - **[Commands and settings](/docs/reference)** — everything the extension adds
 - **[Troubleshooting](/docs/troubleshooting)** — when the view is empty or a build will not start
 

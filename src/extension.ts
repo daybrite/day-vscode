@@ -38,6 +38,7 @@ import {
 import { RunRef, Runner } from "./runner";
 import { StatusBar } from "./statusbar";
 import { DayTaskProvider } from "./taskProvider";
+import { DayTests, TestSnapshot, TestSummary } from "./testExplorer";
 import {
   explorerTarget,
   logLevel,
@@ -69,6 +70,12 @@ const SEEN_WALKTHROUGH = "day.seenWalkthrough";
 export interface DayApi {
   /** Root of the project the cockpit is currently pointed at, if any. */
   focusedProject(): string | undefined;
+  /** The Day tests the Test Explorer shows, and a way to run a project's without the UI. */
+  tests: {
+    discover(force?: boolean): Promise<void>;
+    snapshot(): TestSnapshot[];
+    runProject(root: string, targets?: string[], debug?: boolean): Promise<TestSummary>;
+  };
 }
 
 export async function activate(
@@ -1310,6 +1317,53 @@ export async function activate(
     await vscode.commands.executeCommand("workbench.actions.view.problems");
   };
 
+  // Day tests (testing.ts): the Test Explorer, the gutter icons on `#[day::test]` functions, and
+  // these commands all run `day test`; the palette's act on the focused project, the view's on
+  // the row they sit under.
+  const dayTests = new DayTests({
+    state,
+    projects: allProjects,
+    focused: currentProject,
+    runnableTargets: runnableFor,
+    output,
+  });
+  context.subscriptions.push(dayTests);
+
+  register("day.testProject", (node?: Node) =>
+    guard(async () => {
+      const root = configRoot(node);
+      if (!root) {
+        vscode.window.showInformationMessage("Open a Day project first.");
+        return;
+      }
+      await dayTests.runProject(root);
+    }),
+  );
+
+  register("day.testProjectOn", (node?: Node) =>
+    guard(async () => {
+      const root = configRoot(node);
+      const project = projects.find((p) => p.root === root);
+      if (!root || !project) {
+        vscode.window.showInformationMessage("Open a Day project first.");
+        return;
+      }
+      const targets = await pickTargets(project, state.selectionFor(root).targets);
+      if (targets && targets.length > 0) {
+        await dayTests.runProject(root, targets);
+      }
+    }),
+  );
+
+  register("day.testTarget", (node?: Node | string) =>
+    guard(async () => {
+      const ref = refOf(node);
+      if (ref) {
+        await dayTests.runProject(ref.root, [ref.target]);
+      }
+    }),
+  );
+
   register("day.lintProject", (node?: Node) =>
     guard(async () => {
       const root = configRoot(node);
@@ -1875,7 +1929,14 @@ export async function activate(
   context.subscriptions.push(watcher);
 
   tree.refresh();
-  return { focusedProject: () => state.focusedRoot };
+  return {
+    focusedProject: () => state.focusedRoot,
+    tests: {
+      discover: (force) => dayTests.discover(force),
+      snapshot: () => dayTests.snapshot(),
+      runProject: (root, targets, debug) => dayTests.runProject(root, targets, debug),
+    },
+  };
 }
 
 /** The first of these that exists on PATH is the launcher, in the order a machine likely has them. */

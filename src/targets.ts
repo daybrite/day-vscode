@@ -155,6 +155,34 @@ export function isBuildableHere(t: Target): boolean {
   return t.host === "any" || t.host === hostOs();
 }
 
+/**
+ * The target the CLI runs when given no `-p`: this host's desktop toolkit (day-cli
+ * `targets::host_default`). Linux follows the desktop in session: a Qt desktop gets `linux-qt`,
+ * everything else `linux-gtk`. Mirrored here rather than asked of the CLI so a test item can name
+ * its target before anything is spawned; `env` is a parameter so the rule is testable.
+ */
+export function hostDefaultTarget(env: NodeJS.ProcessEnv = process.env): string {
+  switch (hostOs()) {
+    case "windows":
+      return "windows-winui";
+    case "linux": {
+      const qt = ["kde", "plasma", "lxqt", "deepin", "razor", "trinity"];
+      const names = [env.XDG_CURRENT_DESKTOP, env.XDG_SESSION_DESKTOP, env.DESKTOP_SESSION];
+      for (const value of names) {
+        for (const part of (value ?? "").split(":")) {
+          const p = part.trim().toLowerCase();
+          if (qt.some((q) => p.includes(q))) {
+            return "linux-qt";
+          }
+        }
+      }
+      return "linux-gtk";
+    }
+    default:
+      return "macos-appkit";
+  }
+}
+
 /** An IDE that a target's scaffolded native project can be handed to. */
 export type NativeIde = "studio" | "xcode";
 

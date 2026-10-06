@@ -1,7 +1,7 @@
 ---
 title: Troubleshooting
 description: What to check when the Day view is empty, the CLI isn't found, a target is disabled, or a build won't start.
-order: 7
+order: 8
 section: Extension
 ---
 

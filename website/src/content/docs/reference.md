@@ -1,7 +1,7 @@
 ---
 title: Commands and settings
 description: Every command, setting, task property and launch attribute the extension contributes.
-order: 6
+order: 7
 section: Extension
 ---
 
@@ -47,13 +47,15 @@ All of these are under the **Day** category in the command palette.
 | Reveal in Explorer View | Selects the focused project's folder in the Explorer |
 | Open Day Extension Settings | Opens the Settings editor on the focused project's own Day settings |
 | Lint Project | Runs [`day lint`](/docs/linting) and shows the findings in the editor |
+| Run Tests | Runs the focused project's [`#[day::test]` functions](/docs/testing) on its ticked targets, with the results in the Test Explorer |
+| Run Tests on Target… | The same, on targets picked for this run |
 | Doctor (check toolchains) | Runs `day doctor` in a terminal |
 | Refresh | Re-reads every project |
 | Install the day CLI… | Offers the install routes for your platform |
 | Open Settings | Opens this extension's settings |
 | Show Log | Opens the Day output channel |
 
-Per-target **Run**, **Stop**, **Restart** and **Build**, per-project **Run** and **Stop**, the **+**
+Per-target **Run**, **Stop**, **Restart**, **Build** and **Run Tests**, per-project **Run**, **Stop** and **Run Tests**, the **+**
 that adds a device to a mobile target, and a device row's own **Play**, **Stop**, **Remove
 Device** and **Start**/**Stop Simulator** (**Emulator** on Android) are inline buttons and
 context-menu entries on their rows rather than palette commands.
@@ -99,6 +101,7 @@ first. A row offers the entry only when that directory is actually in the projec
 | `day.defaultProfile` | `debug` | Build mode for a project the view has not seen before |
 | `day.defaultLocale` | `""` | Default `--locale`; empty means the app or system default |
 | `day.script.keepAppRunning` | `true` | Keep the app alive after its dayscript finishes, so you can extend the script and drive it again |
+| `day.tests.shots` | `on-failure` | Which captures a [test run](/docs/testing) keeps: `never`, `on-failure`, or `always` |
 
 ### Per project
 

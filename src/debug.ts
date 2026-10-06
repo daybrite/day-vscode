@@ -154,7 +154,7 @@ export interface DebugDeps {
  * Returns undefined when the build fails or the target reports no plan; the caller falls back to a
  * plain launch, so a debug session never leaves the user with nothing running.
  */
-async function buildAndPlan(
+export async function buildAndPlan(
   projectRoot: string,
   target: string,
   profile: Profile,

@@ -1,5 +1,15 @@
 ## Unreleased
 
+- **Run a project's tests from the editor, on every ticked target.** A function marked
+  `#[day::test]` now appears in the Test Explorer under **Day Tests** and gets the play icon in
+  the gutter, with one row per target ticked in the Day view (and per ticked device of a mobile
+  target). Running the function runs it on each of them, one `day test` per target, and the rows
+  show where it passed and where it did not; a failure's message is the assertion, with a link to
+  its `failed.png`. **Run on target…** picks targets for one run, **Day: Run Tests** runs the
+  focused project's tests, and **Run Tests** sits on project and target rows. **Debug Test** on
+  a desktop target hands the app to the installed Rust debugger and runs the tests inside it, so a
+  breakpoint in the app stops the run there. `day.tests.shots` chooses which captures a run keeps.
+
 - **Debugging works from VS Code installed as a snap.** The snap points `LD_LIBRARY_PATH` and the
   GTK/Qt module paths at its own older libraries, so a debugged Linux app loaded those and failed
   with `symbol lookup error`. Debug sessions now start the app without the snap's `/snap/` entries.
