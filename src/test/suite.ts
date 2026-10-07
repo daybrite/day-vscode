@@ -57,7 +57,7 @@ import {
   toolchainEnv,
   workspaceUri,
 } from "../tasks";
-import { discoverTests, evidencePathFrom, testArgs, verdictsFrom } from "../testing";
+import { discoverTests, reportPathFrom, testArgs, verdictsFrom } from "../testing";
 import {
   installChoices,
   isNewer,
@@ -755,14 +755,14 @@ const checks: Check[] = [
         assert.ok(commands.includes(id), `${id} must be registered`);
       }
       // What the Test Explorer spawns per project and target, and what it reads back: the
-      // `Evidence` line names the file, and the file's `tests` map carries the verdicts.
+      // `Results` line names the file, and the file's `tests` map carries the verdicts.
       assert.deepStrictEqual(
         testArgs({ projectRoot: "/w/Day-Rise", target: "macos-appkit", profile: "debug", names: ["button-status"] }),
         ["--project", "/w/Day-Rise", "test", "-p", "macos-appkit", "--profile", "debug", "--shots", "on-failure", "button-status"],
       );
       assert.strictEqual(
-        evidencePathFrom("      Evidence /w/Day-Rise/build/day/screenshots/macos-appkit/default/evidence.json\n"),
-        "/w/Day-Rise/build/day/screenshots/macos-appkit/default/evidence.json",
+        reportPathFrom("      Results /w/Day-Rise/build/day/screenshots/macos-appkit/default/conformance.json\n"),
+        "/w/Day-Rise/build/day/screenshots/macos-appkit/default/conformance.json",
       );
       const verdicts = verdictsFrom({ tests: { "button-status": { verdict: "pass", ms: 3, shots: [] } } });
       assert.strictEqual(verdicts.get("button-status")?.verdict, "pass");

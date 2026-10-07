@@ -111,7 +111,7 @@ export function testArgs(o: TestRunOptions): string[] {
   return [...args, ...o.names];
 }
 
-/** One test's outcome, as `evidence.json` and the `run_tests` report both spell it. */
+/** One test's outcome, as `conformance.json` and the `run_tests` report both spell it. */
 export interface Verdict {
   verdict: "pass" | "fail" | "skip";
   ms?: number;
@@ -124,15 +124,15 @@ export interface Verdict {
 // raw control character in a regex has nothing to object to.
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 
-/** The `Evidence <path>` line `day test` prints when a run completes, or `undefined` when the run
+/** The `Results <path>` line `day test` prints when a run completes, or `undefined` when the run
  *  ended before writing one (a build failure, a launch that never reached the engine). */
-export function evidencePathFrom(output: string): string | undefined {
-  const m = /^\s*Evidence\s+(.+?evidence\.json)\s*$/m.exec(output.replace(ANSI, ""));
+export function reportPathFrom(output: string): string | undefined {
+  const m = /^\s*Results\s+(.+?conformance\.json)\s*$/m.exec(output.replace(ANSI, ""));
   return m ? m[1] : undefined;
 }
 
 /**
- * Verdicts by test name, from either shape the CLI produces: `evidence.json` (`tests` is an object
+ * Verdicts by test name, from either shape the CLI produces: `conformance.json` (`tests` is an object
  * keyed by name) or a `run_tests` reply's report (`tests` is an array, each row named). Anything
  * that is not one of those reads as no verdicts, and the caller reports the tests as not run.
  */
@@ -168,10 +168,10 @@ export function verdictsFrom(doc: unknown): Map<string, Verdict> {
   return out;
 }
 
-/** Where `day test` writes `evidence.json` for a target when its output cannot be read: the
+/** Where `day test` writes `conformance.json` for a target when its output cannot be read: the
  *  layout docs/testing.md fixes, with no device profile (a local run names none). */
-export function evidencePath(root: string, target: string, locale?: string): string {
-  return path.join(root, "build", "day", "screenshots", target, locale || "default", "evidence.json");
+export function reportPath(root: string, target: string, locale?: string): string {
+  return path.join(root, "build", "day", "screenshots", target, locale || "default", "conformance.json");
 }
 
 

@@ -32,8 +32,8 @@ import { launchEnv, taskEnv, verbose, workspaceUri } from "./tasks";
 import {
   DiscoveredTest,
   discoverTests,
-  evidencePath,
-  evidencePathFrom,
+  reportPath,
+  reportPathFrom,
   leafId,
   testArgs,
   Verdict,
@@ -696,11 +696,11 @@ export class DayTests implements vscode.Disposable {
     });
 
     let verdicts = new Map<string, Verdict>();
-    const file = evidencePathFrom(output) ?? evidencePath(root, target, sel.locale || undefined);
+    const file = reportPathFrom(output) ?? reportPath(root, target, sel.locale || undefined);
     try {
       verdicts = verdictsFrom(JSON.parse(await fs.promises.readFile(file, "utf8")));
     } catch {
-      // No evidence: the run ended before the tests did, and every leaf says so below.
+      // No report: the run ended before the tests did, and every leaf says so below.
     }
     this.report(group, run, summary, verdicts, path.dirname(file), code);
   }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { discoverTests, evidencePathFrom, evidencePath, leafId, testArgs, verdictsFrom } from '../out/testing.js';
+import { discoverTests, reportPathFrom, reportPath, leafId, testArgs, verdictsFrom } from '../out/testing.js';
 import { hostDefaultTarget } from '../out/targets.js';
 
 // The shape crates/day-pieces/src/conformance.rs has: a module doc that mentions the attribute,
@@ -58,16 +58,16 @@ test('day test takes the project, the target, the run settings and the names', (
   ]);
 });
 
-test('the evidence path is read from the report, colors and all, with the layout as fallback', () => {
-  const out = '      button-status ..... ok (95 ms)\n      \u001b[1mEvidence\u001b[0m /app/build/day/screenshots/macos-appkit/default/evidence.json\n';
-  assert.equal(evidencePathFrom(out), '/app/build/day/screenshots/macos-appkit/default/evidence.json');
-  assert.equal(evidencePathFrom('error: build failed\n'), undefined);
-  assert.equal(evidencePath('/app', 'linux-gtk'), '/app/build/day/screenshots/linux-gtk/default/evidence.json');
-  assert.equal(evidencePath('/app', 'linux-gtk', 'fr-CA'), '/app/build/day/screenshots/linux-gtk/fr-CA/evidence.json');
+test('the report path is read from the output, colors and all, with the layout as fallback', () => {
+  const out = '      button-status ..... ok (95 ms)\n      \u001b[1mResults\u001b[0m /app/build/day/screenshots/macos-appkit/default/conformance.json\n';
+  assert.equal(reportPathFrom(out), '/app/build/day/screenshots/macos-appkit/default/conformance.json');
+  assert.equal(reportPathFrom('error: build failed\n'), undefined);
+  assert.equal(reportPath('/app', 'linux-gtk'), '/app/build/day/screenshots/linux-gtk/default/conformance.json');
+  assert.equal(reportPath('/app', 'linux-gtk', 'fr-CA'), '/app/build/day/screenshots/linux-gtk/fr-CA/conformance.json');
 });
 
-test('verdicts come from evidence.json and from a run_tests report alike', () => {
-  const evidence = {
+test('verdicts come from conformance.json and from a run_tests report alike', () => {
+  const fileShape = {
     schema: 1,
     tests: {
       'button-status': { kind: 'gui', verdict: 'pass', ms: 260, shots: ['default'] },
@@ -75,7 +75,7 @@ test('verdicts come from evidence.json and from a run_tests report alike', () =>
       'slider-range': { kind: 'gui', verdict: 'skip', reason: 'Cap::Animation is Unsupported', shots: [] },
     },
   };
-  const fromFile = verdictsFrom(evidence);
+  const fromFile = verdictsFrom(fileShape);
   assert.equal(fromFile.get('button-status').verdict, 'pass');
   assert.equal(fromFile.get('button-status').ms, 260);
   assert.equal(fromFile.get('text-field-secure').message, 'assert_text tfs-len: "7" ≠ "6"');
