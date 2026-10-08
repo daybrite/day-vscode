@@ -141,7 +141,11 @@ function dayMetadata(root: string): Promise<MetadataResult> {
       if (err) {
         const notFound = (err as NodeJS.ErrnoException).code === "ENOENT";
         const message = notFound ? `the \`${cli.command}\` CLI was not found` : stderr.trim() || err.message;
-        console.warn(`day metadata failed for ${root} (${command}): ${message}`);
+        // execFile's message alone omits whether its timeout killed the process. Keep that
+        // detail in diagnostics so a slow Cargo resolution is distinguishable from a CLI error.
+        console.warn(`day metadata failed for ${root} (${command}): ${message}`, {
+          code: err.code, signal: err.signal, killed: err.killed,
+        });
         resolve({ ok: false, command, message, notFound });
         return;
       }

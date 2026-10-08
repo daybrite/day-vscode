@@ -25,6 +25,7 @@ import { askAll, composeArgs, describeSpec } from "./newproject";
 import * as devices from "./devices";
 import { offerLocalCheckouts } from "./localdeps";
 import { DayProject, findProjects, ProjectLoadFailure } from "./project";
+import { queuedRefresh } from "./refresh";
 import {
   pickDevice,
   pickLocale,
@@ -228,7 +229,9 @@ export async function activate(
     });
   };
 
-  const refreshProjects = async (): Promise<void> => {
+  // A manifest write can trigger both its watcher and the command's explicit refresh. Serialize
+  // whole scans so duplicate Cargo processes do not contend and older results cannot win a race.
+  const refreshProjects = queuedRefresh(async (): Promise<void> => {
     const scan = await findProjects();
     const before = projects.map((p) => p.root).join("\n");
     projects = scan.projects;
@@ -259,7 +262,7 @@ export async function activate(
       cliVersions = v;
       tree.refresh();
     });
-  };
+  });
 
   await refreshProjects();
   // A workspace holding an app and a checkout of something it depends on is the local-development
@@ -1543,8 +1546,8 @@ export async function activate(
         }
         return;
       }
-      // The Day.toml watcher re-reads the project as well, but only after this has returned.
-      // Reading it here puts the new row on screen before the message below says it is there.
+      // The watcher may already be scanning. Queue a fresh read after it, so this command waits
+      // for metadata read after the manifest write before announcing the new target.
       await refreshProjects();
       tree.refresh();
       try {

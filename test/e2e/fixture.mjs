@@ -54,9 +54,10 @@ export function scaffold({ dayBin, parent, name = "day-fixture", targets = FIXTU
   if (!reusable) {
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(parent, { recursive: true });
+    // Fixtures need neither a Git repository nor an initial commit or publishing workflow.
     const res = spawnSync(
       dayBin,
-      ["new", "app", name, "--toolkit", targets.join(","), "--no-input"],
+      ["new", "app", name, "--toolkit", targets.join(","), "--no-input", "--no-github"],
       { cwd: parent, encoding: "utf8", stdio: "pipe", timeout: 300_000, killSignal: "SIGKILL" },
     );
     if (res.status !== 0 || !existsSync(join(dir, "Day.toml"))) {

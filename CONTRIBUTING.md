@@ -102,6 +102,7 @@ Both suites scaffold their own project with `day new app`, so they need a `day` 
 `PATH` or named by `DAY_BIN`.
 
 ```bash
+npm run test:unit          # pure logic, including refresh ordering and failure recovery
 npm run test:integration   # ~1 min: a real extension host, no UI automation
 npm run test:e2e           # drives the packaged .vsix and writes build/screenshots/
 npm run test:e2e -- --no-run   # …skipping the app build, which is most of the time
@@ -111,7 +112,14 @@ npm run test:e2e -- --no-run   # …skipping the app build, which is most of the
 CLI seam: tasks exist only if `day metadata --json` ran and parsed. `test:e2e` installs the
 `.vsix` into a pinned VS Code, opens the scaffold, ticks this host's own combo, runs it, and
 photographs each step. CI runs both per host — macOS builds `macos-appkit`, Windows
-`windows-xaml`, Linux `linux-gtk` — and uploads the screenshots.
+`windows-winui`, Linux `linux-gtk` — and uploads the screenshots.
+
+Workspace scans use `src/refresh.ts` to serialize metadata reads and coalesce bursts of manifest
+events. Commands that write a manifest must await `refreshProjects()` before announcing the result:
+an in-flight watcher scan may have read the old manifest, so sharing that scan would return stale
+targets. `test/refresh.mjs` exercises this ordering with explicit gates, including requests at the
+completion boundary and recovery after a failed scan. The integration suite checks Add Target
+through the command and the resulting tasks in a two-project workspace.
 
 ## AI agents
 
