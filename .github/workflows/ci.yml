@@ -460,15 +460,23 @@ jobs:
   #
   # The build above still runs on every event, so a change that breaks the site fails the pull
   # request that broke it, and a tagged release builds the site without trying to publish it.
+  #
+  # `!cancelled()` here for the same reason `website` has it. A bare condition gets an implicit
+  # `success()`, and that is evaluated over the whole `needs` chain, not just `website`: one failed
+  # e2e leg two hops upstream skipped this job even though the site had built from the other legs'
+  # captures (run 38093518615, attempt 1). The tolerance `website` was given has to be restated
+  # here or it stops one job short of publishing.
   website-deploy:
     name: website deploy
     needs: [website]
-    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+    if: ${{ !cancelled() && needs.website.result == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     # A job-level block replaces the workflow-level one rather than adding to it, so `contents`
-    # has to be restated here, the same trio GitHub's own Pages starter grants.
+    # has to be restated here, the same trio GitHub's own Pages starter grants. `actions: write`
+    # is for the duplicate sweep below.
     permissions:
       contents: read
+      actions: write
       pages: write
       id-token: write
     environment:
@@ -478,6 +486,27 @@ jobs:
       group: day-vscode-pages
       cancel-in-progress: false
     steps:
+      # Artifacts outlive the attempt that made them. Re-running a failed e2e leg re-runs
+      # `website` too, and its second `github-pages` upload leaves `deploy-pages` with two
+      # candidates and no rule to choose: "Multiple artifacts named "github-pages" were
+      # unexpectedly found for this workflow run. Artifact count is 2." (run 38093518615,
+      # attempts 2 and 3). The same shape appears within ONE attempt when the upload action's
+      # own finalize retry lands twice (actions/upload-pages-artifact#97). Keeping only the
+      # newest before deploying covers both, and does so on a re-run of this job alone, which a
+      # per-attempt artifact name (dayapp.yml's answer, where upload and deploy share a job)
+      # could not: the earlier attempt never uploaded under the new name.
+      - name: Drop all but the newest Pages artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ids=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+            --jq '[.artifacts[] | select(.name == "github-pages")] | sort_by(.created_at) | .[:-1][].id')
+          for id in ${ids:-}; do
+            echo "::warning::deleted a stale 'github-pages' artifact (id $id) from an earlier upload in this run"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id" >/dev/null
+          done
+
       - name: Deploy to GitHub Pages
         id: deploy
         uses: actions/deploy-pages@v5
