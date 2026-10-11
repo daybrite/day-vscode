@@ -68,9 +68,9 @@ as it would from the play icon, which the output says.
 ## From a terminal
 
 ```sh
-day test -p macos-appkit                 # every test, on one target
-day test -p linux-gtk 'text-field-*'     # a glob over test names
-day test -p ios-uikit --list             # what the built app registers
+day test -t macos-appkit                 # every test, on one target
+day test -t linux-gtk 'text-field-*'     # a glob over test names
+day test -t ios-uikit --list             # what the built app registers
 ```
 
 The extension's [reference](/docs/reference) lists the commands and the setting; the framework's

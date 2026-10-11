@@ -89,7 +89,7 @@ export function testArgs(o: TestRunOptions): string[] {
     "--project",
     o.projectRoot,
     "test",
-    "-p",
+    "--target",
     o.target,
     "--profile",
     o.profile,

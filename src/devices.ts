@@ -1,4 +1,4 @@
-// What a mobile target can be launched onto, from `day devices list -p <target> --json`.
+// What a mobile target can be launched onto, from `day devices list -t <target> --json`.
 //
 // The CLI owns every native tool this touches (simctl, devicectl, adb, hdc) and reports them
 // through one versioned, grow-only envelope, so this module parses rather than probes. In
@@ -161,7 +161,7 @@ function run(
   target: string,
 ): Promise<TargetDevices | undefined> {
   const cli = resolveCli(projectRoot);
-  const args = [...cli.baseArgs, "--format", "json", "devices", "list", "-p", target];
+  const args = [...cli.baseArgs, "--format", "json", "devices", "list", "--target", target];
   return new Promise((resolve) => {
     cp.execFile(
       cli.command,
@@ -245,7 +245,7 @@ export function boot(
   wait = false,
 ): Promise<BootResult> {
   const cli = resolveCli(projectRoot);
-  const args = [...cli.baseArgs, "devices", "boot", "-p", target, id];
+  const args = [...cli.baseArgs, "devices", "boot", "--target", target, id];
   if (wait) {
     args.push("--wait");
   }
@@ -311,7 +311,7 @@ export interface VirtualDevice {
  *     to stop it.
  *   * it is neither running nor startable: a simulator that was deleted, or an emulator whose AVD
  *     is gone. The row already says `not found`.
- *   * it belongs to `harmony-arkui`. The OpenHarmony emulator is started by `day devices boot -p harmony-arkui` and has no stop, so both entries would name something the CLI cannot do. The moment
+ *   * it belongs to `harmony-arkui`. The OpenHarmony emulator is started by `day devices boot -t harmony-arkui` and has no stop, so both entries would name something the CLI cannot do. The moment
  *     `day devices shutdown` covers it, this list gains one kind.
  *
  * Android is why `avd` exists. Its running emulators are keyed by an adb serial, which is a
@@ -412,7 +412,7 @@ export function shutdown(
   id: string,
 ): Promise<string | undefined> {
   const cli = resolveCli(projectRoot);
-  const args = [...cli.baseArgs, "devices", "shutdown", "-p", target, id];
+  const args = [...cli.baseArgs, "devices", "shutdown", "--target", target, id];
   return new Promise((resolve) => {
     cp.execFile(
       cli.command,

@@ -78,7 +78,7 @@ put AppKit, UIKit, Android, GTK, Qt, XAML, and ArkUI behind one picker).
   (`Day: New Project` — multi-step QuickPick over `day new` templates + toolkit multi-select)
   → first launch. Flutter's "Download SDK" flow is the bar for zero-terminal onboarding.
 - **Devices & emulators in the tree**: a "Devices" section listing booted iOS simulators,
-  Android devices/AVDs, OHOS emulator state, with launch actions (`day devices boot -p harmony-arkui`
+  Android devices/AVDs, OHOS emulator state, with launch actions (`day devices boot -t harmony-arkui`
   exists; CLI ask: a unified `day devices --format json` / `day emulator launch <kind>`).
   Newly connected device → offer it (Flutter's `flutterSelectDeviceWhenConnected`).
 - **Expose the rest of the CLI**: `Day: Pack` (with format picker), `Day: Lint`,
@@ -194,7 +194,7 @@ registration and the few tools that need live editor context.
   `day launch --drivable`, default-on from the extension — so "the app that's already running"
   is drivable without a relaunch.
 - **`day drive`**: execute dayscript steps against a RUNNING session without a script file:
-  `day drive -p macos-appkit --steps-json '[{"navigate":"configuration"},{"ui_idle":null},
+  `day drive -t macos-appkit --steps-json '[{"navigate":"configuration"},{"ui_idle":null},
   {"screenshot":"config"}]'` → per-step JSON results on stdout (screenshots as file paths +
   base64). Reuses the existing connect/fport machinery; steps are exactly the walkthrough
   vocabulary (`navigate`, `tap`, `input`, `assert_text`, `ui_idle`, `screenshot`, …).

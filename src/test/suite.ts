@@ -758,7 +758,7 @@ const checks: Check[] = [
       // `Results` line names the file, and the file's `tests` map carries the verdicts.
       assert.deepStrictEqual(
         testArgs({ projectRoot: "/w/Day-Rise", target: "macos-appkit", profile: "debug", names: ["button-status"] }),
-        ["--project", "/w/Day-Rise", "test", "-p", "macos-appkit", "--profile", "debug", "--shots", "on-failure", "button-status"],
+        ["--project", "/w/Day-Rise", "test", "--target", "macos-appkit", "--profile", "debug", "--shots", "on-failure", "button-status"],
       );
       assert.strictEqual(
         reportPathFrom("      Results /w/Day-Rise/build/day/screenshots/macos-appkit/default/conformance.json\n"),
@@ -836,13 +836,13 @@ const checks: Check[] = [
       // device's process table, so terminating the launcher (which is what VS Code does, without
       // letting it clean up) left the app on screen and its session in the registry.
       // Verified against a real emulator: SIGKILL the launcher and the app keeps its pid;
-      // `day stop -p android-mdc` is what ends it.
+      // `day stop -t android-mdc` is what ends it.
       const args = stopArgs("/w/Day-Rise", "android-mdc");
       assert.deepStrictEqual(args, [
         "--project",
         "/w/Day-Rise",
         "stop",
-        "-p",
+        "--target",
         "android-mdc",
       ]);
       assert.strictEqual(
@@ -2556,7 +2556,7 @@ const checks: Check[] = [
         undefined,
       );
 
-      // HarmonyOS gets neither entry: its emulator is started by `day devices boot -p harmony-arkui` and
+      // HarmonyOS gets neither entry: its emulator is started by `day devices boot -t harmony-arkui` and
       // has no stop, so both would name something the CLI cannot do.
       assert.strictEqual(
         virtualDevice(

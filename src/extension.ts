@@ -1963,7 +1963,7 @@ function ideLauncher(ide: NativeIde): string | undefined {
 }
 
 /**
- * Run `day prepare -p <target>` so the derived host files the native project references exist
+ * Run `day prepare -t <target>` so the derived host files the native project references exist
  * and are current. Resolves true when the IDE may open; a failure is reported with the CLI's
  * own words and answers false, since an IDE opened on a half-prepared project is a worse
  * outcome than no IDE.

@@ -1,5 +1,10 @@
 ## Unreleased
 
+- **Commands name their target with `--target`.** The `day` CLI now calls its target flag
+  `--target` (`-t`) and warns on the former `-p`/`--platform`, so every build, launch, test,
+  device and stop command the extension runs uses the new spelling. CLIs from 0.4.7 on accept
+  it.
+
 - **Run a project's tests from the editor, on every ticked target.** A function marked
   `#[day::test]` now appears in the Test Explorer under **Day Tests** and gets the play icon in
   the gutter, with one row per target ticked in the Day view (and per ticked device of a mobile

@@ -341,7 +341,7 @@ export function launchArgs(o: LaunchOptions): string[] {
   const args = [
     ...projectArgs(o.projectRoot),
     "launch",
-    "-p",
+    "--target",
     o.target,
     "--profile",
     o.profile,
@@ -379,7 +379,7 @@ export function buildArgs(
   const args = [
     ...projectArgs(projectRoot),
     "build",
-    "-p",
+    "--target",
     target,
     "--profile",
     profile,
@@ -429,7 +429,7 @@ export function patchArgs(projectRoot: string, checkouts: string[]): string[] {
 }
 
 /**
- * Args for `day prepare -p <target>`, which renders the derived host files (icon catalogs,
+ * Args for `day prepare -t <target>`, which renders the derived host files (icon catalogs,
  * launcher mipmaps, HarmonyOS media) a native project references before an IDE opens on it.
  *
  * `--project` for the same reason `clean` and `lint` carry it, and it is not decoration: this one
@@ -438,11 +438,11 @@ export function patchArgs(projectRoot: string, checkouts: string[]): string[] {
  * which has no Day.toml of its own), and the IDE never opens.
  */
 export function prepareArgs(projectRoot: string, target: string): string[] {
-  return [...projectArgs(projectRoot), "prepare", "-p", target];
+  return [...projectArgs(projectRoot), "prepare", "--target", target];
 }
 
 /**
- * Args for `day stop -p <target>`, the CLI's own verb for ending a launch.
+ * Args for `day stop -t <target>`, the CLI's own verb for ending a launch.
  *
  * Terminating the task is not enough for a target whose app does not run as a child of `day`. On
  * Android the app is started with `am start` and lives in the device's own process table; killing
@@ -451,7 +451,7 @@ export function prepareArgs(projectRoot: string, target: string): string[] {
  * (`am force-stop`, `simctl terminate`, `aa force-stop`, pkill) and drops the session.
  */
 export function stopArgs(projectRoot: string, target: string): string[] {
-  return [...projectArgs(projectRoot), "stop", "-p", target];
+  return [...projectArgs(projectRoot), "stop", "--target", target];
 }
 
 /**

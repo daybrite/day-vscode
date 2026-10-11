@@ -435,7 +435,7 @@ export class Runner implements vscode.Disposable {
     await this.stopViaCli(root, target);
   }
 
-  /** `day stop -p <target>`, best effort: Stop has already done what it can locally, so a CLI
+  /** `day stop -t <target>`, best effort: Stop has already done what it can locally, so a CLI
    *  that cannot be resolved must not turn a stopped app into an error dialog. */
   private async stopViaCli(root: string, target: string): Promise<void> {
     const cli = resolveCli(root);

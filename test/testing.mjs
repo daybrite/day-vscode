@@ -46,14 +46,14 @@ test('an attribute quoted in a comment claims no function', () => {
 test('day test takes the project, the target, the run settings and the names', () => {
   assert.deepEqual(
     testArgs({ projectRoot: '/app', target: 'macos-appkit', profile: 'debug', names: ['button-status'] }),
-    ['--project', '/app', 'test', '-p', 'macos-appkit', '--profile', 'debug', '--shots', 'on-failure', 'button-status'],
+    ['--project', '/app', 'test', '--target', 'macos-appkit', '--profile', 'debug', '--shots', 'on-failure', 'button-status'],
   );
   const args = testArgs({
     projectRoot: '/app', target: 'ios-uikit', profile: 'release', locale: 'fr', env: { DAY_LOG: 'info' },
     shots: 'always', device: { id: '851CD930-9C1D', flag: '--ios-simulator' }, verbose: true, names: [],
   });
   assert.deepEqual(args, [
-    '--project', '/app', 'test', '-p', 'ios-uikit', '--profile', 'release', '--shots', 'always',
+    '--project', '/app', 'test', '--target', 'ios-uikit', '--profile', 'release', '--shots', 'always',
     '--locale', 'fr', '--env', 'DAY_LOG=info', '--verbose', '--ios-simulator', '851CD930-9C1D',
   ]);
 });

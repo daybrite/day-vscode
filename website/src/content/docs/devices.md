@@ -148,10 +148,10 @@ Run **Day: Doctor (check toolchains)** first if the list is empty; it names what
 The same enumeration the picker uses:
 
 ```bash
-day devices list -p ios-uikit
-day devices boot -p ios-uikit "iPhone 16 Pro"
-day launch -p ios-uikit --ios-simulator "iPhone 16 Pro"
-day devices shutdown -p ios-uikit "iPhone 16 Pro"
+day devices list -t ios-uikit
+day devices boot -t ios-uikit "iPhone 16 Pro"
+day launch -t ios-uikit --ios-simulator "iPhone 16 Pro"
+day devices shutdown -t ios-uikit "iPhone 16 Pro"
 ```
 
 See the [CLI reference](https://daybrite.dev/docs/cli/) for every flag, and

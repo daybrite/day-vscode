@@ -82,7 +82,7 @@ Open the task's terminal — the CLI's own error is there. If the app launched a
 your app's behavior rather than the extension's; run the same command by hand to confirm:
 
 ```bash
-day launch -p macos-appkit
+day launch -t macos-appkit
 ```
 
 Anything that reproduces outside VS Code belongs to the CLI or the app, and
