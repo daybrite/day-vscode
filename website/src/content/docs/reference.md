@@ -77,12 +77,17 @@ Two more commands sit on the targets that carry a native project to open:
 
 | Right-click | On | What it opens |
 |---|---|---|
-| Open in Android Studio | `android-mdc` | `platform/android`, the Gradle root |
-| Open in Xcode | `ios-uikit`, on macOS | `platform/ios/DayApp.xcodeproj` |
-| Open in Xcode | `macos-appkit`, on macOS | `platform/macos/DayApp.xcodeproj` |
+| Open in Android Studio | `android-mdc` | CLI-prepared generated Gradle project or persistent override |
+| Open in Xcode | `ios-uikit`, on macOS | CLI-prepared generated project or persistent override |
+| Open in Xcode | `macos-appkit`, on macOS | CLI-prepared generated project or persistent override |
 
-Each is scaffolded source that `day new` wrote and your app owns, so none of them needs a build
-first. A row offers the entry only when that directory is actually in the project.
+**Open in Xcode** and **Open in Android Studio** call `day open --print-path --format json` to prepare the host and
+locate its project. Apple projects default to `build/day/xcode/<platform>/`; an existing
+`platform/<platform>/DayApp.xcodeproj` takes precedence. No initial build is required.
+Use `day project add-target <target> --persist-native-project` to opt into a checked-in project.
+
+Android Studio opens `build/android/` by default, or the app-owned `platform/android/`
+override. Native IDE menu entries are available before their generated projects exist.
 
 ## Settings
 

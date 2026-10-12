@@ -11,7 +11,7 @@ import {
   cleanArgs,
   MCP_PROVIDER_ID,
   mcpServerSpecs,
-  prepareArgs,
+  nativeProjectArgs,
   renderCommand,
   resolveCli,
   setExtensionRoot,
@@ -626,21 +626,10 @@ export async function activate(
         );
         return;
       }
-      const full = path.join(ref.root, native.relative);
-      if (!fs.existsSync(full)) {
-        vscode.window.showErrorMessage(
-          `Day: this project has no ${native.relative}. Scaffolding for ${ref.target} may never have been generated.`,
-        );
-        return;
+      const prepared = await prepareHost(ref.root, ref.target, output);
+      if (prepared) {
+        await openInIde(native, prepared, output);
       }
-      // The host project references derived files under build/day/host (the asset catalog,
-      // the launcher mipmaps) that are never checked in; `day prepare` renders them from
-      // resource/icons/icon.svg. On a fresh clone Xcode would otherwise open onto red
-      // references, and Android Studio onto a module missing its icon resources.
-      if (!(await prepareHost(ref.root, ref.target, output))) {
-        return;
-      }
-      await openInIde(native, full, output);
     });
 
   register("day.openInAndroidStudio", (node?: Node) => openNative(node, "studio"));
@@ -1963,18 +1952,18 @@ function ideLauncher(ide: NativeIde): string | undefined {
 }
 
 /**
- * Run `day prepare -t <target>` so the derived host files the native project references exist
- * and are current. Resolves true when the IDE may open; a failure is reported with the CLI's
- * own words and answers false, since an IDE opened on a half-prepared project is a worse
- * outcome than no IDE.
+ * Prepare the native host, asking `day open --print-path` to generate/locate its project.
+ * Returns the actual path to open; a failure is reported with the CLI's
+ * own words and returns no path.
  */
 async function prepareHost(
   root: string,
   target: string,
   output: vscode.OutputChannel,
-): Promise<boolean> {
+): Promise<string | undefined> {
   const cli = resolveCli(root);
-  const args = [...cli.baseArgs, ...prepareArgs(root, target)];
+  const command = nativeProjectArgs(root, target);
+  const args = [...cli.baseArgs, ...command];
   output.appendLine(`[ide] ${renderCommand(cli, args.slice(cli.baseArgs.length))}`);
   return new Promise((resolve) => {
     childProcess.execFile(
@@ -1994,12 +1983,23 @@ async function prepareHost(
           const detail = stderr.trim() || err.message;
           output.appendLine(`[ide] ${detail}`);
           void vscode.window.showErrorMessage(
-            `Day: \`day prepare -p ${target}\` failed, so the project was not opened. ${detail}`,
+            `Day: ${renderCommand(cli, command)} failed, so the project was not opened. ${detail}`,
           );
-          resolve(false);
+          resolve(undefined);
           return;
         }
-        resolve(true);
+        try {
+          const result = JSON.parse(stdout.trim());
+          if (result.ok !== true || typeof result.path !== "string" || !path.isAbsolute(result.path)) {
+            throw new Error(stdout);
+          }
+          resolve(result.path);
+        } catch (error) {
+          output.appendLine(`[ide] ${String(error)}`);
+          void vscode.window.showErrorMessage(`Day: ${renderCommand(cli, command)}: ${String(error)}`);
+          resolve(undefined);
+        }
+
       },
     );
   });

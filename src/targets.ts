@@ -192,17 +192,15 @@ export interface NativeProject {
   ide: NativeIde;
   /** The application's name, for `open -a` and for anything that has to say what is missing. */
   ideName: string;
-  /** What to hand the IDE, relative to the project root. */
+  /** Persistent project location; Xcode resolves its actual path through `day open --print-path`. */
   relative: string;
 }
 
 /**
  * The native IDE project a target carries, if the scaffold wrote one for it.
  *
- * These are committed source under `platform/`, not build output (`day new` writes them and the
- * app owns them from then on), so opening one is just handing the IDE a path, with no build
- * required first. `platform` is a parameter rather than `process.platform` so the macOS-only rule
- * can be tested from any host, the way `cliSearchDirs` is.
+ * Apple projects are generated on demand by the CLI unless a persistent override exists.
+ * Android projects remain app-owned sources. `platform` is explicit for host-independent tests.
  */
 export function nativeProjectFor(
   target: string,
@@ -217,8 +215,8 @@ export function nativeProjectFor(
         ideName: "Android Studio",
         relative: "platform/android",
       };
-    // The two Apple targets each scaffold their own .xcodeproj, under their own platform
-    // directory. Xcode ships on macOS only, so no other host is offered a row it could not act on.
+    // Apple projects are derived by the CLI or supplied as persistent overrides. Xcode ships
+    // on macOS only, so no other host is offered a row it could not act on.
     case "ios-uikit":
     case "macos-appkit":
       return platform === "darwin"

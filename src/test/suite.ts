@@ -23,6 +23,7 @@ import {
   findInstalledCli,
   launchArgs,
   lintArgs,
+  nativeProjectArgs,
   MCP_PROVIDER_ID,
   mcpServerSpecs,
   resolveCli,
@@ -97,6 +98,12 @@ type Check = [name: string, fn: () => Promise<void> | void];
 const COMBO = process.env.DAY_E2E_COMBO ?? "";
 
 const checks: Check[] = [
+  ["Xcode preparation asks the CLI for the actual project path", () => {
+    assert.deepStrictEqual(nativeProjectArgs("/tmp/app with spaces", "ios-uikit"), [
+      "--project", "/tmp/app with spaces", "open", "-t", "ios-uikit", "--print-path", "--format", "json",
+    ]);
+  }],
+
   [
     "each project keeps its own targets, mode, locale and script",
     async () => {
@@ -2089,8 +2096,8 @@ const checks: Check[] = [
   [
     "each target offers the native IDE its own scaffold wrote, and only where that IDE runs",
     () => {
-      // These are committed source under `platform/`, written by `day new` rather than build
-      // output, so the row can offer them without a build having happened.
+      // Native targets resolve their actual generated project or persistent override through
+      // the CLI so a generated project need not already exist.
       for (const platform of [
         "darwin",
         "linux",
@@ -2103,8 +2110,8 @@ const checks: Check[] = [
         assert.strictEqual(studio?.relative, "platform/android");
       }
 
-      // Both Apple targets open in Xcode, each from its platform directory; swapping the two
-      // would hand Xcode the wrong project, and both paths exist so neither would error.
+      // Apple retains each persistent override location as metadata; opening asks the CLI
+      // to select that override or generate a disposable project.
       const apple: [string, string][] = [
         ["ios-uikit", "platform/ios/DayApp.xcodeproj"],
         ["macos-appkit", "platform/macos/DayApp.xcodeproj"],
@@ -2134,12 +2141,10 @@ const checks: Check[] = [
     },
   ],
   [
-    "a target row advertises an IDE project only when the project on disk has one",
+    "Native IDE rows support generated projects without checked-in scaffolding",
     () => {
       const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       assert.ok(root, "this check needs the scaffolded fixture");
-      // The fixture scaffolds ios-uikit and android-mdc, so both directories are really there.
-      assert.ok(fs.existsSync(path.join(root, "platform/android")));
 
       assert.strictEqual(
         targetContextValue("dayTarget", root, "android-mdc", "darwin"),
@@ -2170,13 +2175,15 @@ const checks: Check[] = [
         "dayTarget",
       );
 
-      // A project without the scaffolding: the directory decides, not the target name. Otherwise
-      // the row would offer Studio for a project that has no Gradle build to open.
+      // A fresh clone can generate the native project when its IDE action runs.
       const bare = fs.mkdtempSync(path.join(os.tmpdir(), "day-no-platform-"));
       try {
+        for (const target of ["ios-uikit", "macos-appkit"]) {
+          assert.strictEqual(targetContextValue("dayTarget", bare, target, "darwin"), "dayTarget.xcode");
+        }
         assert.strictEqual(
           targetContextValue("dayTarget", bare, "android-mdc", "darwin"),
-          "dayTarget",
+          "dayTarget.studio",
         );
       } finally {
         fs.rmSync(bare, { recursive: true, force: true });

@@ -131,17 +131,16 @@ export function cliItem(v: CliVersions): vscode.TreeItem {
  * an unbuildable target is exactly when someone reaches for Studio. Every other target menu matches
  * its base with the suffix optional, so adding one here does not take Run or Stop off the row.
  *
- * Checked against disk rather than assumed from the target name: a project that never scaffolded
- * that platform, or that has since deleted it, offers nothing to open.
+ * Native projects are generated on demand; a fresh clone can open its IDE immediately.
  */
 export function targetContextValue(
   base: string,
-  root: string,
+  _root: string,
   target: string,
   platform: NodeJS.Platform,
 ): string {
   const native = nativeProjectFor(target, platform);
-  return native && fs.existsSync(path.join(root, native.relative))
+  return native
     ? `${base}.${native.ide}`
     : base;
 }

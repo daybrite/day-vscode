@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Open Android Studio through Day’s generated project path, including fresh clones without a Gradle scaffold.
+
+
+- **Open in Xcode supports generated projects.** The extension asks the Day CLI to prepare
+  and locate the project, honoring persistent overrides and working before the first build.
+
 - **Commands name their target with `--target`.** The `day` CLI now calls its target flag
   `--target` (`-t`) and warns on the former `-p`/`--platform`, so every build, launch, test,
   device and stop command the extension runs uses the new spelling. CLIs from 0.4.7 on accept

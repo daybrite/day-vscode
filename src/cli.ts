@@ -428,6 +428,11 @@ export function patchArgs(projectRoot: string, checkouts: string[]): string[] {
   ];
 }
 
+/** Prepare and resolve a native project through the CLI, including its generated default. */
+export function nativeProjectArgs(projectRoot: string, target: string): string[] {
+  return [...projectArgs(projectRoot), "open", "-t", target, "--print-path", "--format", "json"];
+}
+
 /**
  * Args for `day prepare -t <target>`, which renders the derived host files (icon catalogs,
  * launcher mipmaps, HarmonyOS media) a native project references before an IDE opens on it.
