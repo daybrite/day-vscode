@@ -304,7 +304,16 @@ jobs:
         run: |
           set -euo pipefail
           run() { if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a "$@"; else "$@"; fi; }
-          run node test/run-integration.mjs
+          mkdir -p build/integration
+          run node test/run-integration.mjs 2>&1 | tee build/integration/console.log
+
+      - name: Upload integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-${{ matrix.combo }}
+          path: build/integration/
+          if-no-files-found: warn
 
       # Slow half: install the packaged extension, drive it, build and run the app, photograph it.
       - name: Drive the extension and capture (${{ matrix.combo }})

@@ -5,6 +5,7 @@ import * as childProcess from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import { projectsAfterScan } from "./projectState";
 
 import {
   addTargetArgs,
@@ -234,7 +235,7 @@ export async function activate(
   const refreshProjects = queuedRefresh(async (): Promise<void> => {
     const scan = await findProjects();
     const before = projects.map((p) => p.root).join("\n");
-    projects = scan.projects;
+    projects = projectsAfterScan(projects, scan);
     loadFailures = scan.failures;
     // Only on a real change: a re-scan that found the same projects must not churn agent mode's
     // server list, which re-resolves (and restarts servers) on every event.

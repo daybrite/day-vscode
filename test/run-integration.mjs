@@ -6,7 +6,7 @@
 // this checkout, and runs the suite in-process. Fast (about a minute cold, seconds warm) and with
 // no UI automation in it, so it belongs on the PR path; test/e2e/drive.mjs is the slow half.
 
-import { writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -42,13 +42,27 @@ console.log(
   `fixtures: ${primary}\n          ${secondary}\nday CLI: ${dayBin}\nVS Code: ${VSCODE_VERSION}`,
 );
 
-const code = await runTests({
-  version: VSCODE_VERSION,
-  extensionDevelopmentPath: root,
-  extensionTestsPath: join(root, "out", "test", "suite.js"),
-  extensionTestsEnv: { DAY_E2E_COMBO: hostCombo() },
-  // A short user-data-dir: VS Code's IPC socket lives under it and blows past the 103-character
-  // sun_path limit if it sits deep inside a temp tree.
-  launchArgs: [workspace, "--disable-workspace-trust", "--user-data-dir", join(work, "u")],
-});
+const userData = join(work, "u");
+let code;
+try {
+  code = await runTests({
+    version: VSCODE_VERSION,
+    extensionDevelopmentPath: root,
+    extensionTestsPath: join(root, "out", "test", "suite.js"),
+    // Both fixture graphs have resolved successfully above. Watcher refreshes should measure
+    // extension behavior, not network/index latency or a moving upstream during the suite.
+    extensionTestsEnv: { DAY_E2E_COMBO: hostCombo(), CARGO_NET_OFFLINE: "true" },
+    // Keep the IPC socket path short on macOS.
+    launchArgs: [workspace, "--disable-workspace-trust", "--user-data-dir", userData],
+  });
+} finally {
+  // Preserve extension-host logs even when the suite throws, so a future timeout can be
+  // diagnosed without relying on the final assertion alone. CI uploads this separately.
+  const logs = join(userData, "logs");
+  if (existsSync(logs)) {
+    const destination = join(root, "build", "integration", "vscode");
+    mkdirSync(destination, { recursive: true });
+    cpSync(logs, destination, { recursive: true });
+  }
+}
 process.exit(code);

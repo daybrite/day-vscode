@@ -3015,7 +3015,7 @@ const checks: Check[] = [
           new vscode.ProcessExecution(process.execPath, [
             "-e",
             "setTimeout(() => {}, 30000)",
-          ]),
+          ], { env: { ELECTRON_RUN_AS_NODE: "1" } }),
         );
 
       const started: vscode.TaskExecution[] = [];
@@ -3331,9 +3331,8 @@ const checks: Check[] = [
     "Add Target adds a target to the row's own project and re-reads it",
     async () => {
       // Through the command the Targets row's + calls, on the project that is not focused, with the
-      // target passed in so no picker has to be answered. The target is one this host builds (the
-      // task list skips the rest) whose platform files the fixture already has, so Day.toml is the
-      // only file the CLI changes, and it is put back afterwards.
+      // target passed in so no picker has to be answered. The target is one this host builds
+      // (the task list skips the rest). Restore Day.toml and await a fresh read afterwards.
       const folders = vscode.workspace.workspaceFolders ?? [];
       assert.strictEqual(folders.length, 2, "this check needs the two-project fixture");
       const ext = vscode.extensions.getExtension("daybrite.day-vscode");
@@ -3346,10 +3345,12 @@ const checks: Check[] = [
           vscode.Uri.file(`${folder.uri.fsPath}/Day.toml`),
         );
         await vscode.window.showTextDocument(doc, { preview: false });
-        for (let i = 0; i < 50 && !api.focusedProject(); i++) {
+        const expected = fs.realpathSync.native(folder.uri.fsPath);
+        for (let i = 0; i < 50 && api.focusedProject() !== expected; i++) {
           await new Promise((r) => setTimeout(r, 20));
         }
-        return api.focusedProject()!;
+        assert.strictEqual(api.focusedProject(), expected, "focus must follow the requested fixture");
+        return expected;
       };
       const second = await rootOf(folders[1]);
       const first = await rootOf(folders[0]);
@@ -3387,9 +3388,13 @@ const checks: Check[] = [
         );
       } finally {
         fs.writeFileSync(manifest, original);
-        for (let i = 0; i < 100 && (await hasTask()); i++) {
-          await new Promise((r) => setTimeout(r, 50));
-        }
+        // A missing task is not enough: a failed scan removes ALL tasks. Await the actual
+        // refresh and prove the original project remains loaded before another test uses it.
+        await vscode.commands.executeCommand("day.refresh");
+        assert.ok(!(await hasTask()), `${added} must disappear after restoring Day.toml`);
+        assert.ok((await vscode.tasks.fetchTasks({ type: "day" })).some(
+          t => t.name.endsWith(`(${baseName(second)})`),
+        ), "the restored fixture must still have tasks");
       }
     },
   ],
@@ -3426,6 +3431,38 @@ const checks: Check[] = [
         }
         // Groups sort by name, so `0_` puts both above Add Target, Lint Project and Clean Project.
         assert.ok(entry.group?.startsWith("0_"), `${id} should lead the menu, got ${entry.group}`);
+      }
+    },
+  ],
+  [
+    "a failed metadata refresh preserves project tasks and editor focus",
+    async () => {
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      assert.strictEqual(folders.length, 2);
+      const ext = vscode.extensions.getExtension("daybrite.day-vscode");
+      assert.ok(ext);
+      const api = (await ext.activate()) as { focusedProject(): string | undefined };
+      const cfg = vscode.workspace.getConfiguration("day");
+      const previous = cfg.inspect<string>("cliPath")?.workspaceValue;
+      const before = (await vscode.tasks.fetchTasks({ type: "day" })).map(t => t.name).sort();
+      assert.ok(before.length > 0);
+      try {
+        // An absent synthetic executable deterministically fails both metadata reads. It
+        // exercises the same failed-scan path as CI's timeouts without a 30-second sleep.
+        await cfg.update("cliPath", path.join(os.tmpdir(), "day-fixture-missing-cli", "day"), vscode.ConfigurationTarget.Workspace);
+        await vscode.commands.executeCommand("day.refresh");
+        assert.deepStrictEqual((await vscode.tasks.fetchTasks({ type: "day" })).map(t => t.name).sort(), before);
+        for (const folder of folders) {
+          await vscode.commands.executeCommand("day.openManifest", { kind: "project", root: folder.uri.fsPath });
+          const expected = fs.realpathSync.native(folder.uri.fsPath);
+          for (let i = 0; i < 50 && api.focusedProject() !== expected; i++) {
+            await new Promise(r => setTimeout(r, 20));
+          }
+          assert.strictEqual(api.focusedProject(), expected, "focus must survive a failed metadata refresh");
+        }
+      } finally {
+        await cfg.update("cliPath", previous, vscode.ConfigurationTarget.Workspace);
+        await vscode.commands.executeCommand("day.refresh");
       }
     },
   ],

@@ -100,8 +100,8 @@ export function scaffold({ dayBin, parent, name = "day-fixture", targets = FIXTU
     timeout: 600_000,
     killSignal: "SIGKILL",
   });
-  // Not fatal: a resolution failure here shows up as the real thing the suite is checking, with
-  // the extension's own message, rather than as a scaffold that refused to finish.
+  // Stop at the dependency failure instead of turning it into unrelated missing-project
+  // assertions later. The integration host runs offline after this successful warmup.
   if (warm.status !== 0) {
     // `status: null` means it never ran (spawn error) or was signalled; report which, because
     // "exit null" alone tells the next reader nothing about where to look.
@@ -109,9 +109,7 @@ export function scaffold({ dayBin, parent, name = "day-fixture", targets = FIXTU
       ? warm.error.message
       : (warm.stderr ?? "").trim().split("\n").slice(-3).join("\n") ||
         `signal ${warm.signal ?? "unknown"}`;
-    console.warn(
-      `warming cargo metadata for ${name} failed; the extension's own 30s call may time out: ${why}`,
-    );
+    throw new Error(`warming cargo metadata for ${name} failed: ${why}`);
   }
   return dir;
 }
