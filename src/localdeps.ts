@@ -116,11 +116,6 @@ async function gitSources(root: string): Promise<Set<string>> {
   return urls;
 }
 
-/** Match actual Cargo patch paths, not comments or substrings of another checkout's path. */
-function alreadyPatched(root: string, checkout: LocalCheckout): boolean {
-  return hasPathPatch(read(path.join(root, ".cargo", "config.toml")), root, checkout.dir);
-}
-
 /** The `day` checkout this workspace holds, when it holds one the CLI could be run from.
  *
  * `crates/day-cli/Cargo.toml`, not the `crates/day` that identifies the framework for patching:
@@ -144,7 +139,8 @@ export async function planPatches(
 ): Promise<PatchPlan[]> {
   const plans: PatchPlan[] = [];
   for (const project of projects) {
-    const candidates = checkouts.filter((c) => !alreadyPatched(project.root, c));
+    const config = read(path.join(project.root, ".cargo", "config.toml"));
+    const candidates = checkouts.filter((c) => !hasPathPatch(config, project.root, c.dir));
     if (candidates.length === 0) {
       continue;
     }

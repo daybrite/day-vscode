@@ -49,6 +49,8 @@ export function hasPathPatch(text: string, root: string, checkout: string): bool
   const patches = table(document(text).patch);
   return Object.values(patches).some(source => Object.values(table(source)).some(dep => {
     const local = table(dep).path;
-    return typeof local === "string" && path.resolve(root, local) === path.resolve(checkout);
+    if (typeof local !== "string") { return false; }
+    const relative = path.relative(path.resolve(checkout), path.resolve(root, local));
+    return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`));
   }));
 }

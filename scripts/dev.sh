@@ -61,8 +61,8 @@
 
 set -euo pipefail
 
-EXT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SIBLINGS="$(cd "$EXT_DIR/.." && pwd)"
+EXT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SIBLINGS="$(cd "$EXT_DIR/.." && pwd -P)"
 DAY_REPO="$SIBLINGS/day"
 # Generated, machine-local, and absolute-pathed: it belongs in the ignored build dir, not in git.
 WORKSPACE="$EXT_DIR/build/day-dev.code-workspace"
@@ -114,7 +114,7 @@ FOLDERS=()
 # the workspace twice; VS Code shows both, and the second is indistinguishable from the first.
 add_folder() {
   local resolved p
-  resolved="$(cd "$1" && pwd)"
+  resolved="$(cd "$1" && pwd -P)"
   for p in ${PROJECTS+"${PROJECTS[@]}"} ${FOLDERS+"${FOLDERS[@]}"}; do
     [ "$p" = "$resolved" ] && return 0
   done
@@ -156,7 +156,7 @@ if [ ! -f "$DAY_REPO/crates/day-cli/Cargo.toml" ]; then
   echo "       clone daybrite/day beside this repository" >&2
   exit 2
 fi
-DAY_REPO="$(cd "$DAY_REPO" && pwd)"
+DAY_REPO="$(cd "$DAY_REPO" && pwd -P)"
 
 if ! command -v cargo >/dev/null 2>&1; then
   echo "error: cargo is not on PATH" >&2
@@ -198,42 +198,13 @@ fi
 echo "▸ building the extension from source ($EXT_DIR)…"
 (cd "$EXT_DIR" && npm run --silent bundle)
 
-# Every project gets its own patch table: they are separate cargo workspaces, and one left
-# unpatched would quietly build the published day crates from the git cache while its neighbour
-# built the checkout: the same window, two different frameworks under test.
-for project in ${PROJECTS+"${PROJECTS[@]}"}; do
-  # Braced so bash does not read the trailing multi-byte ellipsis as part of the name.
-  echo "▸ pointing $(basename "$project") at ${DAY_REPO}…"
-  # The day checkout for every project, and each folder named beside it for the projects that
-  # actually depend on it; an external piece or part repository is a patch source in its own
-  # right (`day patch --local` is repeatable and documents exactly that), so a piece opened here
-  # for editing is built from this checkout rather than fetched from git.
-  #
-  # Which projects those are is a question `day patch` already answers, so it is asked rather than
-  # reimplemented: a source the project has no dependency from is refused outright ("nothing to
-  # patch there"), and a refusal writes nothing. So the list grows one folder at a time, keeping
-  # whatever takes. The probes are silent because their failures are expected and uninteresting;
-  # a window may well hold a crate that this particular app has never heard of. The run that
-  # matters is the last one, with the sources that survived, and it reports for itself.
-  SOURCES=(--local "$DAY_REPO")
-  for folder in ${FOLDERS+"${FOLDERS[@]}"}; do
-    if PROBE="$("$DAY_BIN" patch "${SOURCES[@]}" --local "$folder" --project "$project" 2>&1)"; then
-      SOURCES+=(--local "$folder")
-      echo "  + and at $(basename "$folder")"
-    elif ! printf '%s' "$PROBE" | grep -q "no dependencies from"; then
-      # Declined for a reason other than "this project doesn't use it": the wrong branch, a
-      # renamed crate, a checkout that is not what it looks like. The source is left out either
-      # way, but leaving it out quietly is how an edit under test never reaches the app, so this
-      # one is repeated rather than swallowed with the expected ones.
-      echo "  ! $(basename "$folder") could not be patched in, and is not in the table:" >&2
-      printf '%s\n' "$PROBE" >&2
-    fi
-  done
-  # Rewrites the app's gitignored .cargo/config.toml and verifies no day crate still resolves from
-  # git; a crate missing from the table silently builds from the git cache, and the edit under
-  # test then never reaches the app.
-  "$DAY_BIN" patch "${SOURCES[@]}" --project "$project"
-done
+# Select the relevant checkouts from one Cargo graph per project, then let day patch write
+# and verify the complete table once. Probing every folder with day patch used to repeat its
+# seven-platform dependency resolution (and successful writes) for every project/folder pair.
+"$EXT_DIR/node_modules/.bin/esbuild" "$EXT_DIR/src/devPatch.ts" --bundle --platform=node \
+  --format=cjs --outfile="$EXT_DIR/dist/dev-patch.js" --log-level=warning
+node "$EXT_DIR/dist/dev-patch.js" "$DAY_BIN" "$DAY_REPO" "${#PROJECTS[@]}" \
+  ${PROJECTS+"${PROJECTS[@]}"} ${FOLDERS+"${FOLDERS[@]}"}
 
 # Said out loud rather than passed over in silence: a folder in the window that no `day patch` line
 # mentioned is easy to mistake for one that was wired into the projects beside it.
@@ -264,6 +235,7 @@ mkdir -p "$(dirname "$WORKSPACE")"
   echo '{'
   echo '  "folders": ['
   for folder in ${OPENED+"${OPENED[@]}"}; do
+    [ "$folder" = "$DAY_REPO" ] && continue
     echo "    { \"path\": \"$folder\" },"
   done
   echo "    { \"path\": \"$DAY_REPO\" }"

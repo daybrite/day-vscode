@@ -9,7 +9,8 @@ import * as cp from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import { renderCommand, resolveCli } from "./cli";
+import { DayCli, renderCommand, resolveCli } from "./cli";
+import { scanCli } from "./scanCli";
 import { setCatalog, Target } from "./targets";
 
 export interface DayProject {
@@ -66,23 +67,24 @@ export async function findProjects(): Promise<ProjectScan> {
     "**/{node_modules,target,build,out}/**",
     100,
   );
-  const roots = uris
+  const roots = [...new Set(uris
     .map((uri) => path.dirname(uri.fsPath))
     // A Day project is also a cargo package, so a Day.toml with no Cargo.toml beside it cannot
     // be one; it is a scaffold template or a fixture. `day metadata` says exactly that, and
     // reporting it would put a permanent error notification in front of anyone whose workspace
     // includes the day checkout (crates/day-cli/templates/app carries such a Day.toml).
-    .filter((root) => fs.existsSync(path.join(root, "Cargo.toml")));
+    .filter((root) => fs.existsSync(path.join(root, "Cargo.toml"))))];
 
   // Loaded a poolful at a time rather than one after another: each root costs its own `day
   // metadata` process (~0.25s), so a window holding two dozen apps spent six seconds of activation
   // waiting on a queue of one. Bounded rather than unbounded because the CLI is not free to spawn.
   const projects: DayProject[] = [];
   const failures: ProjectLoadFailure[] = [];
+  const prepare = scanCli();
   let next = 0;
   const workers = Array.from({ length: Math.min(LOAD_CONCURRENCY, roots.length) }, async () => {
     for (let i = next++; i < roots.length; i = next++) {
-      const { project, failure } = await loadProject(roots[i]);
+      const { project, failure } = await loadProject(roots[i], prepare);
       if (project) {
         projects.push(project);
       } else if (failure) {
@@ -105,8 +107,9 @@ export async function findProjects(): Promise<ProjectScan> {
  *  (or errored); returns neither when the CLI ran fine but the Day.toml is not an app project. */
 export async function loadProject(
   root: string,
+  prepare: (cli: DayCli) => Promise<DayCli> = scanCli(),
 ): Promise<{ project?: DayProject; failure?: ProjectLoadFailure }> {
-  const meta = await dayMetadata(root);
+  const meta = await dayMetadata(root, prepare);
   if (!meta.ok) {
     return { failure: { root, command: meta.command, message: meta.message, notFound: meta.notFound } };
   }
@@ -132,8 +135,15 @@ type MetadataResult =
   | { ok: true; envelope: MetadataEnvelope | undefined }
   | { ok: false; command: string; message: string; notFound: boolean };
 
-function dayMetadata(root: string): Promise<MetadataResult> {
-  const cli = resolveCli(root);
+async function dayMetadata(root: string, prepare: (cli: DayCli) => Promise<DayCli>): Promise<MetadataResult> {
+  let cli = resolveCli(root);
+  try {
+    cli = await prepare(cli);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException & { stderr?: string };
+    return { ok: false, command: renderCommand(cli, ["metadata", "--json", "--project", root]),
+      message: err.stderr?.trim() || err.message, notFound: err.code === "ENOENT" };
+  }
   const command = renderCommand(cli, ["metadata", "--json", "--project", root]);
   const args = [...cli.baseArgs, "metadata", "--json", "--project", root];
   return new Promise((resolve) => {

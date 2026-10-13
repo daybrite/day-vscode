@@ -46,4 +46,6 @@ test('patch detection matches actual decoded paths exactly', () => {
   assert.equal(hasPathPatch(`# /repo/local\n[build]\ntarget-dir='/repo/local'`, '/repo/app', '/repo/local'), false);
   assert.equal(hasPathPatch(`[patch.'https://example.com/lib']\na.path='../local'`, '/repo/app', '/repo/local'), true);
   assert.equal(hasPathPatch(`[patch.'https://example.com/lib']\na.path='/repo/local-other'`, '/repo/app', '/repo/local'), false);
+  assert.equal(hasPathPatch(`[patch.'https://example.com/lib']\na.path='/repo/local/crates/core'`, '/repo/app', '/repo/local'), true);
+  assert.equal(hasPathPatch(`[patch.'https://example.com/lib']\na.path='/repo/local/../other'`, '/repo/app', '/repo/local'), false);
 });
