@@ -13,7 +13,7 @@ import * as vscode from "vscode";
 
 import { renderCommand, resolveCli } from "./cli";
 import { toolchainEnv } from "./tasks";
-import { optionSupport, findTarget, replacementTarget, TIER_LEGEND } from "./targets";
+import { optionSupport, findTarget, replacementTarget, SUPERSEDED_TOOLKITS, TIER_LEGEND } from "./targets";
 import { tierHelpButton, showTierHelp } from "./targetUi";
 
 /** One choice for a select/multi-select field. */
@@ -264,28 +264,32 @@ export function optionItems(field: SpecField, answers: Answers): vscode.QuickPic
   const already = Array.isArray(chosen) ? chosen : chosen ? [chosen] : undefined;
   const defaults = Array.isArray(field.default) ? field.default : [field.default ?? ""];
   const preset = already ?? defaults.map((name) => {
+    // A deprecated default is replaced by what supersedes it: the option's own `deprecated`
+    // field (the CLI's metadata) first, then the catalog's, then the superseded toolkit names.
     const t = findTarget(name);
+    const option = field.options?.find((o) => o.value === name);
     const replacement = targetPicker
-      ? (t && replacementTarget(t)) || (name === "xaml" ? "winui" : undefined)
+      ? option?.deprecated || (t && replacementTarget(t)) || SUPERSEDED_TOOLKITS[name]
       : undefined;
     return replacement && field.options?.some((o) => o.value === replacement) ? replacement : name;
   });
   return (field.options ?? [])
     .map((o) => {
       const support = targetPicker ? optionSupport(o.value) : undefined;
+      const superseded = o.deprecated || (targetPicker ? SUPERSEDED_TOOLKITS[o.value] : undefined);
       return {
         label: o.value,
         description: [
           o.label,
-          o.deprecated ? "Tier 5 · Deprecated" : support?.label ?? (targetPicker ? "Tier unassigned" : o.experimental ? "experimental" : undefined),
+          superseded ? "Tier 5 · Deprecated" : support?.label ?? (targetPicker ? "Tier unassigned" : o.experimental ? "experimental" : undefined),
         ].filter(Boolean).join(" · "),
         detail: [
           o.detail, support?.detail,
-          o.deprecated && !support?.deprecated ? `Use ${o.deprecated} for new projects.` : undefined,
+          superseded && !support?.deprecated ? `Use ${superseded} for new projects.` : undefined,
           o.buildable_here === false ? "not buildable on this host" : undefined,
         ].filter(Boolean).join(" — "),
         picked: preset.includes(o.value),
-        preference: o.deprecated || support?.deprecated ? 2 : o.buildable_here === false ? 1 : 0,
+        preference: superseded || support?.deprecated ? 2 : o.buildable_here === false ? 1 : 0,
       };
     })
     // What this machine can build first. The rest stay pickable: an app may ship to a platform

@@ -74,6 +74,13 @@ export const TIER_SUMMARY = [
   ...([1, 2, 3, 4, 5] as const).map((tier) => `Tier ${tier} · ${TIER_NAMES[tier]}: ${TIER_MEANINGS[tier]}`),
 ].join("\n");
 
+/**
+ * Native toolkit choices (`day new piece --toolkits`) a newer toolkit supersedes: `winui` builds
+ * on `xaml`, so a piece that wants Windows picks `winui`. The CLI's target catalog carries the same
+ * fact for the `windows-xaml` target; this covers the bare toolkit names the piece wizard offers.
+ */
+export const SUPERSEDED_TOOLKITS: Record<string, string> = { xaml: "winui" };
+
 export function supportTier(target: Target): SupportTier | undefined {
   return target.deprecated ? 5 : target.tier ?? TIERS[target.name];
 }
