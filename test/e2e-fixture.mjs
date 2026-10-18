@@ -25,8 +25,3 @@ test('the WinUI CI override has matching fixture tasks', () => {
   process.env.DAY_E2E_COMBO = 'windows-winui';
   assert.ok(FIXTURE_TARGETS.includes(hostCombo()));
 });
-
-test('an explicit legacy target override remains available', () => {
-  process.env.DAY_E2E_COMBO = 'windows-xaml';
-  assert.equal(hostCombo('win32'), 'windows-xaml');
-});

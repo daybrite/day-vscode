@@ -56,8 +56,8 @@ ones you want and press Run.
 - Each target builds in its own terminal, and stops and restarts on its own.
 - Unavailable and deprecated targets are hidden by default; turn off
   `day.hideUnavailableTargets` to list them. Selected or running legacy targets stay visible.
-- Windows uses `windows-winui` (Tier 2). `windows-xaml` is deprecated (Tier 5), remains usable
-  for existing projects, and appears last in target pickers.
+- Windows uses `windows-winui` (Tier 2). Deprecated targets remain usable for existing
+  projects and appear last in target pickers.
 - Target selectors show support tiers: **1 Supported**, **2 Demi-supported**, **3 Experimental**,
   **4 Development**, **5 Deprecated**. Hover a target or use the picker's information button for
   the testing and maintenance expectations. Tiers do not measure API completeness.

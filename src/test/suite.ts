@@ -39,7 +39,7 @@ import {
 import { editFor, Lint, mapFindings } from "../lint";
 import { composeArgs, describeSpec, optionItems, visibleFields } from "../newproject";
 import { targetChoices, toolkitChoices } from "../quickpicks";
-import { catalog, findTarget, hostDefaultTarget, isBuildableHere, isDeprecated, nativeProjectFor, targetPreference, Target } from "../targets";
+import { catalog, findTarget, hostDefaultTarget, isBuildableHere, isDeprecated, nativeProjectFor, setCatalog, targetPreference, Target } from "../targets";
 import { liveDevice, startPrompt, TargetDevices, virtualDevice } from "../devices";
 import {
   cliItem,
@@ -497,7 +497,7 @@ const checks: Check[] = [
           .find((k) => k.id === "app")
           ?.fields.find((f) => f.id === "targets");
         const values = (targets?.options ?? []).map((o) => o.value);
-        assert.ok(values.includes("windows-xaml"));
+        assert.ok(values.includes("windows-winui"));
         // And the host's own target is named, so the wizard never re-derives it.
         assert.ok(values.includes(String(spec.host?.default_target)));
       } finally {
@@ -615,7 +615,7 @@ const checks: Check[] = [
     async () => {
       // The installed CLI is authoritative; WinUI is offered when that CLI supports it.
       const names = catalog().map((t) => t.name);
-      assert.ok(names.includes("windows-xaml"), "legacy Windows projects remain supported");
+      assert.ok(names.includes("windows-winui"), "the Windows target is offered");
       for (const expected of ["macos-appkit", "ios-uikit", "android-mdc", "web-dom"]) {
         assert.ok(names.includes(expected), `${expected} missing from the catalog`);
       }
@@ -3268,14 +3268,14 @@ const checks: Check[] = [
     () => {
       const targets: Target[] = [
         { name: "macos-appkit", toolkit: "appkit", kind: "desktop", host: "macos", label: "macOS" },
-        { name: "windows-xaml", toolkit: "xaml", kind: "desktop", host: "windows", label: "Windows" },
+        { name: "old-desktop", toolkit: "old", kind: "desktop", host: "windows", label: "Windows", deprecated: "windows-winui" },
         { name: "web-dom", toolkit: "dom", kind: "web", host: "any", label: "Web", experimental: true },
       ];
       const rows = toolkitChoices(["macos-appkit"], targets);
-      assert.deepStrictEqual(rows.map((r) => r.label).sort(), ["$(check) macos-appkit", "windows-xaml", "web-dom"].sort());
-      assert.strictEqual(rows.at(-1)?.name, "windows-xaml", "deprecated targets are last");
+      assert.deepStrictEqual(rows.map((r) => r.label).sort(), ["$(check) macos-appkit", "old-desktop", "web-dom"].sort());
+      assert.strictEqual(rows.at(-1)?.name, "old-desktop", "deprecated targets are last");
       const mac = rows.find((r) => r.label.includes("macos-appkit"))!;
-      const windows = rows.find((r) => r.name === "windows-xaml")!;
+      const windows = rows.find((r) => r.name === "old-desktop")!;
       const web = rows.find((r) => r.name === "web-dom")!;
       // A declared target stays visible but carries nothing to add.
       assert.strictEqual(mac.name, undefined);
@@ -3291,19 +3291,19 @@ const checks: Check[] = [
     () => {
       const field = {
         id: "targets", label: "Targets", type: "multi-select" as const, flag: "--toolkit",
-        default: ["windows-xaml"],
+        default: ["old-desktop"],
         options: [
-          { value: "windows-xaml", buildable_here: true, deprecated: "windows-winui" },
+          { value: "old-desktop", buildable_here: true, deprecated: "windows-winui" },
           { value: "windows-winui", buildable_here: true },
           { value: "macos-appkit", buildable_here: false },
         ],
       };
       const rows = optionItems(field, {});
-      assert.deepStrictEqual(rows.map((r) => r.label), ["windows-winui", "macos-appkit", "windows-xaml"]);
+      assert.deepStrictEqual(rows.map((r) => r.label), ["windows-winui", "macos-appkit", "old-desktop"]);
       assert.ok(rows[0].picked);
       assert.match(rows[0].description!, /Tier 2/);
       assert.ok(!rows[2].picked);
-      assert.ok(optionItems(field, { targets: ["windows-xaml"] }).at(-1)?.picked);
+      assert.ok(optionItems(field, { targets: ["old-desktop"] }).at(-1)?.picked);
       assert.ok(optionItems({ ...field, options: [field.options[0]] }, {})[0].picked);
       const native = {
         ...field, id: "toolkits", flag: "--toolkits", default: ["xaml"],
@@ -3318,13 +3318,20 @@ const checks: Check[] = [
   [
     "run target picker keeps a selected deprecated target usable but below alternatives",
     () => {
-      const rows = targetChoices(["windows-xaml", "web-dom"], ["windows-xaml"]);
-      const legacy = rows.find((r) => r.label.includes("windows-xaml"))!;
-      assert.match(legacy.description!, /Tier 5 · Deprecated/);
-      assert.match(legacy.detail!, /windows-winui/);
-      assert.ok(rows.findIndex((r) => r.name === "web-dom") < rows.indexOf(legacy));
-      assert.strictEqual(legacy.picked, process.platform === "win32");
-      assert.strictEqual(legacy.name, process.platform === "win32" ? "windows-xaml" : undefined);
+      // A deprecated target the CLI still lists for existing projects.
+      const before = catalog();
+      setCatalog([...before, { name: "old-desktop", toolkit: "old", kind: "desktop", host: "windows", deprecated: "windows-winui" }]);
+      try {
+        const rows = targetChoices(["old-desktop", "web-dom"], ["old-desktop"]);
+        const legacy = rows.find((r) => r.label.includes("old-desktop"))!;
+        assert.match(legacy.description!, /Tier 5 · Deprecated/);
+        assert.match(legacy.detail!, /windows-winui/);
+        assert.ok(rows.findIndex((r) => r.name === "web-dom") < rows.indexOf(legacy));
+        assert.strictEqual(legacy.picked, process.platform === "win32");
+        assert.strictEqual(legacy.name, process.platform === "win32" ? "old-desktop" : undefined);
+      } finally {
+        setCatalog(before);
+      }
     },
   ],
   [

@@ -85,7 +85,7 @@ export function scaffold({ dayBin, parent, name = "day-fixture", targets = FIXTU
   // whatever of the crates.io index it still lacks. That is seconds when warm and minutes when
   // cold, and the extension gives it 30 (src/project.ts). Losing that race means the sidebar finds
   // no projects, and the suite then fails six assertions that are really one: run 33022390184's
-  // windows-xaml leg, where both fixtures timed out in the same millisecond.
+  // Windows leg, where both fixtures timed out in the same millisecond.
   //
   // Doing it here rather than lengthening the extension's timeout: 30 seconds is the right budget
   // for a UI that must not hang, and a warm cache is the starting state for a test about

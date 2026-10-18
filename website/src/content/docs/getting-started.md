@@ -82,9 +82,8 @@ sit at the bottom of the group, greyed out and giving the reason. Either way an 
 platforms you only ever build on CI. What each target is, and what it needs installed, is covered
 in [Platforms](https://daybrite.dev/docs/platforms/).
 
-Windows projects should use `windows-winui` (Tier 2). The old `windows-xaml` target is Tier 5
-(deprecated): it is hidden by the same setting unless selected or running, and appears last in
-target pickers. Existing projects can still build and run it.
+Windows projects use `windows-winui` (Tier 2). A deprecated target is hidden by the same
+setting unless selected or running, and appears last in target pickers.
 
 Every target selector shows its support tier: **1 Supported**, **2 Demi-supported**,
 **3 Experimental**, **4 Development**, **5 Deprecated**. Hover a target or use the information

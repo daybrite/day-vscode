@@ -234,7 +234,7 @@ async function tickTarget(win, combo) {
   const box = row(win, combo).locator('[role="checkbox"]').first();
   // Retried, with a short first attempt. What blocks the click is an overlay, and Playwright's own
   // retrying does not help against one: it re-attempts into the same obstruction until the full
-  // timeout expires. The windows-xaml leg spent thirty seconds being told
+  // timeout expires. The Windows leg spent thirty seconds being told
   // `<p>D:\…\day-fixture</p> from <div class="context-view …"> intercepts pointer events`, the
   // hover for the project row clicked a moment earlier. Moving the pointer away closes it, so a
   // failed attempt is worth a second look rather than a longer wait.

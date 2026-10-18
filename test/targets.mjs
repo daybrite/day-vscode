@@ -7,22 +7,23 @@ import {
 
 afterEach(() => setCatalog(undefined));
 
-test('the fallback covers every documented tier, with WinUI replacing system XAML', () => {
+test('the fallback covers every shipped tier, and a CLI-flagged deprecation is tier 5', () => {
   assert.equal(supportTier(findTarget('windows-winui')), 2);
-  assert.equal(supportTier(findTarget('windows-xaml')), 5);
-  assert.equal(isDeprecated(findTarget('windows-xaml')), true);
-  assert.match(tierDetail(findTarget('windows-xaml')), /Use windows-winui/);
-  assert.deepEqual([...new Set(TARGETS.map(supportTier))].sort(), [1, 2, 3, 4, 5]);
+  const legacy = { name: 'old-desktop', toolkit: 'old', kind: 'desktop', host: 'windows', deprecated: 'windows-winui' };
+  assert.equal(supportTier(legacy), 5);
+  assert.equal(isDeprecated(legacy), true);
+  assert.match(tierDetail(legacy), /Use windows-winui/);
+  assert.deepEqual([...new Set(TARGETS.map(supportTier))].sort(), [1, 2, 3, 4]);
   for (const target of TARGETS) {
     assert.match(tierLabel(target), /^Tier [1-5] · /);
   }
 });
 
 test('older CLI catalogs get tier annotations without inventing unsupported choices', () => {
-  setCatalog([{ name: 'windows-xaml', toolkit: 'xaml', kind: 'desktop', host: 'windows' }]);
-  assert.deepEqual(catalog().map(t => t.name), ['windows-xaml']);
+  setCatalog([{ name: 'linux-gtk', toolkit: 'gtk', kind: 'desktop', host: 'linux' }]);
+  assert.deepEqual(catalog().map(t => t.name), ['linux-gtk']);
   assert.equal(findTarget('windows-winui'), undefined);
-  assert.equal(supportTier(findTarget('windows-xaml')), 5);
+  assert.equal(supportTier(findTarget('linux-gtk')), 2);
 });
 
 test('CLI tier metadata wins, and unknown external targets are not assigned a guessed tier', () => {
@@ -36,14 +37,14 @@ test('CLI tier metadata wins, and unknown external targets are not assigned a gu
 
 test('deprecated targets are last and hidden by default, but explicit legacy selections survive', () => {
   setCatalog([
-    { name: 'windows-xaml', toolkit: 'xaml', kind: 'desktop', host: 'any' },
+    { name: 'old-desktop', toolkit: 'old', kind: 'desktop', host: 'any', deprecated: 'windows-winui' },
     { name: 'windows-winui', toolkit: 'winui', kind: 'desktop', host: 'any' },
   ]);
-  const names = ['windows-xaml', 'windows-winui', 'unknown-new-target'];
+  const names = ['old-desktop', 'windows-winui', 'unknown-new-target'];
   assert.deepEqual(orderTargetNames(names, true), { shown: ['windows-winui', 'unknown-new-target'], hidden: 1 });
-  assert.deepEqual(orderTargetNames(names, false), { shown: ['windows-winui', 'unknown-new-target', 'windows-xaml'], hidden: 0 });
-  assert.deepEqual(orderTargetNames(names, true, ['windows-xaml']).shown, ['windows-winui', 'unknown-new-target', 'windows-xaml']);
-  assert.deepEqual(names, ['windows-xaml', 'windows-winui', 'unknown-new-target']);
+  assert.deepEqual(orderTargetNames(names, false), { shown: ['windows-winui', 'unknown-new-target', 'old-desktop'], hidden: 0 });
+  assert.deepEqual(orderTargetNames(names, true, ['old-desktop']).shown, ['windows-winui', 'unknown-new-target', 'old-desktop']);
+  assert.deepEqual(names, ['old-desktop', 'windows-winui', 'unknown-new-target']);
 });
 
 test('native toolkit choices explain their per-OS tiers instead of claiming one tier for GTK', () => {
@@ -52,7 +53,8 @@ test('native toolkit choices explain their per-OS tiers instead of claiming one 
   assert.match(gtk.label, /Tier 4/);
   assert.match(gtk.detail, /linux-gtk: Tier 2/);
   assert.match(gtk.detail, /windows-gtk: Tier 4/);
-  assert.equal(optionSupport('xaml').deprecated, true);
+  setCatalog([...TARGETS, { name: 'old-desktop', toolkit: 'old', kind: 'desktop', host: 'windows', deprecated: 'windows-winui' }]);
+  assert.equal(optionSupport('old').deprecated, true);
   assert.equal(optionSupport('winui').deprecated, false);
   assert.equal(optionSupport('some-non-target-choice'), undefined);
 });

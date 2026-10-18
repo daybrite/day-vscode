@@ -42,7 +42,6 @@
   --pf-linux-gtk: #63e6e2;     /* mint */
   --pf-linux-qt: #64d2ff;      /* cyan */
   --pf-windows-winui: #40c8e0; /* teal */
-  --pf-windows-xaml: var(--pf-windows-winui);
   --pf-harmony-arkui: #ff453a;    /* red */
   --pf-web-dom: #ff9f0a;       /* orange */
 
@@ -110,7 +109,7 @@
 [data-pf='android-mdc'] { --pf: var(--pf-android-mdc); }
 [data-pf='linux-gtk'], [data-pf='macos-gtk'], [data-pf='windows-gtk'] { --pf: var(--pf-linux-gtk); }
 [data-pf='linux-qt'], [data-pf='macos-qt'], [data-pf='windows-qt'] { --pf: var(--pf-linux-qt); }
-[data-pf='windows-winui'], [data-pf='windows-xaml'] { --pf: var(--pf-windows-winui); }
+[data-pf='windows-winui'] { --pf: var(--pf-windows-winui); }
 [data-pf='harmony-arkui'] { --pf: var(--pf-harmony-arkui); }
 [data-pf='web-dom'] { --pf: var(--pf-web-dom); }
 
