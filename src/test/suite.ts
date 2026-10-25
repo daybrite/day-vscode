@@ -616,7 +616,7 @@ const checks: Check[] = [
       // The installed CLI is authoritative; WinUI is offered when that CLI supports it.
       const names = catalog().map((t) => t.name);
       assert.ok(names.includes("windows-winui"), "the Windows target is offered");
-      for (const expected of ["macos-appkit", "ios-uikit", "android-mdc", "web-dom"]) {
+      for (const expected of ["macos-appkit", "ios-uikit", "android-material", "web-dom"]) {
         assert.ok(names.includes(expected), `${expected} missing from the catalog`);
       }
       // Every entry must be classifiable, or the picker cannot say what a host can build.
@@ -843,14 +843,14 @@ const checks: Check[] = [
       // device's process table, so terminating the launcher (which is what VS Code does, without
       // letting it clean up) left the app on screen and its session in the registry.
       // Verified against a real emulator: SIGKILL the launcher and the app keeps its pid;
-      // `day stop -t android-mdc` is what ends it.
-      const args = stopArgs("/w/Day-Rise", "android-mdc");
+      // `day stop -t android-material` is what ends it.
+      const args = stopArgs("/w/Day-Rise", "android-material");
       assert.deepStrictEqual(args, [
         "--project",
         "/w/Day-Rise",
         "stop",
         "--target",
-        "android-mdc",
+        "android-material",
       ]);
       assert.strictEqual(
         args.indexOf("--project"),
@@ -1205,7 +1205,7 @@ const checks: Check[] = [
       await state.addDevice(rise, "ios-uikit", device);
       assert.deepStrictEqual(state.devicesFor(rise, "ios-uikit"), [device]);
       assert.deepStrictEqual(
-        state.devicesFor(rise, "android-mdc"),
+        state.devicesFor(rise, "android-material"),
         [],
         "adding for one target must not touch another",
       );
@@ -2103,8 +2103,8 @@ const checks: Check[] = [
         "linux",
         "win32",
       ] as NodeJS.Platform[]) {
-        const studio = nativeProjectFor("android-mdc", platform);
-        assert.strictEqual(studio?.ide, "studio", `${platform}: android-mdc`);
+        const studio = nativeProjectFor("android-material", platform);
+        assert.strictEqual(studio?.ide, "studio", `${platform}: android-material`);
         // The Gradle root, not the app module and not a lone build.gradle.kts: Studio imports the
         // directory holding settings.gradle.kts, and treats a bare build file as a stray.
         assert.strictEqual(studio?.relative, "platform/android");
@@ -2147,13 +2147,13 @@ const checks: Check[] = [
       assert.ok(root, "this check needs the scaffolded fixture");
 
       assert.strictEqual(
-        targetContextValue("dayTarget", root, "android-mdc", "darwin"),
+        targetContextValue("dayTarget", root, "android-material", "darwin"),
         "dayTarget.studio",
       );
       // The suffix rides on every base state: a running or unbuildable row still opens in an IDE,
       // and an unbuildable target is exactly when someone reaches for one.
       assert.strictEqual(
-        targetContextValue("dayTargetRunning", root, "android-mdc", "linux"),
+        targetContextValue("dayTargetRunning", root, "android-material", "linux"),
         "dayTargetRunning.studio",
       );
       assert.strictEqual(
@@ -2182,7 +2182,7 @@ const checks: Check[] = [
           assert.strictEqual(targetContextValue("dayTarget", bare, target, "darwin"), "dayTarget.xcode");
         }
         assert.strictEqual(
-          targetContextValue("dayTarget", bare, "android-mdc", "darwin"),
+          targetContextValue("dayTarget", bare, "android-material", "darwin"),
           "dayTarget.studio",
         );
       } finally {
@@ -2365,6 +2365,27 @@ const checks: Check[] = [
         hideUnavailableTargets(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath),
         true,
       );
+    },
+  ],
+  [
+    "Material aliases migrate saved targets and independent device selections",
+    async () => {
+      const root = "/w/alias-fixture";
+      const phone = { id: "phone", label: "Phone", flag: "--android-device" };
+      const tablet = { id: "tablet", label: "Tablet", flag: "--android-device" };
+      const memory = fakeMemento({ "day.projectSelections": { byProject: { [root]: {
+        targets: ["android-mdc", "android-material"],
+        deviceList: { "android-mdc": [phone], "android-material": [tablet] },
+        deviceTicks: { "android-mdc": ["phone"], "android-material": ["tablet"] },
+      } } } });
+      const state = new State(memory);
+      assert.deepStrictEqual(state.selectionFor(root).targets, ["android-material"]);
+      assert.deepStrictEqual(state.devicesFor(root, "android-mdc").map(d => d.id), ["phone", "tablet"]);
+      assert.strictEqual(state.tickedDevicesFor(root, "android-material").length, 2);
+      await state.updateFor(root, { locale: "fr" });
+      const saved = JSON.stringify(memory.get("day.projectSelections"));
+      assert.ok(!saved.includes("android-mdc"));
+      assert.ok(saved.includes("android-material"));
     },
   ],
   [
@@ -2584,7 +2605,7 @@ const checks: Check[] = [
       // Android keys its running emulators by adb serial and its startable ones by AVD name, so a
       // stopped row matches nothing by id; the AVD it was stored with is the whole link back.
       const android: TargetDevices = {
-        target: "android-mdc",
+        target: "android-material",
         kind: "android",
         available: true,
         devices: [
@@ -2645,7 +2666,7 @@ const checks: Check[] = [
       // re-keyed, because the CLI stopped waiting before the emulator answered. The emulator is
       // up all the same, under a serial the row has never heard of.
       const listing: TargetDevices = {
-        target: "android-mdc",
+        target: "android-material",
         kind: "android",
         available: true,
         devices: [
@@ -2753,7 +2774,7 @@ const checks: Check[] = [
     "a device being started reads Booting, and a boot that failed says so until it is seen",
     () => {
       const listing: TargetDevices = {
-        target: "android-mdc",
+        target: "android-material",
         kind: "android",
         available: true,
         // The listing taken while it boots: still nothing connected, still bootable. This is the
@@ -2881,23 +2902,23 @@ const checks: Check[] = [
       };
 
       return (async () => {
-        await state.addDevice(root, "android-mdc", legacy);
-        await state.addDevice(root, "android-mdc", { ...legacy, id: "emulator-5556" });
-        await state.setDeviceTicked(root, "android-mdc", "emulator-5556", false);
+        await state.addDevice(root, "android-material", legacy);
+        await state.addDevice(root, "android-material", { ...legacy, id: "emulator-5556" });
+        await state.setDeviceTicked(root, "android-material", "emulator-5556", false);
 
         // Learned from a listing while that serial is live: same id, now with the AVD behind it.
-        await state.replaceDevice(root, "android-mdc", "emulator-5554", {
+        await state.replaceDevice(root, "android-material", "emulator-5554", {
           ...legacy,
           label: "Pixel_9_API_36 (emulator-5554)",
           avd: "Pixel_9_API_36",
         });
         assert.deepStrictEqual(
-          state.devicesFor(root, "android-mdc").map((d) => [d.id, d.avd]),
+          state.devicesFor(root, "android-material").map((d) => [d.id, d.avd]),
           [["emulator-5554", "Pixel_9_API_36"], ["emulator-5556", undefined]],
           "the row keeps its place and only the one that was seen learns anything",
         );
         assert.deepStrictEqual(
-          state.tickedDevicesFor(root, "android-mdc").map((d) => d.id),
+          state.tickedDevicesFor(root, "android-material").map((d) => d.id),
           ["emulator-5554"],
           "and the tick survives an in-place update",
         );
@@ -2913,33 +2934,33 @@ const checks: Check[] = [
       const other = { id: "emulator-5558", label: "Pixel 6", flag: "--android-device", avd: "P6" };
 
       return (async () => {
-        await state.addDevice(root, "android-mdc", first);
-        await state.addDevice(root, "android-mdc", other);
-        await state.setDeviceTicked(root, "android-mdc", "emulator-5558", false);
+        await state.addDevice(root, "android-material", first);
+        await state.addDevice(root, "android-material", other);
+        await state.setDeviceTicked(root, "android-material", "emulator-5558", false);
 
         // The same emulator, back on a different console port. Removing and re-adding would send
         // it to the bottom of the list and re-tick it; the row is rewritten in place instead.
         const back = { ...first, id: "emulator-5560" };
-        await state.replaceDevice(root, "android-mdc", "emulator-5554", back);
+        await state.replaceDevice(root, "android-material", "emulator-5554", back);
         assert.deepStrictEqual(
-          state.devicesFor(root, "android-mdc").map((d) => d.id),
+          state.devicesFor(root, "android-material").map((d) => d.id),
           ["emulator-5560", "emulator-5558"],
           "the row keeps its place",
         );
         assert.deepStrictEqual(
-          state.tickedDevicesFor(root, "android-mdc").map((d) => d.id),
+          state.tickedDevicesFor(root, "android-material").map((d) => d.id),
           ["emulator-5560"],
           "and its tick follows the rename, without reviving the one that was unticked",
         );
 
         // Renaming onto a serial another row already holds would leave two rows for one device,
         // each launching onto it. Refused rather than merged.
-        await state.replaceDevice(root, "android-mdc", "emulator-5560", {
+        await state.replaceDevice(root, "android-material", "emulator-5560", {
           ...other,
           id: "emulator-5558",
         });
         assert.deepStrictEqual(
-          state.devicesFor(root, "android-mdc").map((d) => d.id),
+          state.devicesFor(root, "android-material").map((d) => d.id),
           ["emulator-5560", "emulator-5558"],
         );
       })();
@@ -3006,11 +3027,11 @@ const checks: Check[] = [
           {
             type: "day",
             command: "launch",
-            target: "android-mdc",
+            target: "android-material",
             device: { id, flag: "-d", label: id },
           },
           vscode.TaskScope.Workspace,
-          `run android-mdc · ${id}`,
+          `run android-material · ${id}`,
           "day",
           new vscode.ProcessExecution(process.execPath, [
             "-e",
@@ -3026,7 +3047,7 @@ const checks: Check[] = [
         // wait is how this check would go flaky on a loaded CI runner.
         const ours = () =>
           vscode.tasks.taskExecutions.filter(
-            (e) => (e.task.definition as { target?: string }).target === "android-mdc",
+            (e) => (e.task.definition as { target?: string }).target === "android-material",
           );
         for (let i = 0; i < 100 && ours().length < 2; i++) {
           await new Promise((r) => setTimeout(r, 100));
@@ -3048,7 +3069,7 @@ const checks: Check[] = [
     async () => {
       const state = new State(fakeMemento());
       const root = "/w/Day-Rise";
-      const t = "android-mdc";
+      const t = "android-material";
       const a = { id: "emulator-5554", label: "Pixel 8", flag: "--android-device" };
       const b = { id: "emulator-5556", label: "Pixel 7", flag: "--android-device" };
 
@@ -3250,15 +3271,15 @@ const checks: Check[] = [
         ok: true,
         targets: [
           {
-            target: "android-mdc",
+            target: "android-material",
             ok: true,
             artifacts: [{ path: "/app/app.apk" }],
           },
         ],
       });
-      assert.strictEqual(planFrom(noPlan, "android-mdc", log), undefined);
+      assert.strictEqual(planFrom(noPlan, "android-material", log), undefined);
       assert.ok(
-        logged.some((m) => m.includes("android-mdc")),
+        logged.some((m) => m.includes("android-material")),
         `expected a logged reason, got ${JSON.stringify(logged)}`,
       );
     },

@@ -141,3 +141,12 @@ install it.
 Bugs and ideas are welcome in [issues](https://github.com/daybrite/day-vscode/issues).
 [CONTRIBUTING.md](https://github.com/daybrite/day-vscode/blob/main/CONTRIBUTING.md) covers building
 the extension from source and running its tests.
+
+## Android target naming
+
+Use `android-material` for the Android target and `material` for its toolkit and Cargo
+feature. The tooling temporarily accepts `android-mdc` and `mdc`, warns that they are
+deprecated, and writes canonical target names. Mixed spellings in target lists select one
+target; conflicting override keys are rejected. These aliases do not apply to Rust package
+names, imports, or Cargo features. They will be removed in the next announced breaking
+tooling release after one release of overlap.

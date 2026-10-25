@@ -923,7 +923,7 @@
           "day.androidNDKHome": {
             "type": "string",
             "default": "",
-            "markdownDescription": "Path to the Android NDK used to cross-compile the Rust cdylib for `android-mdc`. Exported as `ANDROID_NDK_HOME`. Empty = the CLI picks the newest NDK inside the SDK.",
+            "markdownDescription": "Path to the Android NDK used to cross-compile the Rust cdylib for `android-material`. Exported as `ANDROID_NDK_HOME`. Empty = the CLI picks the newest NDK inside the SDK.",
             "order": 20,
             "keywords": [
               "ANDROID_NDK_HOME",

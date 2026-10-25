@@ -10,7 +10,7 @@ section: Extension
 A desktop target has one obvious place to run: this machine. A mobile target does not — you might
 have two simulators booted, a phone plugged in, and an emulator running, all at once.
 
-So `ios-uikit`, `android-mdc` and `harmony-arkui` each hold a **list of devices** in the Day view,
+So `ios-uikit`, `android-material` and `harmony-arkui` each hold a **list of devices** in the Day view,
 which you build up yourself and which stays put between sessions.
 
 ## Adding one
@@ -133,7 +133,7 @@ missing device:
 | Target | Needs | Where to set it |
 |---|---|---|
 | `ios-uikit` | Xcode, and a booted simulator or a trusted device | `day.xcodeDeveloperDirectory` |
-| `android-mdc` | The Android SDK, with `platform-tools` | `day.androidSDKHome` |
+| `android-material` | The Android SDK, with `platform-tools` | `day.androidSDKHome` |
 | `harmony-arkui` | The OpenHarmony SDK, with `hdc` | `day.harmonyNDKHome` |
 
 Those settings are exported for every `day` command the extension runs, including

@@ -6,10 +6,11 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
+import { warnMaterialAlias } from "./material-alias";
 
 import { buildArgs, cliSearchDirs, launchArgs, renderCommand, resolveCli } from "./cli";
 import { Profile } from "./config";
-import { findTarget, tierLabel, tierDetail } from "./targets";
+import { canonicalTarget, findTarget, tierLabel, tierDetail } from "./targets";
 
 export interface DayTaskDefinition extends vscode.TaskDefinition {
   type: "day";
@@ -330,6 +331,8 @@ export function buildDayTask(
   def: DayTaskDefinition,
   opts?: { projectFallback?: string },
 ): vscode.Task {
+  warnMaterialAlias(def.target, "tasks.json");
+  def = { ...def, target: canonicalTarget(def.target) };
   const projectRoot = def.project ?? opts?.projectFallback ?? "";
   const cli = resolveCli(projectRoot || undefined);
   const profile: Profile = def.profile ?? "debug";

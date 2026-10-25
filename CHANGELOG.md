@@ -233,7 +233,7 @@
   Each project owns its own diagnostics, so linting one app never clears another's. Requires a
   `day` CLI new enough to have `day lint --json`; without one the command reports and the sidebar
   is otherwise unaffected.
-- **Pick the phone.** Mobile targets — `ios-uikit`, `android-mdc`, `harmony-arkui` — now expand in
+- **Pick the phone.** Mobile targets — `ios-uikit`, `android-material`, `harmony-arkui` — now expand in
   the sidebar to a **Device** row: choose a booted simulator, a plugged-in phone, an emulator, or
   **All connected**, which stays the default and is what every launch did before. The list comes
   from the new `day devices list --json`, and each device carries the flag that selects it, so iOS

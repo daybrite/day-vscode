@@ -21,11 +21,24 @@ export interface Target {
   deprecated?: string | null;
 }
 
+/** Deprecated spellings are accepted only at tooling input boundaries. */
+export function canonicalTarget(name: string): string {
+  return name === "android-mdc" || name === "mdc" || name === "material" ? "android-material" : name;
+}
+
+export function canonicalToolkit(name: string): string {
+  return name === "mdc" ? "material" : name;
+}
+
 let activeCatalog: Target[] | undefined;
 
 /** Install the CLI-provided catalog (undefined/empty ⇒ keep the static fallback). */
 export function setCatalog(catalog: Target[] | undefined): void {
-  activeCatalog = catalog && catalog.length > 0 ? catalog : undefined;
+  activeCatalog = catalog && catalog.length > 0
+    ? [...new Map(catalog.map((t) => {
+      const normalized = { ...t, name: canonicalTarget(t.name), toolkit: canonicalToolkit(t.toolkit) };
+      return [normalized.name, normalized] as const;
+    })).values()] : undefined;
 }
 
 /** The catalog in effect: the CLI's when a project has loaded, else the static fallback. */
@@ -43,7 +56,7 @@ export const TARGETS: Target[] = [
   { name: "windows-gtk", toolkit: "gtk", kind: "desktop", host: "windows" },
   { name: "linux-qt", toolkit: "qt", kind: "desktop", host: "linux" },
   { name: "ios-uikit", toolkit: "uikit", kind: "iosSim", host: "macos" },
-  { name: "android-mdc", toolkit: "mdc", kind: "android", host: "any" },
+  { name: "android-material", toolkit: "material", kind: "android", host: "any" },
   { name: "harmony-arkui", toolkit: "arkui", kind: "harmonyOs", host: "any" },
   { name: "web-dom", toolkit: "dom", kind: "web", host: "any" },
 ];
@@ -51,7 +64,7 @@ export const TARGETS: Target[] = [
 // Mirrors day's documented platform support tiers. CLI-provided tiers take precedence; older
 // CLIs provide only host/experimental, and experimental is not a support-tier designation.
 const TIERS: Record<string, SupportTier> = {
-  "macos-appkit": 1, "ios-uikit": 1, "android-mdc": 1,
+  "macos-appkit": 1, "ios-uikit": 1, "android-material": 1,
   "linux-gtk": 2, "linux-qt": 2, "windows-winui": 2,
   "harmony-arkui": 3, "web-dom": 3,
   "macos-gtk": 4, "macos-qt": 4, "windows-gtk": 4, "windows-qt": 4,
@@ -139,7 +152,7 @@ export function optionSupport(value: string): { label: string; detail: string; d
 }
 
 export function findTarget(name: string): Target | undefined {
-  return catalog().find((t) => t.name === name);
+  return catalog().find((t) => t.name === canonicalTarget(name));
 }
 
 export function hostOs(): HostOs | "other" {
@@ -212,7 +225,7 @@ export function nativeProjectFor(
   platform: NodeJS.Platform,
 ): NativeProject | undefined {
   switch (target) {
-    case "android-mdc":
+    case "android-material":
       // Studio opens the Gradle root (the directory holding `settings.gradle.kts`), not the app
       // module beneath it and not a lone `build.gradle.kts`, which it would treat as a stray file.
       return {

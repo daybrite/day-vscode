@@ -19,7 +19,7 @@ export const FIXTURE_TARGETS = [
   "windows-winui",
   "linux-gtk",
   "ios-uikit",
-  "android-mdc",
+  "android-material",
   "web-dom",
 ];
 
@@ -57,7 +57,8 @@ export function scaffold({ dayBin, parent, name = "day-fixture", targets = FIXTU
     // Fixtures need neither a Git repository nor an initial commit or publishing workflow.
     const res = spawnSync(
       dayBin,
-      ["new", "app", name, "--toolkit", targets.join(","), "--no-input", "--no-github"],
+      ["new", "app", name, "--toolkit", targets.join(","), "--no-input", "--no-github",
+        ...(process.env.DAY_E2E_DAY_SOURCE ? ["--local", process.env.DAY_E2E_DAY_SOURCE] : [])],
       { cwd: parent, encoding: "utf8", stdio: "pipe", timeout: 300_000, killSignal: "SIGKILL" },
     );
     if (res.status !== 0 || !existsSync(join(dir, "Day.toml"))) {

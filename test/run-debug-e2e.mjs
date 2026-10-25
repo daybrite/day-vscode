@@ -56,7 +56,7 @@ const workspace = join(work, "debug-e2e.code-workspace");
 const dayRepo = join(siblings, "day");
 const folders = [{ path: project }, ...(existsSync(join(dayRepo, "Cargo.toml")) ? [{ path: dayRepo }] : [])];
 const { writeFileSync } = await import("node:fs");
-writeFileSync(workspace, JSON.stringify({ folders, settings: {} }, null, 2));
+writeFileSync(workspace, JSON.stringify({ folders, settings: process.env.DAY_BIN ? { "day.cliPath": process.env.DAY_BIN } : {} }, null, 2));
 
 let code = 1;
 try {

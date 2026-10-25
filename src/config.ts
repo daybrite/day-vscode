@@ -9,6 +9,7 @@
 // launch across all of them.
 
 import * as vscode from "vscode";
+import { canonicalTarget } from "./targets";
 
 export type Profile = "debug" | "release";
 
@@ -95,6 +96,26 @@ function promoteLegacyDevices(
   return out;
 }
 
+/** Merge saved alias keys without losing independently selected devices. */
+function canonicalDeviceMap<T>(entries: Record<string, T[]> | undefined): Record<string, T[]> {
+  const result: Record<string, T[]> = {};
+  for (const [target, values] of Object.entries(entries ?? {})) {
+    const key = canonicalTarget(target);
+    result[key] = [...new Map([...(result[key] ?? []), ...values].map((value) => [typeof value === "object" && value !== null && "id" in value ? JSON.stringify([value.id, "flag" in value ? value.flag : ""]) : JSON.stringify(value), value])).values()];
+  }
+  return result;
+}
+
+function canonicalStored(stored: Stored): Stored {
+  return { ...stored, byProject: Object.fromEntries(Object.entries(stored.byProject ?? {}).map(([root, value]) => [root, {
+    ...value,
+    targets: value.targets && [...new Set(value.targets.map(canonicalTarget))],
+    deviceList: canonicalDeviceMap(value.deviceList ?? promoteLegacyDevices(value.devices)),
+    deviceTicks: canonicalDeviceMap(value.deviceTicks),
+    devices: undefined,
+  }])) };
+}
+
 export class State {
   private emitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.emitter.event;
@@ -102,11 +123,11 @@ export class State {
   constructor(private readonly mem: vscode.Memento) {}
 
   private stored(): Stored {
-    return this.mem.get<Stored>(KEY) ?? {};
+    return canonicalStored(this.mem.get<Stored>(KEY) ?? {});
   }
 
   private async write(next: Stored): Promise<void> {
-    await this.mem.update(KEY, next);
+    await this.mem.update(KEY, canonicalStored(next));
     this.emitter.fire();
   }
 
@@ -167,6 +188,7 @@ export class State {
 
   /** The devices configured for one target, in the order they were added. */
   devicesFor(root: string, target: string): DeviceChoice[] {
+    target = canonicalTarget(target);
     return this.selectionFor(root).deviceList?.[target] ?? [];
   }
 
@@ -178,6 +200,7 @@ export class State {
    * two identical rows would each launch and then fight over the same device.
    */
   addDevice(root: string, target: string, device: DeviceChoice): Promise<void> {
+    target = canonicalTarget(target);
     const current = this.devicesFor(root, target);
     if (current.some((d) => d.id === device.id)) {
       return Promise.resolve();
@@ -209,6 +232,7 @@ export class State {
     id: string,
     next: DeviceChoice,
   ): Promise<void> {
+    target = canonicalTarget(target);
     const current = this.devicesFor(root, target);
     if (!current.some((d) => d.id === id) || current.some((d) => d.id === next.id && d.id !== id)) {
       // Nothing to rename, or the new id is another row's; writing either would leave two rows
@@ -227,6 +251,7 @@ export class State {
 
   /** Remove one configured device. The target falls back to "all connected" once none are left. */
   removeDevice(root: string, target: string, id: string): Promise<void> {
+    target = canonicalTarget(target);
     return this.writeDevices(
       root,
       target,
@@ -241,6 +266,7 @@ export class State {
    * unticked anything) launches on everything it lists, which is what it did before.
    */
   tickedDevicesFor(root: string, target: string): DeviceChoice[] {
+    target = canonicalTarget(target);
     const all = this.devicesFor(root, target);
     const ticks = this.selectionFor(root).deviceTicks?.[target];
     return ticks === undefined ? all : all.filter((d) => ticks.includes(d.id));
@@ -253,6 +279,7 @@ export class State {
     id: string,
     ticked: boolean,
   ): Promise<void> {
+    target = canonicalTarget(target);
     const current = new Set(this.tickedDevicesFor(root, target).map((d) => d.id));
     if (ticked) {
       current.add(id);
@@ -264,11 +291,13 @@ export class State {
 
   /** Tick or untick every configured device of a target: what the target's checkbox does. */
   setAllDevicesTicked(root: string, target: string, ticked: boolean): Promise<void> {
+    target = canonicalTarget(target);
     const all = this.devicesFor(root, target).map((d) => d.id);
     return this.writeTicks(root, target, new Set(ticked ? all : []));
   }
 
   private writeTicks(root: string, target: string, ids: Set<string>): Promise<void> {
+    target = canonicalTarget(target);
     const deviceTicks = { ...this.selectionFor(root).deviceTicks };
     // Normalised to configured order. Reads filter the configured list, so order here is not
     // observable either way; this only keeps the persisted value from churning as ticks are
@@ -280,6 +309,7 @@ export class State {
   }
 
   private writeDevices(root: string, target: string, list: DeviceChoice[]): Promise<void> {
+    target = canonicalTarget(target);
     return this.writeDevicesAndTicks(root, target, list, undefined);
   }
 
@@ -290,6 +320,7 @@ export class State {
     list: DeviceChoice[],
     ticks: string[] | undefined,
   ): Promise<void> {
+    target = canonicalTarget(target);
     const selection = this.selectionFor(root);
     const deviceList = { ...selection.deviceList };
     if (list.length > 0) {

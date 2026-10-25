@@ -58,3 +58,14 @@ test('native toolkit choices explain their per-OS tiers instead of claiming one 
   assert.equal(optionSupport('winui').deprecated, false);
   assert.equal(optionSupport('some-non-target-choice'), undefined);
 });
+
+test('Material aliases select one canonical target and normalize older CLI catalogs', () => {
+  assert.equal(findTarget('android-mdc').name, 'android-material');
+  assert.equal(findTarget('mdc').toolkit, 'material');
+  setCatalog([
+    { name: 'android-mdc', toolkit: 'mdc', kind: 'android', host: 'any' },
+    { name: 'android-material', toolkit: 'material', kind: 'android', host: 'any' },
+  ]);
+  assert.deepEqual(catalog().map(t => t.name), ['android-material']);
+  assert.equal(catalog()[0].toolkit, 'material');
+});

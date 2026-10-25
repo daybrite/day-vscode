@@ -11,7 +11,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { DayCli, renderCommand, resolveCli } from "./cli";
 import { scanCli } from "./scanCli";
-import { setCatalog, Target } from "./targets";
+import { canonicalTarget, setCatalog, Target } from "./targets";
 
 export interface DayProject {
   /** Directory containing Day.toml. */
@@ -125,7 +125,7 @@ export async function loadProject(
       version: p.version,
       id: p.id,
       title: p.title,
-      targets: p.targets ?? [],
+      targets: [...new Set((p.targets ?? []).map(canonicalTarget))],
     },
   };
 }

@@ -17,12 +17,13 @@
 
 import * as childProcess from "child_process";
 import * as vscode from "vscode";
+import { warnMaterialAlias } from "./material-alias";
 
 import { buildArgs, launchArgs, LaunchOptions, renderCommand, resolveCli } from "./cli";
 import { Profile, Selection } from "./config";
 import { DayProject } from "./project";
 import { snapEnvOverrides } from "./snapEnv";
-import { findTarget, isBuildableHere, targetPreference, tierLabel, tierDetail, TIER_LEGEND } from "./targets";
+import { canonicalTarget, findTarget, isBuildableHere, targetPreference, tierLabel, tierDetail, TIER_LEGEND } from "./targets";
 import { launchEnv, taskEnv, verbose } from "./tasks";
 
 /** A `day` launch configuration (mirrors the launch fields of DayTaskDefinition). */
@@ -279,6 +280,8 @@ export class DayConfigProvider implements vscode.DebugConfigurationProvider {
 
     // A named target (from launch.json or the dynamic list): honor it, filling cockpit defaults.
     if (c.target && c.target.length > 0) {
+      warnMaterialAlias(c.target, "launch.json");
+      c.target = canonicalTarget(c.target);
       c.type = "day";
       c.request = "launch";
       c.name ??= `Day: Run ${c.target}`;
