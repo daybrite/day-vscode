@@ -80,6 +80,14 @@ permissions:
   contents: read
 
 jobs:
+  # Retired Day crate names and Rust imports (daybrite/actions check-crate-names).
+  crate-names:
+    name: crate names
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: daybrite/actions/.github/actions/check-crate-names@main
+
   # ── Build + publishability validation (every push/PR) ──────────────────────────────────────
   build:
     runs-on: ubuntu-latest

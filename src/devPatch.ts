@@ -4,15 +4,18 @@ import * as cp from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { promisify } from "util";
-import { repository, manifestGitSources, lockGitSources } from "./cargoToml";
+import {
+  repository, manifestGitSources, lockGitSources, registryDependencies, lockRegistryPackages,
+  checkoutPackages,
+} from "./cargoToml";
 
 const execFile = promisify(cp.execFile);
 const canon = (url: string): string => url.trim().replace(/^git\+/, "")
   .split(/[?#]/)[0].replace(/\/+$/, "").replace(/\.git$/, "").toLowerCase();
 const read = (file: string): string => fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
 
-export interface PatchCheckout { dir: string; url: string }
-interface CargoPackage { source?: string | null; manifest_path?: string }
+export interface PatchCheckout { dir: string; url: string; crates: string[] }
+interface CargoPackage { name?: string; source?: string | null; manifest_path?: string }
 
 export function patchCheckouts(day: string, folders: string[]): PatchCheckout[] {
   const seen = new Set([fs.realpathSync(day)]);
@@ -21,7 +24,7 @@ export function patchCheckouts(day: string, folders: string[]): PatchCheckout[] 
     if (seen.has(dir)) { return []; }
     seen.add(dir);
     const url = repository(read(path.join(dir, "Cargo.toml")));
-    return url ? [{ dir, url: canon(url) }] : [];
+    return url ? [{ dir, url: canon(url), crates: checkoutPackages(dir) }] : [];
   });
 }
 
@@ -30,37 +33,47 @@ function within(file: string, dir: string): boolean {
   return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }
 
-/** Metadata without a platform filter includes dependencies for all target platforms. */
+/** Metadata without a platform filter includes dependencies for all target platforms. A checkout
+ *  matches when the graph takes one of its packages from crates.io, its git URL from git, or a
+ *  path inside it; `fallbackCrates` and `fallbackSources` are the manifests' and lock's own
+ *  names, for a project cargo cannot resolve yet. */
 export function matchingCheckouts(
   root: string, checkouts: PatchCheckout[], packages: CargoPackage[], fallbackSources: string[],
+  fallbackCrates: string[] = [],
 ): PatchCheckout[] {
   const sources = new Set(fallbackSources.map(canon));
+  const crates = new Set(fallbackCrates);
   for (const pkg of packages) {
     if (pkg.manifest_path && within(pkg.manifest_path, root)) { continue; }
-    if (pkg.source?.startsWith("git+")) {
+    if (pkg.name && (pkg.source?.startsWith("registry+") || pkg.source?.startsWith("sparse+"))) {
+      crates.add(pkg.name);
+    } else if (pkg.source?.startsWith("git+")) {
       sources.add(canon(pkg.source));
     } else if (!pkg.source && pkg.manifest_path) {
       const checkout = checkouts.find(c => within(pkg.manifest_path!, c.dir));
       if (checkout) { sources.add(checkout.url); }
     }
   }
-  return checkouts.filter(c => sources.has(c.url));
+  return checkouts.filter(c => sources.has(c.url) || c.crates.some(name => crates.has(name)));
 }
 
 export async function patchProject(binary: string, day: string, root: string, checkouts: PatchCheckout[]): Promise<void> {
   let selected: PatchCheckout[] = [];
   if (checkouts.length) {
-    const manifestSources = manifestGitSources(read(path.join(root, "Cargo.toml")));
+    const manifest = read(path.join(root, "Cargo.toml"));
+    const manifestSources = manifestGitSources(manifest);
+    const manifestCrates = registryDependencies(manifest);
     try {
       // One read of the graph, instead of seven resolutions per project/folder probe.
       const { stdout } = await execFile("cargo", ["metadata", "--format-version", "1", "--all-features"], {
         cwd: root, maxBuffer: 64 * 1024 * 1024, timeout: 120_000,
       });
-      selected = matchingCheckouts(root, checkouts, JSON.parse(stdout).packages, manifestSources);
+      selected = matchingCheckouts(root, checkouts, JSON.parse(stdout).packages, manifestSources, manifestCrates);
     } catch {
       // As in day patch, manifest entries are the floor when Cargo cannot resolve yet.
-      selected = matchingCheckouts(root, checkouts, [], [
-        ...manifestSources, ...lockGitSources(read(path.join(root, "Cargo.lock"))),
+      const lock = read(path.join(root, "Cargo.lock"));
+      selected = matchingCheckouts(root, checkouts, [], [...manifestSources, ...lockGitSources(lock)], [
+        ...manifestCrates, ...lockRegistryPackages(lock),
       ]);
     }
   }
@@ -70,7 +83,7 @@ export async function patchProject(binary: string, day: string, root: string, ch
     const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
     // A stale lock or an optional dependency can name a source the CLI doesn't use.
     // Its rejection happens before writing; remove only that source and retry.
-    const unused = output.match(/no dependencies from (\S+) — nothing to patch/);
+    const unused = output.match(/takes nothing from (\S+) — nothing to patch/);
     // Missing crates are also rejected while constructing the table, before any write.
     // Preserve the launcher's warning-and-skip behavior for optional checkouts without
     // probing every source. The required day checkout and verification failures stay fatal.

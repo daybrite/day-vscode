@@ -2,13 +2,15 @@
 //
 // A window that has both an app and a checkout of something the app depends on (`day` itself, or
 // an external piece or part repository) almost always means the two are being worked on together.
-// Cargo does not infer that: without a `[patch]` table the app fetches the published git revision
-// and the edit under test never reaches it, silently, with everything looking right. `day patch
+// Cargo does not infer that: without a `[patch]` table the app fetches the published crates and
+// the edit under test never reaches it, silently, with everything looking right. `day patch
 // --local <checkout>` writes that table, and this module decides when to offer it.
 //
 // What counts as "the app depends on this checkout" is the CLI's question, and the answer here is
-// derived the same way it derives it (crates/day-cli/src/patch.rs): a checkout stands for one git
-// URL, and a project depends on it when its resolved graph or its manifests name that URL. The
+// derived the same way it derives it (crates/day-cli/src/patch.rs): a project depends on a
+// checkout when it takes one of the checkout's crates from crates.io (by name, in its lock or its
+// manifests), or when its resolved graph or its manifests name the git URL the checkout stands
+// for. The
 // alternative, handing every checkout to `day patch` and seeing what sticks, writes a patch
 // table as a side effect of asking, which is not something to do behind a prompt that has not been
 // answered yet.
@@ -20,7 +22,10 @@ import * as vscode from "vscode";
 
 import { patchArgs, renderCommand, resolveCli } from "./cli";
 import { DayProject } from "./project";
-import { repository, lockGitSources, manifestGitSources, hasPathPatch } from "./cargoToml";
+import {
+  repository, lockGitSources, manifestGitSources, hasPathPatch, registryDependencies,
+  lockRegistryPackages, checkoutPackages,
+} from "./cargoToml";
 
 /** The URL apps name the framework by. It is not written in day's own manifest, so it is spelled
  *  here exactly as `DAY_GIT` in crates/day-cli/src/patch.rs spells it. */
@@ -37,8 +42,10 @@ export interface LocalCheckout {
   dir: string;
   /** Its folder name, for messages. */
   name: string;
-  /** The git URL it stands for, canonicalized: how a dependent project names it. */
+  /** The git URL it stands for, canonicalized: how a dependent project names it from git. */
   url: string;
+  /** The packages it carries: how a dependent project names it from crates.io. */
+  crates: string[];
 }
 
 /** One project and the checkouts it depends on but is not yet built against. */
@@ -86,19 +93,25 @@ export function workspaceCheckouts(projects: DayProject[]): LocalCheckout[] {
     }
     const url = checkoutUrl(dir);
     if (url) {
-      found.push({ dir, name: path.basename(dir), url });
+      found.push({ dir, name: path.basename(dir), url, crates: checkoutPackages(dir) });
     }
   }
   return found;
 }
 
-/** Every git URL this project resolves a dependency from. The lock is the answer (it is the
- *  graph cargo will actually build), and the manifests are the floor under it, for a project
- *  that has never been built and has no lock yet. */
-async function gitSources(root: string): Promise<Set<string>> {
+/** Every git URL this project resolves a dependency from, and every package it takes from
+ *  crates.io. The lock is the answer (it is the graph cargo will actually build), and the
+ *  manifests are the floor under it, for a project that has never been built and has no lock
+ *  yet. */
+async function dependencySources(root: string): Promise<{ urls: Set<string>; crates: Set<string> }> {
   const urls = new Set<string>();
-  for (const source of lockGitSources(read(path.join(root, "Cargo.lock")))) {
+  const crates = new Set<string>();
+  const lock = read(path.join(root, "Cargo.lock"));
+  for (const source of lockGitSources(lock)) {
     urls.add(canon(source));
+  }
+  for (const name of lockRegistryPackages(lock)) {
+    crates.add(name);
   }
   // Members as well as the root manifest: an app whose games live in `games/*` names its
   // dependencies there, and the root is only a workspace table.
@@ -108,12 +121,16 @@ async function gitSources(root: string): Promise<Set<string>> {
     64,
   );
   for (const uri of manifests) {
-    for (const source of manifestGitSources(read(uri.fsPath))) {
+    const text = read(uri.fsPath);
+    for (const source of manifestGitSources(text)) {
       urls.add(canon(source));
+    }
+    for (const name of registryDependencies(text)) {
+      crates.add(name);
     }
   }
 
-  return urls;
+  return { urls, crates };
 }
 
 /** The `day` checkout this workspace holds, when it holds one the CLI could be run from.
@@ -144,8 +161,9 @@ export async function planPatches(
     if (candidates.length === 0) {
       continue;
     }
-    const sources = await gitSources(project.root);
-    const wanted = candidates.filter((c) => sources.has(c.url));
+    const sources = await dependencySources(project.root);
+    const wanted = candidates.filter((c) =>
+      sources.urls.has(c.url) || c.crates.some((name) => sources.crates.has(name)));
     if (wanted.length > 0) {
       plans.push({ project, checkouts: wanted });
     }

@@ -8,10 +8,10 @@ import { matchingCheckouts, patchCheckouts, patchProject } from '../out/devPatch
 
 // Synthetic Cargo metadata and executables: never resolve or patch a developer's projects.
 const checkouts = [
-  { dir: '/repos/direct', url: 'https://example.com/direct' },
-  { dir: '/repos/transitive', url: 'https://example.com/transitive' },
-  { dir: '/repos/workspace', url: 'https://example.com/workspace' },
-  { dir: '/repos/unused', url: 'https://example.com/unused' },
+  { dir: '/repos/direct', url: 'https://example.com/direct', crates: ['direct'] },
+  { dir: '/repos/transitive', url: 'https://example.com/transitive', crates: ['transitive'] },
+  { dir: '/repos/workspace', url: 'https://example.com/workspace', crates: ['member'] },
+  { dir: '/repos/unused', url: 'https://example.com/unused', crates: ['unused'] },
 ];
 test('patch selection includes transitive and already-local member crates', () => {
   assert.deepEqual(matchingCheckouts('/apps/app', checkouts, [
@@ -20,6 +20,13 @@ test('patch selection includes transitive and already-local member crates', () =
     { source: null, manifest_path: '/repos/unused-neighbor/Cargo.toml' },
     { source: null, manifest_path: '/apps/app/Cargo.toml' },
   ], ['https://example.com/direct.git']), checkouts.slice(0, 3));
+});
+
+test('crates.io packages select the checkout that carries them, by name', () => {
+  assert.deepEqual(matchingCheckouts('/apps/app', checkouts, [
+    { name: 'transitive', source: 'registry+https://github.com/rust-lang/crates.io-index' },
+    { name: 'serde', source: 'registry+https://github.com/rust-lang/crates.io-index' },
+  ], [], ['direct']), checkouts.slice(0, 2));
 });
 
 test('Cargo packages belonging to the app are never mistaken for patch sources', () => {
@@ -106,7 +113,7 @@ test('failed resolution uses manifest/lock sources and drops only CLI-rejected u
   fs.writeFileSync(path.join(f.root, 'Cargo.toml'), `[dependencies]\na.git='https://example.com/direct'`);
   fs.writeFileSync(path.join(f.root, 'Cargo.lock'), `[[package]]\nname='unused'\nsource='git+https://example.com/unused#abc'`);
   f.executable('cargo', `${f.record}\nprocess.exit(1);`);
-  const binary = f.executable('day-bin', `${f.record}\nif (process.argv.includes('/repos/unused')) { process.stderr.write('this project has no dependencies from https://example.com/unused — nothing to patch there'); process.exit(1); }`);
+  const binary = f.executable('day-bin', `${f.record}\nif (process.argv.includes('/repos/unused')) { process.stderr.write('this project takes nothing from https://example.com/unused — nothing to patch there'); process.exit(1); }`);
   await patchProject(binary, '/fixture/day', f.root, checkouts);
   const patches = f.calls().filter(c => c[0] === 'patch');
   assert.equal(patches.length, 2);

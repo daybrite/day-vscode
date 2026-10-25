@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { repository, lockGitSources, manifestGitSources, hasPathPatch } from '../out/cargoToml.js';
+import {
+  repository, lockGitSources, manifestGitSources, hasPathPatch, registryDependencies, lockRegistryPackages,
+} from '../out/cargoToml.js';
 
 test('repository supports comments, literal strings, dotted and quoted keys', () => {
   assert.equal(repository(`[package] # comment
@@ -48,4 +50,33 @@ test('patch detection matches actual decoded paths exactly', () => {
   assert.equal(hasPathPatch(`[patch.'https://example.com/lib']\na.path='/repo/local-other'`, '/repo/app', '/repo/local'), false);
   assert.equal(hasPathPatch(`[patch.'https://example.com/lib']\na.path='/repo/local/crates/core'`, '/repo/app', '/repo/local'), true);
   assert.equal(hasPathPatch(`[patch.'https://example.com/lib']\na.path='/repo/local/../other'`, '/repo/app', '/repo/local'), false);
+});
+
+test('registry dependencies are the plain versions, under their package names', () => {
+  const text = `[dependencies]
+day = { package = 'day-app', version = '0.6', features = ['model'] }
+day-core = '0.6'
+local = { path = '../local' }
+forked = { git = 'https://example.com/forked' }
+inherited.workspace = true
+[workspace.dependencies]
+day-model = '0.6'
+[target.'cfg(windows)'.dependencies]
+day-part-device = { version = '0.6' }
+[package.metadata.x]
+day-not = '1'`;
+  assert.deepEqual(new Set(registryDependencies(text)), new Set([
+    'day-app', 'day-core', 'day-model', 'day-part-device',
+  ]));
+});
+
+test('lockfile registry packages are named, git and path ones are not', () => {
+  assert.deepEqual(lockRegistryPackages(`[[package]]
+name='a'
+source='registry+https://github.com/rust-lang/crates.io-index'
+[[package]]
+name='b'
+source='git+https://example.com/b#rev'
+[[package]]
+name='c'`), ['a']);
 });
