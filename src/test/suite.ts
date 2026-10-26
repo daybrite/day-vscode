@@ -3384,8 +3384,9 @@ const checks: Check[] = [
       const first = await rootOf(folders[0]);
       assert.notStrictEqual(first, second);
 
+      // Windows has no Qt target; HarmonyOS builds on every host and is not in the fixture.
       const added =
-        process.platform === "darwin" ? "macos-qt" : process.platform === "win32" ? "windows-qt" : "linux-qt";
+        process.platform === "darwin" ? "macos-qt" : process.platform === "win32" ? "harmony-arkui" : "linux-qt";
       const manifest = path.join(second, "Day.toml");
       const original = fs.readFileSync(manifest, "utf8");
       assert.ok(!original.includes(`"${added}"`), `the fixture must not already declare ${added}`);

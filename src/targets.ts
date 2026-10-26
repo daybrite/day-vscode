@@ -52,8 +52,6 @@ export const TARGETS: Target[] = [
   { name: "macos-qt", toolkit: "qt", kind: "desktop", host: "macos" },
   { name: "linux-gtk", toolkit: "gtk", kind: "desktop", host: "linux" },
   { name: "windows-winui", toolkit: "winui", kind: "desktop", host: "windows", label: "Windows (WinUI 3)" },
-  { name: "windows-qt", toolkit: "qt", kind: "desktop", host: "windows" },
-  { name: "windows-gtk", toolkit: "gtk", kind: "desktop", host: "windows" },
   { name: "linux-qt", toolkit: "qt", kind: "desktop", host: "linux" },
   { name: "ios-uikit", toolkit: "uikit", kind: "iosSim", host: "macos" },
   { name: "android-material", toolkit: "material", kind: "android", host: "any" },
@@ -67,7 +65,7 @@ const TIERS: Record<string, SupportTier> = {
   "macos-appkit": 1, "ios-uikit": 1, "android-material": 1,
   "linux-gtk": 2, "linux-qt": 2, "windows-winui": 2,
   "harmony-arkui": 3, "web-dom": 3,
-  "macos-gtk": 4, "macos-qt": 4, "windows-gtk": 4, "windows-qt": 4,
+  "macos-gtk": 4, "macos-qt": 4,
 };
 
 const TIER_NAMES: Record<SupportTier, string> = {

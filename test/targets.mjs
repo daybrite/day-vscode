@@ -52,7 +52,7 @@ test('native toolkit choices explain their per-OS tiers instead of claiming one 
   assert.match(gtk.label, /Tier 2/);
   assert.match(gtk.label, /Tier 4/);
   assert.match(gtk.detail, /linux-gtk: Tier 2/);
-  assert.match(gtk.detail, /windows-gtk: Tier 4/);
+  assert.match(gtk.detail, /macos-gtk: Tier 4/);
   setCatalog([...TARGETS, { name: 'old-desktop', toolkit: 'old', kind: 'desktop', host: 'windows', deprecated: 'windows-winui' }]);
   assert.equal(optionSupport('old').deprecated, true);
   assert.equal(optionSupport('winui').deprecated, false);
